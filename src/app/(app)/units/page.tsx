@@ -1,0 +1,67 @@
+import { prisma } from "@/lib/prisma";
+import { PageHeader } from "@/components/app/page-header";
+import { CatalogTabs } from "@/components/app/catalog-tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { AddUnitButton, UnitRowActions } from "./unit-dialog";
+
+export default async function UnitsPage() {
+  const units = await prisma.unit.findMany({
+    orderBy: { name: "asc" },
+    include: { _count: { select: { products: true } } },
+  });
+
+  return (
+    <div className="mx-auto w-full max-w-4xl space-y-6">
+      <PageHeader title="Units" description="Units of measure for products.">
+        <AddUnitButton />
+      </PageHeader>
+      <CatalogTabs />
+
+      <div className="rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead className="w-32">Short</TableHead>
+              <TableHead className="w-28">Products</TableHead>
+              <TableHead className="w-24 text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {units.length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={4}
+                  className="py-10 text-center text-sm text-muted-foreground"
+                >
+                  No units yet. Add your first one.
+                </TableCell>
+              </TableRow>
+            )}
+            {units.map((u) => (
+              <TableRow key={u.id}>
+                <TableCell className="font-medium">{u.name}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {u.shortName ?? "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground tabular-nums">
+                  {u._count.products}
+                </TableCell>
+                <TableCell>
+                  <UnitRowActions unit={u} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}

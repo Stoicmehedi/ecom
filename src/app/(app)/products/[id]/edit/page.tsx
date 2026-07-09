@@ -1,0 +1,51 @@
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { PageHeader } from "@/components/app/page-header";
+import { getCatalogOptions } from "../../_data";
+import { ProductForm, type ProductFormData } from "../../product-form";
+
+export default async function EditProductPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const productId = Number(id);
+  if (!Number.isFinite(productId)) notFound();
+
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { variants: { orderBy: { id: "asc" } } },
+  });
+  if (!product) notFound();
+
+  const options = await getCatalogOptions();
+
+  const data: ProductFormData = {
+    id: product.id,
+    name: product.name,
+    type: product.type,
+    categoryId: product.categoryId,
+    brandId: product.brandId,
+    unitId: product.unitId,
+    imageUrl: product.imageUrl,
+    isActive: product.isActive,
+    variants: product.variants.map((v) => ({
+      id: v.id,
+      label: v.label,
+      sku: v.sku,
+      barcode: v.barcode,
+      purchasePrice: String(v.purchasePrice),
+      sellingPrice: String(v.sellingPrice),
+      wholesalePrice: v.wholesalePrice != null ? String(v.wholesalePrice) : null,
+      stockQty: String(v.stockQty),
+    })),
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-6">
+      <PageHeader title="Edit product" description={product.name} />
+      <ProductForm product={data} {...options} />
+    </div>
+  );
+}

@@ -97,6 +97,12 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   - **shadcn/ui** (11 components) on Tailwind v4 + the **MPoS emerald theme** in `globals.css`; Sonner toaster.
   - **Seeded** base data: Main Store branch, Admin + Cashier roles, **admin user (`admin` / `admin123`)**, Cash account.
   - Verified: `npm run build` passes; `/login` → 200; `/dashboard` (unauth) → 307 redirect. (Full browser login not yet exercised.)
+- **Browser-verified login** end-to-end (`admin`/`admin123` → dashboard shell). ✅
+- Built the **Products / Catalog module** (first feature module):
+  - **Masters**: Categories (3-level tree), Brands, Units — full CRUD via dialogs + server actions + zod validation; catalog sub-nav tabs.
+  - **Products + Variants**: list page; create/edit form (`/products/new`, `/products/[id]/edit`) supporting Simple & Variable products, dynamic variant rows (SKU/barcode/prices), auto-SKU, opening stock → `StockMovement`; safe delete (blocks if sales/purchase history).
+  - Added shadcn `select`, `badge`, `textarea`; installed `zod`.
+  - **Browser-verified**: created a brand (Zephyr) and a product (Classic Tee, stock 20) — both appear correctly. Build passes.
 
 ---
 
@@ -108,17 +114,17 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ✅ **Auth + login + app shell + dashboard working**; build passes; routes protected.
 - ✅ **shadcn/ui + MPoS emerald theme** in place (11 components).
 - ✅ **Seed data present**: Main Store branch, Admin/Cashier roles, admin user, Cash account.
-- ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add middleware later for edge-level defense-in-depth).
-- ⬜ Login not yet exercised in a real browser end-to-end (only curl smoke-tested).
-- ⬜ No feature modules built yet (products, POS, etc.).
+- ✅ **Login browser-verified**; **Products/Catalog module done** (Categories, Brands, Units, Products+Variants — full CRUD).
+- ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add later for edge-level defense-in-depth).
+- ⬜ Purchases, POS, Sales, Reports modules not built yet.
 
 **Dev login:** `admin` / `admin123`
 
 ## 6. Next steps (resume here)
 
-1. Browser-verify login: log in as `admin`/`admin123`, confirm it reaches `/dashboard`; screenshot the shell.
-2. (Optional) add `middleware.ts` for edge-level route protection.
-3. Build the first feature module: **Products/Catalog** (categories → brands/units → products + variants + barcodes). Then stock/purchase → POS → sales/returns → reports (see `BLUEPRINT.md` §5).
+1. **Purchases + Stock** module: purchase entry (supplier + line items) that **increases variant stock** and computes weighted-average cost; supplier payables. Plus a Stock/Inventory view.
+2. **POS checkout**: scan/search → cart → discount/VAT → payment → **decrement stock** + record sale + receipt; Hold.
+3. **Sales & Returns**, then **core reports** (see `BLUEPRINT.md` §5).
 
 ---
 
