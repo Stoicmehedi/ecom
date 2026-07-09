@@ -55,6 +55,122 @@ export async function saveCategory(
   return { ok: true };
 }
 
+/**
+ * Create a whole Category > Sub-category > Child branch in one go.
+ * Each level is found-or-created under the previous, so re-entering an
+ * existing name reuses it instead of duplicating.
+ */
+export async function createCategoryPath(
+  catName: string,
+  subName?: string,
+  childName?: string,
+): Promise<ActionState> {
+  const cat = catName.trim();
+  const sub = (subName ?? "").trim();
+  const child = (childName ?? "").trim();
+
+  if (!cat) return { error: "Category name is required." };
+  if (child && !sub) return { error: "Add a sub-category before a child." };
+
+  try {
+    let category = await prisma.category.findFirst({
+      where: { name: cat, level: 1, parentId: null },
+    });
+    if (!category) {
+      category = await prisma.category.create({
+        data: { name: cat, level: 1, parentId: null },
+      });
+    }
+
+    if (sub) {
+      let subCat = await prisma.category.findFirst({
+        where: { name: sub, level: 2, parentId: category.id },
+      });
+      if (!subCat) {
+        subCat = await prisma.category.create({
+          data: { name: sub, level: 2, parentId: category.id },
+        });
+      }
+
+      if (child) {
+        const existingChild = await prisma.category.findFirst({
+          where: { name: child, level: 3, parentId: subCat.id },
+        });
+        if (!existingChild) {
+          await prisma.category.create({
+            data: { name: child, level: 3, parentId: subCat.id },
+          });
+        }
+      }
+    }
+
+    revalidatePath("/categories");
+    return { ok: true };
+  } catch {
+    return { error: "Failed to create categories." };
+  }
+}
+
+/** Rename one or more category levels (used by the single-row branch editor). */
+export async function updateCategoryNames(
+  items: { id: number; name: string }[],
+): Promise<ActionState> {
+  for (const it of items) {
+    if (!it.name.trim()) return { error: "Names cannot be empty." };
+  }
+  try {
+    await prisma.$transaction(
+      items.map((it) =>
+        prisma.category.update({
+          where: { id: it.id },
+          data: { name: it.name.trim() },
+        }),
+      ),
+    );
+  } catch {
+    return { error: "Failed to update categories." };
+  }
+  revalidatePath("/categories");
+  return { ok: true };
+}
+
+export type QuickCategory = {
+  id: number;
+  name: string;
+  level: number;
+  parentId: number | null;
+};
+
+/** Create a category inline (e.g. from the product form) and return the new row. */
+export async function quickCreateCategory(
+  name: string,
+  parentId: number | null,
+): Promise<{ ok: boolean; error?: string; category?: QuickCategory }> {
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: "Name is required" };
+
+  let level = 1;
+  if (parentId) {
+    const parent = await prisma.category.findUnique({ where: { id: parentId } });
+    if (!parent) return { ok: false, error: "Parent no longer exists." };
+    level = parent.level + 1;
+    if (level > 3) return { ok: false, error: "Categories nest up to 3 levels." };
+  }
+
+  try {
+    const c = await prisma.category.create({
+      data: { name: trimmed, parentId, level },
+    });
+    revalidatePath("/categories");
+    return {
+      ok: true,
+      category: { id: c.id, name: c.name, level: c.level, parentId: c.parentId },
+    };
+  } catch {
+    return { ok: false, error: "Failed to create category." };
+  }
+}
+
 export async function deleteCategory(id: number): Promise<ActionState> {
   const childCount = await prisma.category.count({ where: { parentId: id } });
   if (childCount > 0) {

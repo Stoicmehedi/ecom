@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { CatalogTabs } from "@/components/app/catalog-tabs";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -13,7 +12,7 @@ import {
 import {
   AddCategoryButton,
   CategoryRowActions,
-  type ParentOption,
+  type CategoryPath,
 } from "./category-dialog";
 
 export default async function CategoriesPage() {
@@ -23,36 +22,55 @@ export default async function CategoriesPage() {
   });
 
   type Row = (typeof all)[number];
+  const byId = new Map<number, Row>(all.map((c) => [c.id, c]));
 
-  // Order rows as a tree (parents before their children).
-  const byParent = new Map<number | null, Row[]>();
-  for (const c of all) {
-    const list = byParent.get(c.parentId) ?? [];
-    list.push(c);
-    byParent.set(c.parentId, list);
-  }
-  const ordered: Row[] = [];
-  const walk = (parentId: number | null) => {
-    for (const c of byParent.get(parentId) ?? []) {
-      ordered.push(c);
-      walk(c.id);
+  // A branch = a leaf category (one that isn't a parent of anything else).
+  const parentIds = new Set<number>();
+  for (const c of all) if (c.parentId != null) parentIds.add(c.parentId);
+  const leaves = all.filter((c) => !parentIds.has(c.id));
+
+  // Full Category / Sub-category / Child path (with ids) for a leaf.
+  const pathOf = (c: Row): CategoryPath => {
+    if (c.level === 1) return { catId: c.id, cat: c.name };
+    if (c.level === 2) {
+      const p = byId.get(c.parentId!)!;
+      return { catId: p.id, cat: p.name, subId: c.id, sub: c.name };
     }
+    const sub = byId.get(c.parentId!)!;
+    const cat = byId.get(sub.parentId!)!;
+    return {
+      catId: cat.id,
+      cat: cat.name,
+      subId: sub.id,
+      sub: sub.name,
+      childId: c.id,
+      child: c.name,
+    };
   };
-  walk(null);
 
-  const parentOptions: ParentOption[] = all
-    .filter((c) => c.level < 3)
-    .map((c) => ({ id: c.id, name: c.name, level: c.level }));
+  const rows = leaves
+    .map((c) => ({ path: pathOf(c), products: c._count.products }))
+    .sort(
+      (a, b) =>
+        a.path.cat.localeCompare(b.path.cat) ||
+        (a.path.sub ?? "").localeCompare(b.path.sub ?? "") ||
+        (a.path.child ?? "").localeCompare(b.path.child ?? ""),
+    );
 
-  const levelLabel = ["", "Category", "Sub-category", "Child"];
+  const uniq = (xs: string[]) => Array.from(new Set(xs)).sort();
+  const suggestions = {
+    categories: uniq(all.filter((c) => c.level === 1).map((c) => c.name)),
+    subs: uniq(all.filter((c) => c.level === 2).map((c) => c.name)),
+    children: uniq(all.filter((c) => c.level === 3).map((c) => c.name)),
+  };
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <PageHeader
         title="Categories"
         description="Organize products in up to 3 levels."
       >
-        <AddCategoryButton parentOptions={parentOptions} />
+        <AddCategoryButton suggestions={suggestions} />
       </PageHeader>
       <CatalogTabs />
 
@@ -60,49 +78,42 @@ export default async function CategoriesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead className="w-36">Level</TableHead>
-              <TableHead className="w-28">Products</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Sub-category</TableHead>
+              <TableHead>Child</TableHead>
+              <TableHead className="w-24 text-right">Products</TableHead>
               <TableHead className="w-24 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {ordered.length === 0 && (
+            {rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={5}
                   className="py-10 text-center text-sm text-muted-foreground"
                 >
                   No categories yet. Add your first one.
                 </TableCell>
               </TableRow>
             )}
-            {ordered.map((c) => (
-              <TableRow key={c.id}>
-                <TableCell className="font-medium">
-                  <span style={{ paddingLeft: (c.level - 1) * 20 }}>
-                    {c.level > 1 && (
-                      <span className="text-muted-foreground">↳ </span>
-                    )}
-                    {c.name}
-                  </span>
+            {rows.map(({ path, products }) => (
+              <TableRow key={path.childId ?? path.subId ?? path.catId}>
+                <TableCell className="font-medium">{path.cat}</TableCell>
+                <TableCell
+                  className={path.sub ? undefined : "text-muted-foreground"}
+                >
+                  {path.sub ?? "—"}
+                </TableCell>
+                <TableCell
+                  className={path.child ? undefined : "text-muted-foreground"}
+                >
+                  {path.child ?? "—"}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
+                  {products}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="secondary">{levelLabel[c.level]}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground tabular-nums">
-                  {c._count.products}
-                </TableCell>
-                <TableCell>
-                  <CategoryRowActions
-                    category={{
-                      id: c.id,
-                      name: c.name,
-                      level: c.level,
-                      parentId: c.parentId,
-                    }}
-                    parentOptions={parentOptions}
-                  />
+                  <CategoryRowActions path={path} />
                 </TableCell>
               </TableRow>
             ))}

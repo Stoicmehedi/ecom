@@ -1,10 +1,14 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { saveCategory, deleteCategory, type ActionState } from "./actions";
+import {
+  createCategoryPath,
+  updateCategoryNames,
+  deleteCategory,
+} from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,13 +20,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 export type Category = {
   id: number;
@@ -31,73 +28,192 @@ export type Category = {
   parentId: number | null;
 };
 
-/** Parents a category may attach to: anything at level 1 or 2 (so the child stays <= level 3). */
-export type ParentOption = { id: number; name: string; level: number };
+export type CategorySuggestions = {
+  categories: string[];
+  subs: string[];
+  children: string[];
+};
 
-function CategoryForm({
-  category,
-  parentOptions,
+/** Add a whole Category > Sub-category > Child branch at once. */
+function AddPathForm({
+  suggestions,
   onDone,
 }: {
-  category?: Category;
-  parentOptions: ParentOption[];
+  suggestions: CategorySuggestions;
   onDone: () => void;
 }) {
-  const [parentId, setParentId] = useState<string>(
-    category?.parentId ? String(category.parentId) : "none",
-  );
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(
-    saveCategory.bind(null, category?.id ?? null),
-    {},
-  );
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [cat, setCat] = useState("");
+  const [sub, setSub] = useState("");
+  const [child, setChild] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (state.ok) {
-      toast.success(category ? "Category updated" : "Category created");
-      onDone();
-    }
-  }, [state, category, onDone]);
-
-  // Can't parent under itself.
-  const options = parentOptions.filter((p) => p.id !== category?.id);
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const res = await createCategoryPath(cat, sub, child);
+      if (res.ok) {
+        toast.success("Categories saved");
+        onDone();
+        router.refresh();
+      } else {
+        setError(res.error ?? "Failed to save");
+      }
+    });
+  }
 
   return (
-    <form action={formAction} className="space-y-4">
-      <input type="hidden" name="parentId" value={parentId} />
+    <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="name">Name</Label>
+        <Label htmlFor="cat">Category</Label>
         <Input
-          id="name"
-          name="name"
-          defaultValue={category?.name}
+          id="cat"
+          list="cat-list"
+          value={cat}
+          onChange={(e) => setCat(e.target.value)}
           placeholder="e.g. Men's Wear"
           autoFocus
         />
+        <datalist id="cat-list">
+          {suggestions.categories.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
       </div>
-      <div className="space-y-2">
-        <Label>Parent category</Label>
-        <Select value={parentId} onValueChange={setParentId}>
-          <SelectTrigger>
-            <SelectValue placeholder="None (top level)" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">None (top level)</SelectItem>
-            {options.map((p) => (
-              <SelectItem key={p.id} value={String(p.id)}>
-                {"— ".repeat(p.level - 1)}
-                {p.name}
-              </SelectItem>
+
+      <div className="flex items-start gap-2">
+        <ChevronRight className="mt-9 size-4 shrink-0 text-muted-foreground" />
+        <div className="flex-1 space-y-2">
+          <Label htmlFor="sub">Sub-category (optional)</Label>
+          <Input
+            id="sub"
+            list="sub-list"
+            value={sub}
+            onChange={(e) => setSub(e.target.value)}
+            placeholder="e.g. Shirts"
+          />
+          <datalist id="sub-list">
+            {suggestions.subs.map((n) => (
+              <option key={n} value={n} />
             ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          Leave as “None” for a top-level category. Up to 3 levels deep.
-        </p>
+          </datalist>
+        </div>
       </div>
-      {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+
+      <div className="flex items-start gap-2 pl-6">
+        <ChevronRight className="mt-9 size-4 shrink-0 text-muted-foreground" />
+        <div className="flex-1 space-y-2">
+          <Label htmlFor="child">Child (optional)</Label>
+          <Input
+            id="child"
+            list="child-list"
+            value={child}
+            onChange={(e) => setChild(e.target.value)}
+            placeholder="e.g. Formal"
+            disabled={!sub.trim()}
+          />
+          <datalist id="child-list">
+            {suggestions.children.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Fill only Category for a top level, or add a Sub-category and Child to
+        create the whole branch at once. Existing names are reused.
+      </p>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
       <DialogFooter>
-        <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Save"}
+        <Button type="submit" disabled={isPending}>
+          {isPending ? "Saving…" : "Save"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+export type CategoryPath = {
+  catId: number;
+  cat: string;
+  subId?: number;
+  sub?: string;
+  childId?: number;
+  child?: string;
+};
+
+/** Rename the levels of a single branch (Category / Sub-category / Child). */
+function PathEditForm({
+  path,
+  onDone,
+}: {
+  path: CategoryPath;
+  onDone: () => void;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [cat, setCat] = useState(path.cat);
+  const [sub, setSub] = useState(path.sub ?? "");
+  const [child, setChild] = useState(path.child ?? "");
+  const [error, setError] = useState<string | null>(null);
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const items: { id: number; name: string }[] = [{ id: path.catId, name: cat }];
+    if (path.subId) items.push({ id: path.subId, name: sub });
+    if (path.childId) items.push({ id: path.childId, name: child });
+    startTransition(async () => {
+      const res = await updateCategoryNames(items);
+      if (res.ok) {
+        toast.success("Category updated");
+        onDone();
+        router.refresh();
+      } else {
+        setError(res.error ?? "Failed to update");
+      }
+    });
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="e-cat">Category</Label>
+        <Input
+          id="e-cat"
+          value={cat}
+          onChange={(e) => setCat(e.target.value)}
+          autoFocus
+        />
+      </div>
+      {path.subId != null && (
+        <div className="space-y-2">
+          <Label htmlFor="e-sub">Sub-category</Label>
+          <Input
+            id="e-sub"
+            value={sub}
+            onChange={(e) => setSub(e.target.value)}
+          />
+        </div>
+      )}
+      {path.childId != null && (
+        <div className="space-y-2">
+          <Label htmlFor="e-child">Child</Label>
+          <Input
+            id="e-child"
+            value={child}
+            onChange={(e) => setChild(e.target.value)}
+          />
+        </div>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <DialogFooter>
+        <Button type="submit" disabled={isPending}>
+          {isPending ? "Saving…" : "Save"}
         </Button>
       </DialogFooter>
     </form>
@@ -105,9 +221,9 @@ function CategoryForm({
 }
 
 export function AddCategoryButton({
-  parentOptions,
+  suggestions,
 }: {
-  parentOptions: ParentOption[];
+  suggestions: CategorySuggestions;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -122,25 +238,22 @@ export function AddCategoryButton({
         <DialogHeader>
           <DialogTitle>Add Category</DialogTitle>
         </DialogHeader>
-        <CategoryForm parentOptions={parentOptions} onDone={() => setOpen(false)} />
+        <AddPathForm suggestions={suggestions} onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );
 }
 
-export function CategoryRowActions({
-  category,
-  parentOptions,
-}: {
-  category: Category;
-  parentOptions: ParentOption[];
-}) {
+export function CategoryRowActions({ path }: { path: CategoryPath }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
+  const leafId = path.childId ?? path.subId ?? path.catId;
+  const leafName = path.child ?? path.sub ?? path.cat;
+
   async function onDelete() {
-    if (!confirm(`Delete category "${category.name}"?`)) return;
-    const res = await deleteCategory(category.id);
+    if (!confirm(`Delete "${leafName}"?`)) return;
+    const res = await deleteCategory(leafId);
     if (res.ok) toast.success("Category deleted");
     else toast.error(res.error ?? "Failed to delete");
     router.refresh();
@@ -158,11 +271,7 @@ export function CategoryRowActions({
           <DialogHeader>
             <DialogTitle>Edit Category</DialogTitle>
           </DialogHeader>
-          <CategoryForm
-            category={category}
-            parentOptions={parentOptions}
-            onDone={() => setOpen(false)}
-          />
+          <PathEditForm path={path} onDone={() => setOpen(false)} />
         </DialogContent>
       </Dialog>
       <Button

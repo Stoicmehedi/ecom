@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 
 export type CatalogOptions = {
-  categories: { id: number; name: string; level: number }[];
+  categories: { id: number; name: string; level: number; parentId: number | null }[];
   brands: { id: number; name: string }[];
   units: { id: number; name: string }[];
 };
@@ -22,7 +22,12 @@ export async function getCatalogOptions(): Promise<CatalogOptions> {
   const categories: CatalogOptions["categories"] = [];
   const walk = (parentId: number | null) => {
     for (const c of byParent.get(parentId) ?? []) {
-      categories.push({ id: c.id, name: c.name, level: c.level });
+      categories.push({
+        id: c.id,
+        name: c.name,
+        level: c.level,
+        parentId: c.parentId,
+      });
       walk(c.id);
     }
   };

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { saveProduct, type ProductInput } from "./actions";
+import { CategoryCascade, type Cat } from "./category-cascade";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +18,6 @@ import {
 } from "@/components/ui/select";
 
 type Option = { id: number; name: string };
-type CategoryOption = { id: number; name: string; level: number };
 
 type VariantRow = {
   key: string;
@@ -72,7 +72,7 @@ export function ProductForm({
   units,
 }: {
   product?: ProductFormData;
-  categories: CategoryOption[];
+  categories: Cat[];
   brands: Option[];
   units: Option[];
 }) {
@@ -85,8 +85,8 @@ export function ProductForm({
   const [type, setType] = useState<"SIMPLE" | "VARIABLE">(
     product?.type ?? "SIMPLE",
   );
-  const [categoryId, setCategoryId] = useState(
-    product?.categoryId ? String(product.categoryId) : "none",
+  const [categoryId, setCategoryId] = useState<number | null>(
+    product?.categoryId ?? null,
   );
   const [brandId, setBrandId] = useState(
     product?.brandId ? String(product.brandId) : "none",
@@ -145,7 +145,7 @@ export function ProductForm({
       id: product?.id,
       name,
       type,
-      categoryId: categoryId === "none" ? null : Number(categoryId),
+      categoryId: categoryId,
       brandId: brandId === "none" ? null : Number(brandId),
       unitId: unitId === "none" ? null : Number(unitId),
       imageUrl: imageUrl.trim() || null,
@@ -208,23 +208,11 @@ export function ProductForm({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label>Category</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger>
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {"— ".repeat(c.level - 1)}
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <CategoryCascade
+            categories={categories}
+            value={product?.categoryId ?? null}
+            onChange={setCategoryId}
+          />
 
           <div className="space-y-2">
             <Label>Brand</Label>
