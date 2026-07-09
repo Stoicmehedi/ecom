@@ -90,6 +90,13 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - Wrote the **Phase-1 schema** (16 tables: Branch, Role, User, Category, Brand, Unit, Product, ProductVariant, Contact, Purchase, PurchaseItem, Sale, SaleItem, Account, Payment, StockMovement) and ran the `init` migration.
 - Added a Prisma client singleton (`src/lib/prisma.ts`) and verified a live DB query.
 - Built an original **MPoS landing page** (emerald identity, live DB status + counts); verified it renders in the browser. Production build passes.
+- Ran an **ultracode multi-agent workflow** (parallel design → single implementer → verify) to build steps 1–3. Stopped mid-verify to save time, but the implement phase had essentially finished. Landed:
+  - **Auth.js v5** credentials login (JWT sessions, **no DB adapter** — user verified via Prisma in `authorize()`), `AUTH_SECRET` in `.env`, `next-auth.d.ts` session typing.
+  - **Login page** (`src/app/login/page.tsx`) + `/api/auth/[...nextauth]` route.
+  - **App shell** under `src/app/(app)/` — sidebar + topbar + `dashboard` page; route protection via `await auth()` in `(app)/layout.tsx` (redirects to `/login`). `/` redirects to `/dashboard`.
+  - **shadcn/ui** (11 components) on Tailwind v4 + the **MPoS emerald theme** in `globals.css`; Sonner toaster.
+  - **Seeded** base data: Main Store branch, Admin + Cashier roles, **admin user (`admin` / `admin123`)**, Cash account.
+  - Verified: `npm run build` passes; `/login` → 200; `/dashboard` (unauth) → 307 redirect. (Full browser login not yet exercised.)
 
 ---
 
@@ -98,18 +105,20 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ✅ Spec written, stack chosen, DB running, repo live.
 - ✅ Next.js app scaffolded (Next 16.2, React 19, Tailwind v4), named MPoS.
 - ✅ Prisma 7 wired to Postgres via pg adapter; Phase-1 schema migrated (16 tables).
-- ✅ MPoS landing page renders with live DB status; production build passes.
-- ⬜ No auth yet (Auth.js not set up).
-- ⬜ No shadcn/ui components yet.
+- ✅ **Auth + login + app shell + dashboard working**; build passes; routes protected.
+- ✅ **shadcn/ui + MPoS emerald theme** in place (11 components).
+- ✅ **Seed data present**: Main Store branch, Admin/Cashier roles, admin user, Cash account.
+- ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add middleware later for edge-level defense-in-depth).
+- ⬜ Login not yet exercised in a real browser end-to-end (only curl smoke-tested).
 - ⬜ No feature modules built yet (products, POS, etc.).
-- ⬜ No seed data (DB is empty).
 
-## 6. Next steps
+**Dev login:** `admin` / `admin123`
 
-1. Seed base data: default Branch, Admin/Cashier roles, an admin User, a Cash Account.
-2. Set up Auth.js (credentials login) + roles/permissions + a protected app shell/layout.
-3. Add shadcn/ui with the MPoS theme (emerald accent).
-4. Build Phase-1 modules (see `BLUEPRINT.md` §5): products/catalog → stock/purchase → POS → sales/returns → core reports.
+## 6. Next steps (resume here)
+
+1. Browser-verify login: log in as `admin`/`admin123`, confirm it reaches `/dashboard`; screenshot the shell.
+2. (Optional) add `middleware.ts` for edge-level route protection.
+3. Build the first feature module: **Products/Catalog** (categories → brands/units → products + variants + barcodes). Then stock/purchase → POS → sales/returns → reports (see `BLUEPRINT.md` §5).
 
 ---
 
