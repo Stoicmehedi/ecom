@@ -44,5 +44,12 @@ yarn-error.log*
 # Browser-automation scratch
 /.playwright-mcp/
 
+# Local reference screenshots — keep on disk, NEVER upload
+/dashboard.png
+/pos.png
+/product-create.png
+/purchase-create.png
+/reference/
+
 # Claude local session config
 /.claude/
