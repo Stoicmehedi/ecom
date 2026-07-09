@@ -109,6 +109,15 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   - Categories "Add" dialog: single Parent picker → **three fields (Category / Sub-category / Child)** that create the whole branch at once (find-or-create, reuses existing names, with autocomplete).
   - Browser-verified all three. Build passes.
   - Known pending: on the product form's inline "+" add, the just-added category shows blank in the dropdown until reselected (cosmetic Radix quirk) — not yet fixed.
+- **Category autocomplete fixed** (per user report: suggestions weren't showing):
+  - The Add-category dialog's three fields used a native `<datalist>`, which never reliably surfaced existing names. Replaced with our own dropdown component (`src/app/(app)/categories/combo-input.tsx`): opens on focus/click, filters as you type, arrow-key + Enter selection, Escape closes the dropdown without closing the dialog.
+  - Fixed a scoping bug: sub-category and child suggestions previously listed *every* name at that level regardless of parent. They are now grouped **"Already here"** (names under the parent you typed) and **"Reuse a name"** (all other names at that level) — so a name like "Shirts" can be reused under a brand-new category, which `createCategoryPath` correctly stores as a new row under the new parent.
+  - A "New — '<name>' will be created" hint appears when the typed name doesn't yet exist under that parent.
+  - `categories/page.tsx` now passes the full category tree (id/name/level/parentId) to the dialog instead of three flat string lists. Typecheck + build pass; browser-verified.
+- **Process rules written into [`AGENTS.md`](./AGENTS.md)** (auto-loaded via `CLAUDE.md` every session), after this file was skipped at the start of a session:
+  - **Session protocol** — read `PROJECT_STATUS.md` before any work; update it after every task.
+  - **Module protocol** — before building a module, study the reference app's equivalent module with Playwright (fields, mandatory vs optional, validation, workflow, downstream effects), write it up as a requirements list in `BLUEPRINT.md`, settle any §6 open decision it touches, *then* build. Copy the process, never the interface.
+  - Restated the hard rules (original UI, clean repo, never delete local files).
 
 ---
 
@@ -121,16 +130,22 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ✅ **shadcn/ui + MPoS emerald theme** in place (11 components).
 - ✅ **Seed data present**: Main Store branch, Admin/Cashier roles, admin user, Cash account.
 - ✅ **Login browser-verified**; **Products/Catalog module done** (Categories, Brands, Units, Products+Variants — full CRUD).
+- ✅ **Category autocomplete** works (parent-scoped suggestions + reuse-a-name across branches).
+- ✅ **Session + module build protocol** documented in `AGENTS.md` (loaded every session via `CLAUDE.md`).
 - ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add later for edge-level defense-in-depth).
 - ⬜ Purchases, POS, Sales, Reports modules not built yet.
+- ⬜ `BLUEPRINT.md` has no per-module requirements lists yet — these are now written *before* each module is built (see `AGENTS.md` → Module build protocol).
 
 **Dev login:** `admin` / `admin123`
 
 ## 6. Next steps (resume here)
 
-1. **Purchases + Stock** module: purchase entry (supplier + line items) that **increases variant stock** and computes weighted-average cost; supplier payables. Plus a Stock/Inventory view.
+1. **Purchases + Stock** module. Follow the module build protocol in `AGENTS.md`: study the reference app's purchase module in the browser first (fields, mandatory vs optional, validation, what saving does to stock and supplier ledgers), write it into `BLUEPRINT.md`, then build. Purchase entry (supplier + line items) must **increase variant stock** and compute weighted-average cost; supplier payables; plus a Stock/Inventory view.
 2. **POS checkout**: scan/search → cart → discount/VAT → payment → **decrement stock** + record sale + receipt; Hold.
 3. **Sales & Returns**, then **core reports** (see `BLUEPRINT.md` §5).
+
+> The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
+> live in the private session notes. If they aren't in context, ask the user for them.
 
 ---
 
