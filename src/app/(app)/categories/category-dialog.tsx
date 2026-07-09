@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ComboInput } from "./combo-input";
 
 export type Category = {
   id: number;
@@ -28,18 +29,15 @@ export type Category = {
   parentId: number | null;
 };
 
-export type CategorySuggestions = {
-  categories: string[];
-  subs: string[];
-  children: string[];
-};
+const eq = (a: string, b: string) =>
+  a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** Add a whole Category > Sub-category > Child branch at once. */
 function AddPathForm({
-  suggestions,
+  categories,
   onDone,
 }: {
-  suggestions: CategorySuggestions;
+  categories: Category[];
   onDone: () => void;
 }) {
   const router = useRouter();
@@ -48,6 +46,27 @@ function AddPathForm({
   const [sub, setSub] = useState("");
   const [child, setChild] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const names = (xs: Category[]) =>
+    Array.from(new Set(xs.map((c) => c.name))).sort();
+
+  // Names already under the typed parent come first; every other name at that
+  // level is still offered, since reusing one under a new parent is normal.
+  const level1 = categories.filter((c) => c.level === 1);
+  const parentCat = level1.find((c) => eq(c.name, cat));
+  const parentSub = categories.find(
+    (c) => c.level === 2 && c.parentId === parentCat?.id && eq(c.name, sub),
+  );
+
+  const branchGroups = (level: number, parentId: number | undefined) => {
+    const atLevel = categories.filter((c) => c.level === level);
+    const mine = parentId ? atLevel.filter((c) => c.parentId === parentId) : [];
+    const others = atLevel.filter((c) => c.parentId !== parentId);
+    return [
+      { label: "Already here", items: names(mine) },
+      { label: "Reuse a name", items: names(others) },
+    ];
+  };
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,37 +87,30 @@ function AddPathForm({
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="cat">Category</Label>
-        <Input
+        <ComboInput
           id="cat"
-          list="cat-list"
           value={cat}
-          onChange={(e) => setCat(e.target.value)}
+          onChange={setCat}
+          groups={[{ items: names(level1) }]}
           placeholder="e.g. Men's Wear"
+          emptyHint="No match — this will be created as a new category."
           autoFocus
         />
-        <datalist id="cat-list">
-          {suggestions.categories.map((n) => (
-            <option key={n} value={n} />
-          ))}
-        </datalist>
       </div>
 
       <div className="flex items-start gap-2">
         <ChevronRight className="mt-9 size-4 shrink-0 text-muted-foreground" />
         <div className="flex-1 space-y-2">
           <Label htmlFor="sub">Sub-category (optional)</Label>
-          <Input
+          <ComboInput
             id="sub"
-            list="sub-list"
             value={sub}
-            onChange={(e) => setSub(e.target.value)}
+            onChange={setSub}
+            groups={branchGroups(2, parentCat?.id)}
             placeholder="e.g. Shirts"
+            disabled={!cat.trim()}
+            emptyHint="No match — this will be created as a new sub-category."
           />
-          <datalist id="sub-list">
-            {suggestions.subs.map((n) => (
-              <option key={n} value={n} />
-            ))}
-          </datalist>
         </div>
       </div>
 
@@ -106,19 +118,15 @@ function AddPathForm({
         <ChevronRight className="mt-9 size-4 shrink-0 text-muted-foreground" />
         <div className="flex-1 space-y-2">
           <Label htmlFor="child">Child (optional)</Label>
-          <Input
+          <ComboInput
             id="child"
-            list="child-list"
             value={child}
-            onChange={(e) => setChild(e.target.value)}
+            onChange={setChild}
+            groups={branchGroups(3, parentSub?.id)}
             placeholder="e.g. Formal"
             disabled={!sub.trim()}
+            emptyHint="No match — this will be created as a new child."
           />
-          <datalist id="child-list">
-            {suggestions.children.map((n) => (
-              <option key={n} value={n} />
-            ))}
-          </datalist>
         </div>
       </div>
 
@@ -221,9 +229,9 @@ function PathEditForm({
 }
 
 export function AddCategoryButton({
-  suggestions,
+  categories,
 }: {
-  suggestions: CategorySuggestions;
+  categories: Category[];
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -238,7 +246,7 @@ export function AddCategoryButton({
         <DialogHeader>
           <DialogTitle>Add Category</DialogTitle>
         </DialogHeader>
-        <AddPathForm suggestions={suggestions} onDone={() => setOpen(false)} />
+        <AddPathForm categories={categories} onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );

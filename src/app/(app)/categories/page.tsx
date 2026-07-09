@@ -57,12 +57,12 @@ export default async function CategoriesPage() {
         (a.path.child ?? "").localeCompare(b.path.child ?? ""),
     );
 
-  const uniq = (xs: string[]) => Array.from(new Set(xs)).sort();
-  const suggestions = {
-    categories: uniq(all.filter((c) => c.level === 1).map((c) => c.name)),
-    subs: uniq(all.filter((c) => c.level === 2).map((c) => c.name)),
-    children: uniq(all.filter((c) => c.level === 3).map((c) => c.name)),
-  };
+  const categories = all.map((c) => ({
+    id: c.id,
+    name: c.name,
+    level: c.level,
+    parentId: c.parentId,
+  }));
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
@@ -70,7 +70,7 @@ export default async function CategoriesPage() {
         title="Categories"
         description="Organize products in up to 3 levels."
       >
-        <AddCategoryButton suggestions={suggestions} />
+        <AddCategoryButton categories={categories} />
       </PageHeader>
       <CatalogTabs />
 
