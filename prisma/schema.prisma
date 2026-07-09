@@ -1,0 +1,309 @@
+// MPoS — Retail POS + Inventory (single-store MVP)
+// Schema: Phase-1 core. See BLUEPRINT.md for the full data model.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Enums ----------
+enum ContactType {
+  CUSTOMER
+  SUPPLIER
+}
+
+enum ProductType {
+  SIMPLE
+  VARIABLE
+}
+
+enum SaleChannel {
+  REGULAR
+  WHOLESALE
+  ONLINE
+}
+
+enum DocStatus {
+  PAID
+  PARTIAL
+  DUE
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  PURCHASE_RETURN
+  SALE_RETURN
+  ADJUSTMENT
+}
+
+enum AccountType {
+  CASH
+  BANK
+}
+
+enum PaymentDirection {
+  IN
+  OUT
+}
+
+// ---------- Org / Access ----------
+model Branch {
+  id        Int      @id @default(autoincrement())
+  name      String
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  users     User[]
+  products  Product[]
+  purchases Purchase[]
+  sales     Sale[]
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  permissions String[] // list of "module.action" keys
+  createdAt   DateTime @default(now())
+
+  users User[]
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  username     String   @unique
+  email        String?  @unique
+  passwordHash String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  roleId   Int?
+  role     Role?   @relation(fields: [roleId], references: [id])
+  branchId Int?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  salesSold Sale[] @relation("SoldBy")
+}
+
+// ---------- Catalog ----------
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String
+  level     Int      @default(1) // 1=category, 2=sub, 3=child
+  createdAt DateTime @default(now())
+
+  parentId Int?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+
+  products Product[]
+}
+
+model Brand {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  products Product[]
+}
+
+model Unit {
+  id        Int       @id @default(autoincrement())
+  name      String
+  shortName String?
+  products  Product[]
+}
+
+model Product {
+  id        Int         @id @default(autoincrement())
+  name      String
+  type      ProductType @default(SIMPLE)
+  imageUrl  String?
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+
+  categoryId Int?
+  category   Category? @relation(fields: [categoryId], references: [id])
+  brandId    Int?
+  brand      Brand?    @relation(fields: [brandId], references: [id])
+  unitId     Int?
+  unit       Unit?     @relation(fields: [unitId], references: [id])
+  branchId   Int?
+  branch     Branch?   @relation(fields: [branchId], references: [id])
+
+  variants ProductVariant[]
+}
+
+model ProductVariant {
+  id             Int      @id @default(autoincrement())
+  sku            String   @unique
+  barcode        String?  @unique
+  label          String? // e.g. "Red / L"
+  attributes     Json? // { color: "Red", size: "L" }
+  purchasePrice  Decimal  @default(0) @db.Decimal(14, 2) // weighted-average cost
+  sellingPrice   Decimal  @default(0) @db.Decimal(14, 2)
+  wholesalePrice Decimal? @db.Decimal(14, 2)
+  stockQty       Decimal  @default(0) @db.Decimal(14, 3)
+  createdAt      DateTime @default(now())
+
+  productId Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  purchaseItems  PurchaseItem[]
+  saleItems      SaleItem[]
+  stockMovements StockMovement[]
+
+  @@index([productId])
+}
+
+// ---------- Contacts (customers & suppliers) ----------
+model Contact {
+  id             Int         @id @default(autoincrement())
+  type           ContactType
+  name           String
+  phone          String?
+  email          String?
+  address        String?
+  openingBalance Decimal     @default(0) @db.Decimal(14, 2)
+  dueBalance     Decimal     @default(0) @db.Decimal(14, 2) // + = they owe us
+  loyaltyPoints  Int         @default(0)
+  createdAt      DateTime    @default(now())
+
+  purchases Purchase[]
+  sales     Sale[]
+  payments  Payment[]
+
+  @@index([type])
+}
+
+// ---------- Purchasing ----------
+model Purchase {
+  id        Int       @id @default(autoincrement())
+  invoiceNo String    @unique
+  date      DateTime  @default(now())
+  dueDate   DateTime?
+  reference String?
+  note      String?
+  subtotal  Decimal   @default(0) @db.Decimal(14, 2)
+  discount  Decimal   @default(0) @db.Decimal(14, 2)
+  total     Decimal   @default(0) @db.Decimal(14, 2)
+  paid      Decimal   @default(0) @db.Decimal(14, 2)
+  due       Decimal   @default(0) @db.Decimal(14, 2)
+  status    DocStatus @default(DUE)
+  createdAt DateTime  @default(now())
+
+  supplierId Int?
+  supplier   Contact? @relation(fields: [supplierId], references: [id])
+  branchId   Int?
+  branch     Branch?  @relation(fields: [branchId], references: [id])
+
+  items    PurchaseItem[]
+  payments Payment[]
+}
+
+model PurchaseItem {
+  id            Int     @id @default(autoincrement())
+  qty           Decimal @db.Decimal(14, 3)
+  purchasePrice Decimal @db.Decimal(14, 2)
+  subtotal      Decimal @db.Decimal(14, 2)
+
+  purchaseId Int
+  purchase   Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  variantId  Int
+  variant    ProductVariant @relation(fields: [variantId], references: [id])
+}
+
+// ---------- Sales / POS ----------
+model Sale {
+  id         Int         @id @default(autoincrement())
+  invoiceNo  String      @unique
+  date       DateTime    @default(now())
+  channel    SaleChannel @default(REGULAR)
+  itemsCount Int         @default(0)
+  subtotal   Decimal     @default(0) @db.Decimal(14, 2)
+  discount   Decimal     @default(0) @db.Decimal(14, 2)
+  vat        Decimal     @default(0) @db.Decimal(14, 2)
+  total      Decimal     @default(0) @db.Decimal(14, 2)
+  paid       Decimal     @default(0) @db.Decimal(14, 2)
+  due        Decimal     @default(0) @db.Decimal(14, 2)
+  status     DocStatus   @default(PAID)
+  note       String?
+  createdAt  DateTime    @default(now())
+
+  customerId Int?
+  customer   Contact? @relation(fields: [customerId], references: [id])
+  branchId   Int?
+  branch     Branch?  @relation(fields: [branchId], references: [id])
+  soldById   Int?
+  soldBy     User?    @relation("SoldBy", fields: [soldById], references: [id])
+
+  items    SaleItem[]
+  payments Payment[]
+}
+
+model SaleItem {
+  id         Int     @id @default(autoincrement())
+  qty        Decimal @db.Decimal(14, 3)
+  price      Decimal @db.Decimal(14, 2)
+  discount   Decimal @default(0) @db.Decimal(14, 2)
+  costAtSale Decimal @default(0) @db.Decimal(14, 2) // for profit/loss
+  subtotal   Decimal @db.Decimal(14, 2)
+
+  saleId    Int
+  sale      Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  variantId Int
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+}
+
+// ---------- Accounting ----------
+model Account {
+  id             Int         @id @default(autoincrement())
+  name           String
+  type           AccountType @default(CASH)
+  bankName       String?
+  accountNumber  String?
+  openingBalance Decimal     @default(0) @db.Decimal(14, 2)
+  balance        Decimal     @default(0) @db.Decimal(14, 2)
+  createdAt      DateTime    @default(now())
+
+  payments Payment[]
+}
+
+model Payment {
+  id        Int              @id @default(autoincrement())
+  direction PaymentDirection
+  amount    Decimal          @db.Decimal(14, 2)
+  method    String? // cash, bkash, card...
+  date      DateTime         @default(now())
+  note      String?
+
+  accountId  Int?
+  account    Account?  @relation(fields: [accountId], references: [id])
+  contactId  Int?
+  contact    Contact?  @relation(fields: [contactId], references: [id])
+  saleId     Int?
+  sale       Sale?     @relation(fields: [saleId], references: [id])
+  purchaseId Int?
+  purchase   Purchase? @relation(fields: [purchaseId], references: [id])
+}
+
+// ---------- Inventory audit trail ----------
+model StockMovement {
+  id        Int               @id @default(autoincrement())
+  type      StockMovementType
+  qty       Decimal           @db.Decimal(14, 3) // + in, - out
+  refType   String?
+  refId     Int?
+  note      String?
+  createdAt DateTime          @default(now())
+
+  variantId Int
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([variantId])
+}

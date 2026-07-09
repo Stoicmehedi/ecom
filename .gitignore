@@ -53,3 +53,5 @@ yarn-error.log*
 
 # Claude local session config
 /.claude/
+
+/src/generated/prisma
