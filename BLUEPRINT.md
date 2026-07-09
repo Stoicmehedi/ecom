@@ -133,8 +133,16 @@ e-commerce storefront + online-order fulfillment.
 
 ## 6. Open decisions
 
-- [ ] Keep `branch_id` dimension from day 1 (recommended: yes, default 1)
-- [ ] Invoice/receipt format (thermal 80mm vs A4) + printing approach
-- [ ] Per-variant SKU/barcode generation scheme
-- [ ] Bangla + English i18n from the start?
-- [ ] Original visual identity: name, logo, color system, typography (must be distinct)
+> **Policy:** remaining open items are raised and decided **at the start of the module that
+> needs them**, not upfront.
+
+- [x] **Keep `branch_id` from day 1** — yes; single default "Main Store" branch seeded. *(done)*
+- [x] **Original visual identity** — MPoS, emerald accent, "M" mark, Geist type. *(done)*
+- [x] **Receipt / invoice format** — 80mm thermal receipt as the POS default + optional A4
+      invoice for formal/credit sales; rendered via a print-styled page / PDF. *(decided 2026-07-09;
+      implement in the POS module)*
+- [~] **SKU / barcode scheme** — SKU auto-generates (`SLUG-XXXXX`) with manual override *(done)*.
+      Open: whether to auto-generate scannable barcodes (numeric / EAN-13) — **decide when building
+      barcode/label printing.**
+- [ ] **Bangla + English i18n** — English-only for now; revisit before it becomes costly.
+      **Decide when a module first needs localized UI.**
