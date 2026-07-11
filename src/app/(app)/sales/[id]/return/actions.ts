@@ -3,14 +3,8 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import {
-  avgAfterPurchase,
-  avgAfterReversal,
-  paidRatio,
-  round2,
-  round3,
-} from "@/lib/costing";
-import type { Prisma } from "@/generated/prisma/client";
+import { avgAfterReversal, round2, round3 } from "@/lib/costing";
+import { creditFor, validateReturnLines, writeSaleReturn } from "@/lib/sale-return";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -33,17 +27,6 @@ const schema = z.object({
 
 export type SaleReturnInput = z.input<typeof schema>;
 
-type Tx = Prisma.TransactionClient;
-
-async function nextReturnNo(tx: Tx): Promise<string> {
-  const last = await tx.saleReturn.findFirst({
-    orderBy: { id: "desc" },
-    select: { returnNo: true },
-  });
-  const n = last ? parseInt(last.returnNo.replace(/\D/g, ""), 10) || 0 : 0;
-  return `SRT-${String(n + 1).padStart(5, "0")}`;
-}
-
 export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResult> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -63,33 +46,10 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
   });
   if (!sale) return { error: "Sale not found." };
 
-  const byId = new Map(sale.items.map((i) => [i.id, i]));
+  const invalid = validateReturnLines(sale, lines);
+  if (invalid) return { error: invalid };
 
-  for (const line of lines) {
-    const item = byId.get(line.saleItemId);
-    if (!item) return { error: "That product is not on this sale." };
-
-    const available = round3(Number(item.qty) - Number(item.returnedQty));
-    if (line.qty > available + 0.0005) {
-      return {
-        error: `You can return at most ${available} of "${item.variant.sku}" — the rest is already returned.`,
-      };
-    }
-  }
-
-  // Credit the goods at what the customer actually paid, not at the list price.
-  // A bill discounted 10% sold a 12.00 shirt for 10.80 — hand back 12.00 and we
-  // have refunded money that was never taken. Because the discount is shared out
-  // in proportion to line value, every line on this bill carries the same ratio.
-  const ratio = paidRatio(Number(sale.subtotal), Number(sale.discount));
-  const netPrice = (item: { price: unknown }) => Number(item.price) * ratio;
-
-  const total = round2(
-    lines.reduce((s, l) => {
-      const item = byId.get(l.saleItemId)!;
-      return s + l.qty * netPrice(item);
-    }, 0),
-  );
+  const total = creditFor(sale, lines);
 
   if (r.refunded > total + 0.005) {
     return { error: "Refund is more than the value of the returned goods." };
@@ -106,71 +66,13 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
 
   try {
     const id = await prisma.$transaction(async (tx) => {
-      const ret = await tx.saleReturn.create({
-        data: {
-          returnNo: await nextReturnNo(tx),
-          saleId: sale.id,
-          customerId: sale.customerId,
-          date: new Date(r.date),
-          note: r.note?.trim() || null,
-          total,
-          refunded: round2(r.refunded),
-        },
+      const ret = await writeSaleReturn(tx, {
+        sale,
+        lines,
+        date: new Date(r.date),
+        note: r.note,
+        refunded: r.refunded,
       });
-
-      for (const line of lines) {
-        const item = byId.get(line.saleItemId)!;
-        const price = netPrice(item); // what it actually sold for
-        const cost = Number(item.costAtSale);
-
-        await tx.saleReturnItem.create({
-          data: {
-            returnId: ret.id,
-            saleItemId: item.id,
-            variantId: item.variantId,
-            qty: round3(line.qty),
-            price: round2(price),
-            cost: round2(cost),
-            subtotal: round2(line.qty * price),
-          },
-        });
-
-        await tx.saleItem.update({
-          where: { id: item.id },
-          data: { returnedQty: { increment: round3(line.qty) } },
-        });
-
-        // Back on the shelf at the cost it left at — not today's average, which
-        // would silently rewrite what this stock is worth.
-        const v = await tx.productVariant.findUniqueOrThrow({
-          where: { id: item.variantId },
-          select: { stockQty: true, purchasePrice: true },
-        });
-        const stock = Number(v.stockQty);
-        await tx.productVariant.update({
-          where: { id: item.variantId },
-          data: {
-            stockQty: round3(stock + line.qty),
-            purchasePrice: avgAfterPurchase(
-              stock,
-              Number(v.purchasePrice),
-              line.qty,
-              cost,
-            ),
-          },
-        });
-
-        await tx.stockMovement.create({
-          data: {
-            variantId: item.variantId,
-            type: "SALE_RETURN",
-            qty: round3(line.qty),
-            refType: "sale_return",
-            refId: ret.id,
-            note: `Return against ${sale.invoiceNo}`,
-          },
-        });
-      }
 
       // Goods coming back cancel that much of the debt; cash handed over
       // reinstates it and leaves the drawer.
@@ -219,9 +121,17 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
 export async function deleteSaleReturn(id: number): Promise<ActionResult> {
   const ret = await prisma.saleReturn.findUnique({
     where: { id },
-    include: { items: true, payments: true },
+    include: { items: true, payments: true, exchange: true },
   });
   if (!ret) return { error: "Return not found." };
+
+  // Half an exchange is not a thing. Undoing it here would leave the replacement
+  // sale standing with nothing behind it — delete the exchange instead.
+  if (ret.exchange) {
+    return {
+      error: "This return is part of an exchange — delete the exchange itself.",
+    };
+  }
 
   try {
     await prisma.$transaction(async (tx) => {

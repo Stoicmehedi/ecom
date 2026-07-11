@@ -352,6 +352,49 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   tiles collapsed to 5 product tiles; tapping M/Red added M/Red; scanning L/Navy's barcode added it
   with no dialog; simple products still add on one tap.
 
+- **Studied the reference app's POS read-only, then let its own data choose what to build.**
+  Written up as `BLUEPRINT.md` **§13** (the delta) and **§14** (exchange). The method mattered more
+  than the list: I first ranked *line price/discount override with a manager password* as the top gap
+  because the reference app has it. Checking the shop's actual sales killed that: the setting is
+  **switched off** in their own account (`PRODUCT_WISE_DISCOUNT=0`, `ASK_PASSWORD=0`) and **not one
+  invoice carries a discount** — every line is a clean tag price. It was dropped. **Build what the
+  shop does, not what the software offers.**
+
+  The same check found two things I had wrongly deferred:
+  - **Exchange is real** — 21+ approved exchanges, Nov 2024 → Sep 2025. For a children's clothing shop
+    it is *the* counter request. **Built (below).**
+  - **Loyalty points are live right now** — invoices show earned/available points and a customer holds
+    a balance of 410. Cutting over to MPoS today would lose them. **Now the top of §6.**
+
+- **Exchange — BUILT (`BLUEPRINT.md` §14).** Migration `exchange`. The POS gets an **Exchange** panel:
+  find the invoice the goods went out on, take back what is coming back, and the rest of the cart is
+  what replaces it. An exchange is **not a new kind of document** — it is a sale return and a sale
+  settled in one transaction, which is exactly how the reference app models it (*From Invoice → To
+  Invoice*). New `/exchanges` register shows that pairing.
+  - **The credit is never typed.** It is what the sale's ledger says the customer *paid* for those
+    goods — the bill's discount apportioned (§10.1a). Theirs lets the cashier retype it; a credit you
+    can type is a hole in the till.
+  - **An invoice is required.** Theirs can credit a bare barcode with no invoice behind it. We will not
+    credit goods we cannot trace to a sale.
+  - The returned goods land on the shelf **before** the new sale takes anything off it — so a customer
+    can swap the last shirt on the rail for another size of the same thing.
+  - The credit is spent as a payment **in goods**: a payment line of `method = "EXCHANGE"` with **no
+    account**, because no cash crossed the counter. Only an excess (goods worth more than the
+    replacement) actually moves money.
+  - `src/lib/sale-return.ts` now holds the one copy of the return maths, called by **both** the returns
+    screen and the exchange — so the two cannot drift apart.
+
+  **Browser-verified against hand-computed figures.** *Even swap:* returned Karim's S/Red (paid 10.80)
+  for an M/Red (10.80 at his group rate) → new sale fully paid by a 10.80 EXCHANGE credit, **cash
+  unchanged at 249.60, his balance unchanged at 301.60** — no invented money. *Excess:* sold 2 ×
+  Classic Tee to a walk-in for 24.00, then exchanged both for one → credit 24.00, 12.00 applied to the
+  new sale, **12.00 refunded in cash** (Cash 273.60 → 261.60), stock 16, walk-in balance still 0.
+
+- ⚠️ **Fixed a latent repo-breaking bug found while migrating:** the `products_v2` migration was
+  timestamped **before** the migrations that create the `DiscountType` enum, so it only worked because
+  it happened to be applied last. **A fresh clone could not build the database at all.** Renamed to
+  sort correctly and proved it by replaying every migration into an empty database from scratch.
+
 ---
 
 ## 5. Current state
@@ -381,6 +424,9 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   Hold/park, sales list & detail with profit, 80mm receipt. Browser-verified; build passes.
 - ✅ **Sale Returns done** — return off any sale, restocked at `costAtSale`, refund or credit;
   walk-ins refunded in full. Browser-verified.
+- ✅ **Exchange done** — swap goods at the POS against the invoice they went out on. A return and a
+  sale in one transaction; the credit is what the customer actually paid, never typed. `/exchanges`
+  lists them. Browser-verified both ways (even swap moves no money; an excess is refunded).
 - ✅ **Reports done** — Overview, Sales (grouped by invoice/day/month), Profit & Loss, Product
   profit, Dues. Print + CSV + Excel export on each. Profit is Admin-only. Browser-verified.
 - 🎉 **PHASE 1 IS COMPLETE.** The app runs the whole retail loop end to end: buy stock in → sell it →
@@ -416,16 +462,26 @@ and the variable products *Field Tee* (6 variants, min sale price 9.00, wholesal
 
 ## 6. Next steps (resume here)
 
-**Phase 1 is complete and Products round 2 has closed the last known hole.** The product model now
-carries everything the modules above it need, so Phase 2 can start on solid ground.
+**Phase 1 is complete, Products round 2 closed the catalogue hole, and Exchange is built.** What comes
+next is now chosen from the reference shop's *own data* rather than from the reference software's
+feature list (see the 2026-07-11 log entry — that method already deleted one wrong priority).
 
-1. **Settle the `Sale.due` question** (see §5) — a small modelling decision, not a bug.
-2. **Then Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each a module built to protocol
+1. **Loyalty points — the one live feature we don't have.** The shop's invoices show points earned and
+   an available balance (one customer holds 410). Switching to MPoS today would silently lose those
+   balances. Decide first: **do existing balances migrate across, or does everyone start at zero?**
+   Then: earn rate, redemption value, and whether points survive a return or an exchange.
+2. **Sale remark, and allow a zero-value sale.** The shop uses remarks (an invoice reads "Qc Out" for
+   a free issue) — and note our **minimum sale price currently forbids a 0.00 line**, so a free issue
+   needs a deliberate exemption rather than a workaround.
+3. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
+4. **`/settings`** — still 404. It is where the shop-wide toggles belong (§13.4) and where the
+   hardcoded default alert quantity of 5 should move to.
+5. **Settle the `Sale.due` question** (see §5) — a small modelling decision, not a bug.
+6. **Then Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each a module built to protocol
    (study the reference app → write it into `BLUEPRINT.md` → settle §6 → build):
    - **Expenses + accounts** — the biggest hole in the P&L. Gross profit becomes a true *net* profit
      only once expenses and salaries post against it; the P&L screen already has the slot for it.
    - **Stock adjustments** — damage, loss, corrections. Today stock can only move via buy/sell/return.
-   - **Exchanges** — deferred from POS; a very common counter request.
    - Then: employees/salary, loyalty points, VAT (if it's actually needed).
 3. Housekeeping whenever convenient: `middleware.ts` for edge-level route protection, and a
    `/settings` page (the sidebar links to one that doesn't exist yet). The shop-wide default alert

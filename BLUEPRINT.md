@@ -794,3 +794,151 @@ variants differ), total stock across variants, and how many options there are.
   straight into the cart. The fast path must not get slower in order to make the browse path better.
 - Searching a SKU or barcode *fragment* pulls up the whole **product**, so the sizes are still there
   to choose between; only an *exact* match short-circuits.
+
+---
+
+## 13. POS, round 2 — what the reference app has that we don't
+
+Studied read-only on 2026-07-11 (screen DOM + its client config and cart script; nothing was clicked,
+typed, created or deleted). Our POS already matches theirs on the core loop — product grid with stock,
+name/SKU/barcode search, walk-in "Guest" customer, quick-add customer, hold/park, split payment across
+accounts, change due, due date for credit, and an 80mm receipt. What follows is the delta.
+
+### 13.1 The cart line is editable at the counter — and password-gated
+
+Their cart row has columns we don't have at all: **unit price (editable)**, **discount rate (%)**,
+**discount amount**, **after-discount price**. So a cashier can haggle a line down without touching
+the catalogue. It is governed by three settings:
+
+- `PRICE_CHANGE` — may this user retype a line's price at all?
+- `PRODUCT_WISE_DISCOUNT` — is a per-line discount box shown?
+- `REMARK_REQUIRED_WITH_DISCOUNT` — must a reason be typed when a discount is given?
+- `ASK_PASSWORD` — a **manager password prompt** (`/check-password`) before an override is accepted.
+
+This is the biggest functional gap. Our discounts are all decided *before* the sale (variant discount,
+group discount) or applied to the whole bill; a shop that bargains per item cannot do it on our screen.
+**Our minimum sale price becomes the guardrail that makes this safe** — an override may cut a line, but
+never below the floor.
+
+### 13.2 A wholesale cart mode
+
+`CART_TYPE` is `Regular` **or** `Wholesale`, and switching to wholesale asks for a
+`wholesale_password`. It re-prices the *whole cart* at wholesale rates. Ours only switches a line when
+its qty crosses that variant's `wholesaleQty` threshold — good for "buy 5, get the bulk rate", useless
+for "this customer is a reseller, price the whole basket wholesale". Customers also carry a
+`sale_type` of `retail`/`wholesale`, so the mode can follow the customer.
+
+### 13.3 Payment details we don't collect
+
+- **Delivery charge** — a line on the bill, added to the payable.
+- **Cheque fields** — bank name, cheque number, issue date, activation date, issuer name. We offer
+  CHEQUE as a payment method but store none of this, so a bounced cheque can't be chased.
+- **Sale date** — the sale can be **back-dated**. Ours is always "now".
+- **Remark** — a free-text note on the sale.
+- **Installments** — tenor in months, interest rate, monthly instalment. (Almost certainly not wanted
+  for a single clothing store; listed for completeness.)
+- **Loyalty points** — points earned on this sale and the customer's previous balance, redeemable.
+  Already deferred to Phase 2.
+
+### 13.4 Shop-wide POS settings
+
+`NEGETIVE_SALE` (may a cashier sell stock we don't have?), `SHOW_STOCK_IN_POS`, `VAT_RATE` +
+`INCLUDING_VAT` (VAT inclusive or on top), `CARTON_CHECK` (sell by carton with a multiplier — a
+wholesale/grocery idea, not a clothing one), `PRINT_SETTING` (80mm vs A4), `INVOICE_POPUP` and silent
+print, and invoice options for showing size/colour and the barcode on the receipt. They also have
+separate **chalan** and **packaging** invoice formats. We have none of these — we have no `/settings`
+page at all, which is where they belong.
+
+### 13.5 Grid filters
+
+Their grid filters by **brand / category / sub-category**. Ours has search only. With a real catalogue
+loaded, tapping through to a product without a filter gets slow.
+
+### 13.6 What we deliberately do better — keep it
+
+- **Pricing is decided on the server** (the client sends only variantId + qty). Theirs posts prices
+  from the browser.
+- **A minimum sale price the checkout enforces.** Nothing in their POS stops a line going to zero.
+- **The best *single* discount wins.** Their customer-group discount is dropped into the *bill*
+  discount box, which stacks with a per-line discount — exactly the accident §12.7a exists to prevent.
+- **The size × colour picker** (§12.10) beats a flat variant list.
+
+### 13.7 Barcode scanning without a scanner *(decided 2026-07-11)*
+
+The search box already accepts a hardware scanner, because a scanner is just a keyboard that types
+fast. Until one is bought, a phone paired as a **Bluetooth keyboard** (a scanner-keyboard app) types
+into the same box and needs no code from us.
+
+**Deferred: an in-POS camera scanner.** Reading a barcode from the phone's camera needs
+`getUserMedia`, which browsers only grant on **HTTPS** — and we have no HTTPS yet. When we deploy,
+build it: `BarcodeDetector` on Android Chrome, a ZXing fallback for iOS Safari. Not before.
+
+---
+
+## 14. Exchange *(studied read-only 2026-07-11 — reference app; nothing clicked, created or deleted)*
+
+### 14.1 Why this one, and not the line override
+
+The reference app has both. Its **line price/discount override** is switched **off** in the live shop
+(`PRODUCT_WISE_DISCOUNT=0`, `ASK_PASSWORD=0`) and **not one** of the shop's invoices carries a
+discount — every line is a clean tag price. **Exchange is the opposite: it is used.** 21+ approved
+exchanges run from Nov 2024 to Sep 2025, a steady trickle. For a children's clothing shop this is the
+defining counter request — the size is wrong, the customer comes back, they swap it. We support none
+of it. Build what the shop does, not what the software offers.
+
+### 14.2 How theirs works
+
+The POS has an **Exchange** panel beside the cart. It takes the **original invoice number** (or a
+scan of the item being handed back), lists that invoice's lines, and the cashier picks the quantities
+coming back. Their panel lets the returned line's **price be retyped**. Pressing Continue turns the
+returned goods into an **`exchange_amount`** — a credit carried into the payment modal, which offsets
+the payable of the new cart. The result is recorded as **From Invoice → To Invoice**: an exchange
+produces a *brand-new sale*, linked back to the one it came from.
+
+So an exchange is not a new kind of document. **It is a sale return and a sale, settled as one
+transaction.** We already have both halves.
+
+### 14.3 What we build
+
+The POS gets an **Exchange** panel. Enter the original invoice number; its lines appear with the
+quantity still returnable (sold − already returned). Take goods back, put new goods in the cart, and
+the difference is what changes hands.
+
+**The money, in one place:**
+
+| | |
+|---|---|
+| `C` — exchange credit | the returned goods, valued at **what the customer actually paid** (§10.1a: the bill's discount apportioned via `paidRatio`) |
+| `T` — new cart total | priced by the one pricing rule (§12.7a), as any sale |
+| **Payable** | `T − C`. Positive: the customer pays the difference. Negative: we owe them `C − T`. |
+
+**Deliberate differences from theirs:**
+
+- **The credit is not typeable.** Theirs lets the cashier retype the returned line's price; ours values
+  it at what the sale's ledger says was paid for it. A credit you can type is a hole in the till, and
+  it would also desynchronise the return from the sale it reverses.
+- **An invoice is required.** Theirs can also credit a bare barcode scan with no invoice behind it —
+  goods we have no proof were ever bought here. Ours will not credit what it cannot trace.
+
+**In the ledger, one transaction:**
+1. A **SaleReturn** against the original sale — stock back on the shelf at `costAtSale`, `returnedQty`
+   incremented, `total = C`, `refunded = 0`. It does **not** touch the customer's balance: the credit
+   is not owed to them, it is about to be spent.
+2. A **new Sale** for the cart, total `T`, exactly as a normal checkout.
+3. A payment line on the new sale of `method = "EXCHANGE"`, amount `min(C, T)`, with **no account** —
+   because no cash moved. Real tender covers the rest.
+4. If `C > T`, the excess `C − T` goes back: cash out of an account for a walk-in, or a credit to a
+   named customer's ledger.
+5. An **Exchange** record linking the two — `fromSale → saleReturn → toSale` — which is the
+   *From Invoice / To Invoice* list theirs shows.
+
+Because the return nets both revenue and COGS out, and the new sale adds its own, **profit stays
+honest without a single special case in the reports.**
+
+### 14.4 Settled
+
+- **No time limit** on how old the original invoice may be — theirs has none, and the shop swaps
+  against month-old invoices. If a limit is ever wanted it belongs in `/settings`, not in the code.
+- **A walk-in can exchange.** The existing "a walk-in must be refunded in full" rule exists because a
+  credit balance owed to nobody is a bug — but here the credit is spent immediately, so the rule is
+  relaxed for exchange and only re-applies to the `C > T` remainder, which is refunded in cash.

@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Trash2, Plus, Minus, PauseCircle, X } from "lucide-react";
+import { Search, Trash2, Plus, Minus, PauseCircle, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 import { priceLine } from "@/lib/pricing";
 import { paidRatio } from "@/lib/costing";
 import { checkout, holdSale, resumeHeldSale, discardHeldSale } from "./actions";
 import { searchPos, type PosHit, type PosProduct } from "./search";
 import { VariantPicker, needsPicker } from "./variant-picker";
+import { ExchangeDialog, type ExchangePick } from "./exchange-panel";
 import { quickAddCustomer } from "../customers/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -231,6 +232,17 @@ export function PosTerminal({
   );
   const blockedIds = new Set(blocked.map((x) => x.line.variantId));
 
+  // --- exchange (BLUEPRINT §14) ---
+  const [exOpen, setExOpen] = useState(false);
+  const [exchange, setExchange] = useState<ExchangePick | null>(null);
+
+  // Goods handed back pay for the new ones first; only what they can't cover comes
+  // back as money. The server recomputes all of this — this is what the cashier sees.
+  const credit = exchange?.credit ?? 0;
+  const creditApplied = r2(Math.min(credit, total));
+  const excess = r2(credit - creditApplied);
+  const owed = r2(total - creditApplied);
+
   // --- payment dialog ---
   const [payOpen, setPayOpen] = useState(false);
   const [payments, setPayments] = useState<PayLine[]>([]);
@@ -238,7 +250,7 @@ export function PosTerminal({
   const [dueDate, setDueDate] = useState("");
 
   const paid = r2(payments.reduce((s, p) => s + (p.amount || 0), 0));
-  const due = r2(total - paid);
+  const due = r2(owed - paid);
   const change = r2(Math.max(tendered - paid, 0));
 
   const isWalkIn = selected?.isWalkIn ?? false;
@@ -250,8 +262,8 @@ export function PosTerminal({
         `"${blocked[0].line.label}" is below its minimum price — checkout will refuse it.`,
       );
     }
-    setPayments([{ method: "CASH", accountId: accounts[0]?.id ?? null, amount: total }]);
-    setTendered(total);
+    setPayments([{ method: "CASH", accountId: accounts[0]?.id ?? null, amount: owed }]);
+    setTendered(owed);
     setPayOpen(true);
   }
 
@@ -270,6 +282,19 @@ export function PosTerminal({
         payments: payments
           .filter((p) => p.amount > 0)
           .map((p) => ({ method: p.method, accountId: p.accountId, amount: p.amount })),
+        exchange: exchange
+          ? {
+              saleId: exchange.sale.saleId,
+              lines: Object.entries(exchange.qtys).map(([id, qty]) => ({
+                saleItemId: Number(id),
+                qty,
+              })),
+              // Money only leaves when the goods handed back are worth more.
+              refundMethod: excess > 0 ? "CASH" : undefined,
+              refundAccountId:
+                excess > 0 ? (accounts[0]?.id ?? null) : undefined,
+            }
+          : undefined,
       });
       if (res.error) {
         toast.error(res.error);
@@ -278,8 +303,9 @@ export function PosTerminal({
       setPayOpen(false);
       setLines([]);
       setDiscountValue(0);
+      setExchange(null);
       setCustomerId(walkIn?.id);
-      toast.success("Sale complete");
+      toast.success(exchange ? "Exchange complete" : "Sale complete");
       router.push(`/sales/${res.saleId}/receipt`);
     });
   }
@@ -609,6 +635,46 @@ export function PosTerminal({
             <span className="font-medium">Total</span>
             <span className="text-2xl font-semibold tabular-nums">{total.toFixed(2)}</span>
           </div>
+
+          {exchange && (
+            <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="text-sm">
+                  <p className="font-medium text-primary">
+                    Exchange against {exchange.sale.invoiceNo}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {Object.values(exchange.qtys).reduce((a, b) => a + b, 0)} item(s)
+                    coming back
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  aria-label="Cancel exchange"
+                  onClick={() => setExchange(null)}
+                >
+                  <X className="size-3.5" />
+                </Button>
+              </div>
+              <Row label="Credit for returned goods" value={`−${credit.toFixed(2)}`} />
+              {excess > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  The goods handed back are worth{" "}
+                  <span className="font-medium">{excess.toFixed(2)}</span> more than the
+                  new ones — that goes back to the customer.
+                </p>
+              ) : (
+                <div className="flex items-center justify-between border-t pt-2">
+                  <span className="font-medium">To pay</span>
+                  <span className="text-xl font-semibold tabular-nums">
+                    {owed.toFixed(2)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2">
@@ -623,8 +689,19 @@ export function PosTerminal({
           </Button>
           <Button
             variant="outline"
-            disabled={lines.length === 0}
-            onClick={() => setLines([])}
+            className="flex-1"
+            onClick={() => setExOpen(true)}
+          >
+            <RefreshCw className="size-4" />
+            Exchange
+          </Button>
+          <Button
+            variant="outline"
+            disabled={lines.length === 0 && !exchange}
+            onClick={() => {
+              setLines([]);
+              setExchange(null);
+            }}
           >
             Clear
           </Button>
@@ -633,16 +710,18 @@ export function PosTerminal({
             disabled={lines.length === 0}
             onClick={openPayment}
           >
-            Charge {total.toFixed(2)}
+            Charge {owed.toFixed(2)}
           </Button>
         </div>
       </div>
+
+      <ExchangeDialog open={exOpen} onOpenChange={setExOpen} onConfirm={setExchange} />
 
       {/* Payment */}
       <Dialog open={payOpen} onOpenChange={setPayOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Payment — {total.toFixed(2)}</DialogTitle>
+            <DialogTitle>Payment — {owed.toFixed(2)}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3">

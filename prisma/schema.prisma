@@ -276,6 +276,7 @@ model Contact {
   payments        Payment[]
   purchaseReturns PurchaseReturn[]
   saleReturns     SaleReturn[]
+  exchanges       Exchange[]
 
   @@index([type])
 }
@@ -397,6 +398,9 @@ model Sale {
   items    SaleItem[]
   payments Payment[]
   returns  SaleReturn[]
+
+  exchangedFrom Exchange[] @relation("ExchangeFrom")
+  exchangedTo   Exchange?  @relation("ExchangeTo")
 }
 
 /// A parked cart. Touches no stock and no ledger until it's checked out.
@@ -450,6 +454,30 @@ model SaleReturn {
 
   items    SaleReturnItem[]
   payments Payment[]
+  exchange Exchange?
+}
+
+/// A swap at the counter: goods come back off one invoice and go out on a new one.
+///
+/// An exchange is not its own kind of document — it is a SaleReturn and a Sale settled
+/// as one transaction (BLUEPRINT §14). This row is the link between them, and it is what
+/// makes "which invoice replaced which" answerable.
+model Exchange {
+  id         Int      @id @default(autoincrement())
+  exchangeNo String   @unique // EXC-00001
+  date       DateTime @default(now())
+  /// The value of the goods handed back, at what the customer actually paid for them.
+  credit     Decimal  @default(0) @db.Decimal(14, 2)
+  createdAt  DateTime @default(now())
+
+  fromSaleId   Int
+  fromSale     Sale       @relation("ExchangeFrom", fields: [fromSaleId], references: [id])
+  toSaleId     Int        @unique
+  toSale       Sale       @relation("ExchangeTo", fields: [toSaleId], references: [id])
+  saleReturnId Int        @unique
+  saleReturn   SaleReturn @relation(fields: [saleReturnId], references: [id])
+  customerId   Int?
+  customer     Contact?   @relation(fields: [customerId], references: [id])
 }
 
 model SaleReturnItem {

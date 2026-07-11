@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { docStatus, resolveDiscount, round2, round3 } from "@/lib/costing";
 import { priceLine } from "@/lib/pricing";
+import { creditFor, validateReturnLines, writeSaleReturn } from "@/lib/sale-return";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type CheckoutResult = { ok?: boolean; error?: string; saleId?: number };
@@ -24,6 +25,22 @@ const paymentSchema = z.object({
   amount: z.number().min(0),
 });
 
+/** Goods coming back over the counter as part of this sale (BLUEPRINT §14). */
+const exchangeSchema = z.object({
+  saleId: z.number().int().positive(),
+  lines: z
+    .array(
+      z.object({
+        saleItemId: z.number().int().positive(),
+        qty: z.number().min(0),
+      }),
+    )
+    .min(1),
+  /** Where the excess goes when the returned goods are worth more than the new ones. */
+  refundMethod: z.string().trim().optional(),
+  refundAccountId: z.number().int().nullable().optional(),
+});
+
 const checkoutSchema = z.object({
   customerId: z.number().int().positive().nullable().optional(),
   discountType: z.enum(["AMOUNT", "PERCENT"]).default("AMOUNT"),
@@ -32,6 +49,7 @@ const checkoutSchema = z.object({
   note: z.string().trim().max(500).optional(),
   items: z.array(lineSchema).min(1, "The cart is empty"),
   payments: z.array(paymentSchema).default([]),
+  exchange: exchangeSchema.optional(),
 });
 
 export type CheckoutInput = z.input<typeof checkoutSchema>;
@@ -45,6 +63,23 @@ async function nextInvoiceNo(tx: Tx): Promise<string> {
   });
   const n = last ? parseInt(last.invoiceNo.replace(/\D/g, ""), 10) || 0 : 0;
   return `INV-${String(n + 1).padStart(5, "0")}`;
+}
+
+async function nextExchangeNo(tx: Tx): Promise<string> {
+  const last = await tx.exchange.findFirst({
+    orderBy: { id: "desc" },
+    select: { exchangeNo: true },
+  });
+  const n = last ? parseInt(last.exchangeNo.replace(/\D/g, ""), 10) || 0 : 0;
+  return `EXC-${String(n + 1).padStart(5, "0")}`;
+}
+
+/** The original invoice, shaped for the shared return core. */
+function loadExchangeSale(saleId: number) {
+  return prisma.sale.findUnique({
+    where: { id: saleId },
+    include: { items: { include: { variant: { select: { sku: true } } } } },
+  });
 }
 
 export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
@@ -88,6 +123,35 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   const nameOf = (v: (typeof variants)[number]) =>
     v.label ? `${v.product.name} — ${v.label}` : v.product.name;
 
+  // ---- Exchange: goods handed back offset what the new ones cost (BLUEPRINT §14).
+  // Loaded before pricing, because the goods coming back are stock we can sell —
+  // that is what lets a customer swap the last shirt on the rail for another size.
+  const ex = s.exchange;
+  let oldSale: Awaited<ReturnType<typeof loadExchangeSale>> = null;
+  let credit = 0;
+  let exLines: { saleItemId: number; qty: number }[] = [];
+  const returning = new Map<number, number>();
+
+  if (ex) {
+    exLines = ex.lines.filter((l) => l.qty > 0);
+    if (exLines.length === 0) {
+      return { error: "Enter a quantity for the goods being handed back." };
+    }
+    oldSale = await loadExchangeSale(ex.saleId);
+    if (!oldSale) return { error: "The original invoice no longer exists." };
+
+    const invalid = validateReturnLines(oldSale, exLines);
+    if (invalid) return { error: invalid };
+
+    credit = creditFor(oldSale, exLines);
+
+    const itemById = new Map(oldSale.items.map((i) => [i.id, i]));
+    for (const l of exLines) {
+      const it = itemById.get(l.saleItemId)!;
+      returning.set(it.variantId, round3((returning.get(it.variantId) ?? 0) + l.qty));
+    }
+  }
+
   const items: {
     variantId: number;
     qty: number;
@@ -104,8 +168,9 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       return { error: `"${nameOf(v)}" is no longer on sale.` };
     }
 
-    // Overselling is blocked — stock can never go negative.
-    const inStock = Number(v.stockQty);
+    // Overselling is blocked — stock can never go negative. Anything being handed
+    // back in this same exchange is already on the shelf by the time we sell.
+    const inStock = round3(Number(v.stockQty) + (returning.get(it.variantId) ?? 0));
     if (it.qty > inStock + 0.0005) {
       return {
         error: `Only ${inStock} of "${nameOf(v)}" in stock — you cannot sell ${it.qty}.`,
@@ -162,23 +227,41 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     }
   }
 
+  // The credit is spent on this sale first; only what it cannot cover comes back
+  // as money. It is never "paid" twice.
+  const creditApplied = round2(Math.min(credit, total));
+  const excess = round2(credit - creditApplied);
+
   const payments = s.payments.filter((p) => p.amount > 0);
-  const paid = round2(payments.reduce((a, p) => a + p.amount, 0));
-  if (paid > total + 0.005) {
-    return { error: "Paid amount is more than the sale total." };
+  const tendered = round2(payments.reduce((a, p) => a + p.amount, 0));
+  const owed = round2(total - creditApplied); // what the customer still has to find
+
+  if (tendered > owed + 0.005) {
+    return {
+      error: credit > 0
+        ? "Paid amount is more than what is left to pay after the exchange."
+        : "Paid amount is more than the sale total.",
+    };
   }
+
+  const paid = round2(creditApplied + tendered);
   const due = round2(total - paid);
+
+  const isWalkIn = !s.customerId || (customer?.isWalkIn ?? false);
 
   // A credit sale must be attached to someone we can actually chase. The walk-in
   // customer has an id, so checking for a missing id is not enough — a due parked
   // on "Walk-in" is a receivable owed by nobody.
-  if (due > 0) {
-    if (!s.customerId || !customer) {
-      return { error: "A credit sale needs a named customer — a walk-in must pay in full." };
-    }
-    if (customer.isWalkIn) {
-      return { error: "A walk-in must pay in full — pick a named customer to sell on credit." };
-    }
+  if (due > 0 && isWalkIn) {
+    return { error: "A walk-in must pay in full — pick a named customer to sell on credit." };
+  }
+
+  // Goods worth more than the replacement: the difference has to go somewhere.
+  // A walk-in has no account to hold it, so it must leave the drawer.
+  if (excess > 0 && isWalkIn && !ex?.refundAccountId) {
+    return {
+      error: `The goods handed back are worth ${excess.toFixed(2)} more than the new ones — a walk-in must be refunded that in cash.`,
+    };
   }
 
   const session = await auth();
@@ -187,6 +270,38 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   try {
     const saleId = await prisma.$transaction(async (tx) => {
       const branch = await tx.branch.findFirst({ select: { id: true } });
+
+      // The goods come back FIRST — they are on the shelf before the new sale takes
+      // anything off it, which is what lets a customer swap the last one in stock
+      // for a different size of the same thing.
+      const ret = oldSale
+        ? await writeSaleReturn(tx, {
+            sale: oldSale,
+            lines: exLines,
+            date: new Date(),
+            note: `Exchange against ${oldSale.invoiceNo}`,
+            refunded: excess, // the part that actually leaves as money
+          })
+        : null;
+
+      // The return put stock back; re-read it so the sale decrements the real figure
+      // rather than the one we loaded before the goods came over the counter.
+      if (ret) {
+        const fresh = await tx.productVariant.findMany({
+          where: { id: { in: items.map((i) => i.variantId) } },
+          include: {
+            product: { select: { name: true, minSalePrice: true, isActive: true } },
+          },
+        });
+        for (const v of fresh) byId.set(v.id, v);
+
+        for (const it of items) {
+          const v = byId.get(it.variantId)!;
+          if (it.qty > Number(v.stockQty) + 0.0005) {
+            throw new Error(`oversold:${nameOf(v)}:${Number(v.stockQty)}`);
+          }
+        }
+      }
 
       const sale = await tx.sale.create({
         data: {
@@ -265,6 +380,51 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
         }
       }
 
+      // The exchange credit is a payment made in goods, not in money: it settles
+      // part of the bill but no account gains a penny, so it carries no accountId.
+      // Without this line the sale would look unpaid; with an account it would
+      // invent cash that never crossed the counter.
+      if (ret && creditApplied > 0) {
+        await tx.payment.create({
+          data: {
+            direction: "IN",
+            amount: creditApplied,
+            method: "EXCHANGE",
+            accountId: null,
+            contactId: s.customerId ?? null,
+            saleId: sale.id,
+            note: `Goods returned on ${oldSale!.invoiceNo} (${ret.returnNo})`,
+          },
+        });
+      }
+
+      // Goods worth more than the replacement — the difference goes back.
+      if (ret && excess > 0) {
+        if (ex?.refundAccountId) {
+          await tx.payment.create({
+            data: {
+              direction: "OUT",
+              amount: excess,
+              method: ex.refundMethod || "CASH",
+              accountId: ex.refundAccountId,
+              contactId: s.customerId ?? null,
+              saleReturnId: ret.id,
+              note: `Exchange difference for ${ret.returnNo}`,
+            },
+          });
+          await tx.account.update({
+            where: { id: ex.refundAccountId },
+            data: { balance: { decrement: excess } },
+          });
+        } else if (s.customerId) {
+          // Kept on their account instead of handed over the counter.
+          await tx.contact.update({
+            where: { id: s.customerId },
+            data: { dueBalance: { decrement: excess } },
+          });
+        }
+      }
+
       // Whatever they didn't pay becomes a receivable on the customer.
       if (due > 0 && s.customerId) {
         await tx.contact.update({
@@ -273,14 +433,33 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
         });
       }
 
+      if (ret && oldSale) {
+        await tx.exchange.create({
+          data: {
+            exchangeNo: await nextExchangeNo(tx),
+            fromSaleId: oldSale.id,
+            toSaleId: sale.id,
+            saleReturnId: ret.id,
+            customerId: s.customerId ?? null,
+            credit,
+          },
+        });
+      }
+
       return sale.id;
     });
 
     revalidatePath("/sales");
+    revalidatePath("/sale-returns");
+    revalidatePath("/exchanges");
     revalidatePath("/inventory");
     revalidatePath("/customers");
     return { ok: true, saleId };
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("oversold:")) {
+      const [, name, have] = e.message.split(":");
+      return { error: `Only ${have} of "${name}" in stock.` };
+    }
     return { error: "Something went wrong completing the sale." };
   }
 }
