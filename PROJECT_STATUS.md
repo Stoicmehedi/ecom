@@ -203,11 +203,70 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
     **5.00**, `returnedQty` 1, customer due 312.40 → **300.40**, cash untouched. Walk-in sale then
     returned → refund forced to the full 12.00, **walk-in due stayed 0.00**, and cash netted back to
     exactly where it started. Over-cap return clamped (99 → 3).
-- ⚠️ **Dev-data loss, cause not established.** At some point the `PUR-00001` purchase and its
-  return were deleted (stock returned to 20 @ cost 5.00, the 50.00 purchase payment refunded to
-  cash). Migrations are clean and nothing was reset, so a delete path ran — but I could not attribute
-  the trigger. Worth noting: the reversal arithmetic round-tripped **exactly** to the original
-  20 @ 5.00, which is good evidence the reverse logic is right. Only dev data was affected.
+- **Dev-data note (resolved):** the `PUR-00001` purchase and its return disappeared mid-session —
+  **the user deleted them**, not a bug. Reassuringly, the reversal arithmetic round-tripped
+  **exactly** back to the original 20 @ cost 5.00, which is good evidence the reverse logic is right.
+
+- **Built the Reports module — Phase 1 is now complete.** Studied the reference app's report screens
+  read-only first → `BLUEPRINT.md` **§11**. They ship **43 report screens**; almost all are either
+  re-cuts of the same question or belong to Phase-2 modules we don't have. Everything Phase 1 owes
+  the shopkeeper collapses into **five**: Overview, Sales, Profit & Loss, Product profit, Dues.
+  - Settled §6 decisions: **profit is Admin-only** (`reports.profit`; they use a second admin
+    password, we use the role system we already have); **sale returns reduce gross profit**, not just
+    net sales; export = **print + CSV + real `.xlsx`** (added `exceljs`).
+  - **One report = one definition** (`src/lib/reports/`): each report is a `ReportTable`
+    (columns + rows + totals) that the screen *and* the CSV/Excel exports render from, so an export
+    can never disagree with what is on screen. Filters live in the URL, so a report is linkable and
+    the export endpoint reuses the exact query string.
+  - **Sales**: one screen replaces their Daily/Monthly/Yearly/Master/Detail reports — those differ
+    only in *grouping*, so grouping is a control (`invoice | day | month`), not five screens.
+  - **Profit & Loss**: Revenue block → Cost-of-goods block → gross profit + margin, with a clearly
+    separated **cash-movement** block so nobody mistakes cash for profit.
+  - **Dues**: receivable and payable on one screen, with an **Age (days)** column — ours, not theirs;
+    a due is only a problem once it is old.
+  - **Print** strips the app shell (same trick as the 80mm receipt); A4 landscape, repeating headers.
+
+  **Two real bugs found and fixed while verifying:**
+  1. **Product profit didn't reconcile with the P&L.** The order-level discount lives on the *sale*,
+     not the line, so summing line profits overstated total profit by exactly the discount given
+     (21.00 vs the true 17.40). The discount is now **apportioned across the lines** by their share
+     of the bill, and the two reports agree to the cent. *That reconciliation is the test that either
+     report is right* — `scripts/check-reports.ts` asserts it.
+  2. **Inventory leaked cost to cashiers** — avg cost, last cost and stock-value-at-cost were visible
+     to everyone, contradicting the Admin-only decision we had just taken. Now gated.
+
+- **Fixed the sale-return discount bug + a multi-agent code review of the reports module.**
+  - **The money bug (`BLUEPRINT.md` §10.1a):** a return credited the **list price**, ignoring the
+    bill's discount — so returning one shirt from a 10%-off sale handed back 12.00 for goods the
+    customer paid 10.80 for. It scaled with the discount and was trivially exploitable (buy
+    discounted, return, keep the difference). Returns are now priced at
+    `list × (subtotal − discount) / subtotal` via a shared `paidRatio()` helper in `costing.ts` —
+    the same apportioning the product-profit report already did. The return form shows the adjusted
+    price and says why. Existing dev rows were re-priced and the customer's balance re-settled.
+    **Proven end-to-end in the browser:** sold 2 @ 12.00 to a Gold customer (10% off → 21.60) on
+    credit, then returned *both* → his balance went 301.60 → 323.20 → **exactly 301.60**, cash never
+    moved, stock 17 → 15 → **17 @ 5.00**. Net sales and gross profit were **unchanged** by the
+    round-trip, which is the correct behaviour: a fully-returned sale earns nothing.
+  - **A high-effort multi-agent review found 9 more defects, all now fixed:** the P&L subtracted
+    returns at gross price from discount-net revenue (same root cause); **no report *screen* checked
+    `reports.view`** — only the export API did, so a role without it could read every report by URL;
+    product profit silently dropped returns of goods sold in an earlier period (breaking the
+    reconciliation it advertises); the day/month "Net sales" column never subtracted returns, so it
+    disagreed with the P&L; an unvalidated `status` in the URL reached Prisma and **500'd** the page
+    and the export; the dues rows linked to `/ledger` routes that don't exist; the P&L export put the
+    margin **percentage into a money column**; an unbounded `?from=1900-01-01` built ~46,000 chart
+    bars and took the page down (range now capped at 366 days); quantity totals were rounded to 2dp
+    under 3dp columns; and the range picker kept stale dates after a preset click.
+  - `scripts/check-reports.ts` now also asserts every return line is priced at what the customer
+    actually paid, and that the grouped "Net sales" means the same thing the P&L means by it.
+
+  **Browser-verified end-to-end** against hand-computed figures: today's 3 sales and 2 returns →
+  gross sales 60.00 − discount 3.60 − returns 24.00 = **net sales 32.40**; COGS 25.00 − returned cost
+  10.00 = **net COGS 15.00**; **gross profit 17.40**, margin **53.70%**. Product profit totals match
+  exactly. Exports checked by reading the files back (CSV quoting + BOM; the `.xlsx` is a real Excel
+  file with numeric cells and number formats, not strings). Permission gates checked as a real
+  cashier: profit tabs hidden, profit pages refused, and the export API returns **403** (and 401
+  signed-out). Typecheck + production build pass.
 
 ---
 
@@ -230,35 +289,54 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   Hold/park, sales list & detail with profit, 80mm receipt. Browser-verified; build passes.
 - ✅ **Sale Returns done** — return off any sale, restocked at `costAtSale`, refund or credit;
   walk-ins refunded in full. Browser-verified.
-- ✅ **Phase 1 is functionally complete** — the app runs the whole retail loop: buy stock in →
-  sell it → take it back → and know the profit and who owes what, in both directions.
-- ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS), §10 (Sale returns) hold their
-  requirements (written before building, per protocol).
+- ✅ **Reports done** — Overview, Sales (grouped by invoice/day/month), Profit & Loss, Product
+  profit, Dues. Print + CSV + Excel export on each. Profit is Admin-only. Browser-verified.
+- 🎉 **PHASE 1 IS COMPLETE.** The app runs the whole retail loop end to end: buy stock in → sell it →
+  take it back → and know the profit, the margin, and who owes what in both directions.
+- ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS), §10 (Sale returns), §11 (Reports) hold
+  their requirements (written before building, per protocol).
 - ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add later for edge-level defense-in-depth).
-- ⬜ **Reports** not built yet — the last Phase-1 item.
+- ✅ **Sale returns credit what the customer actually paid** (the bill's discount is apportioned
+  across the lines) — fixed and proven by round-trip: fully returning a sale lands the customer's
+  balance exactly where it started. See `BLUEPRINT.md` §10.1a.
+- ✅ **Reports reviewed by a multi-agent code review at high effort**; all 10 confirmed defects fixed
+  (money math, the `reports.view` gate on screens, two 500s, and the totals/links/rounding nits).
+- ⬜ `/settings` is in the sidebar but has no page yet (404).
+- ⬜ **`Sale.due` is not reduced by a return** — a return settles against the *customer's account
+  balance*, never the invoice. So a fully-returned credit sale still shows its original due on the
+  Sales and Dues reports, while the customer's ledger is correctly square. Both numbers are
+  internally consistent (invoice-level vs account-level), but decide deliberately whether an
+  invoice's due should close when its goods come back. **Not a bug we hit; a modelling choice to
+  settle.**
 - ⬜ Deferred to Phase 2 (out of scope for the purchases module): purchase orders, stock
   adjustments, supplier advances/due-dismiss, attachments, areas & contact groups.
 
-**Dev login:** `admin` / `admin123`
+**Dev logins:** `admin` / `admin123` (Admin — sees everything) · `cashier` / `cashier123`
+(Cashier — no cost, no profit; use it to check the permission gates).
 
 **Dev data now in the DB** (from end-to-end verification): supplier *Rahim Traders*; customers
 *Walk-in* (seeded), *Karim Mia* (Gold group, 10% off, **300.40** due) and a phone-only customer;
 sales `INV-00001` (credit) and `INV-00002` (walk-in), returns `SRT-00001` (credited) and `SRT-00002`
-(cash-refunded) → Classic Tee at **18 in stock, cost 5.00**. The purchase/return test data was lost
-(see the 2026-07-11 log note). Wipe and re-seed for a clean slate.
+(cash-refunded) → Classic Tee at **18 in stock, cost 5.00**. The purchase/return test data was
+deleted by the user. Wipe and re-seed for a clean slate.
 
 ## 6. Next steps (resume here)
 
-1. **Core reports** — the last Phase-1 item. Follow the module build protocol: study the reference
-   app's report screens first (`/report/*` — daily/monthly sale, stock, profit, customer & supplier
-   due), write it into `BLUEPRINT.md` §11, then build. Per `BLUEPRINT.md` §5 the core set is:
-   daily/monthly sales, stock, **profit & loss** (now genuinely computable — every sale line carries
-   `costAtSale`, and every return carries the cost the goods left at), and customer/supplier dues.
-2. Then Phase 2 (see `BLUEPRINT.md` §5): exchanges, stock adjustments, expenses/accounts, employees,
-   loyalty, VAT if needed.
+**Phase 1 is complete and reviewed.** Nothing is half-built. Pick the next thing deliberately:
 
-*(Sale returns — done 2026-07-11. POS — done 2026-07-11; exchange, VAT, and loyalty-point redemption
-were explicitly deferred to Phase 2.)*
+1. **Settle the `Sale.due` question** (see §5) — a small modelling decision, not a bug.
+2. **Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Suggested sequence, each a module
+   built to protocol (study the reference app → write it into `BLUEPRINT.md` → settle §6 → build):
+   - **Expenses + accounts** — the biggest hole in the P&L. Gross profit becomes a true *net* profit
+     only once expenses and salaries post against it; the P&L screen already has the slot for it.
+   - **Stock adjustments** — damage, loss, corrections. Today stock can only move via buy/sell/return.
+   - **Exchanges** — deferred from POS; a very common counter request.
+   - Then: employees/salary, loyalty points, VAT (if it's actually needed), barcode label printing.
+3. Housekeeping whenever convenient: `middleware.ts` for edge-level route protection, and a
+   `/settings` page (the sidebar links to one that doesn't exist yet).
+
+*(Reports — done 2026-07-11, then reviewed and hardened. Sale returns, POS, Customers, Purchases —
+done 2026-07-11. Exchange, VAT, and loyalty-point redemption were explicitly deferred to Phase 2.)*
 
 > The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
 > live in the private session notes. If they aren't in context, ask the user for them.
@@ -283,7 +361,10 @@ npm run dev            # http://localhost:3000
 
 # Other:
 npm run build          # production build
-npx tsx scripts/dbcheck.ts   # quick DB connectivity check
+npx tsx scripts/dbcheck.ts        # quick DB connectivity check
+npx tsx scripts/check-reports.ts  # recompute every report figure from the raw rows and
+                                  # assert the reports agree — including that product profit
+                                  # reconciles exactly with the P&L's gross profit
 ```
 
 **Key files:**

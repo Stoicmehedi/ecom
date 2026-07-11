@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge } from "@/components/ui/badge";
 import { money, num, qty } from "@/lib/format";
@@ -11,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 const LOW_STOCK = 5;
 
@@ -21,6 +24,11 @@ export default async function InventoryPage({
 }) {
   const { low } = await searchParams;
   const lowOnly = low === "1";
+
+  // Cost and stock-at-cost value are profit figures (BLUEPRINT §11.2) — a
+  // cashier sees what is on the shelf, not what it cost or what it earns.
+  const session = await auth();
+  const canSeeCost = hasPermission(session, "reports.profit");
 
   const [variants, movements] = await Promise.all([
     prisma.productVariant.findMany({
@@ -74,7 +82,11 @@ export default async function InventoryPage({
     <div className="mx-auto w-full max-w-7xl space-y-6">
       <PageHeader
         title="Inventory"
-        description="What you hold, what it cost, and what it's worth."
+        description={
+          canSeeCost
+            ? "What you hold, what it cost, and what it's worth."
+            : "What you hold, and what it's worth at the till."
+        }
       >
         <Link
           href={lowOnly ? "/inventory" : "/inventory?low=1"}
@@ -84,9 +96,16 @@ export default async function InventoryPage({
         </Link>
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div
+        className={cn(
+          "grid gap-4",
+          canSeeCost ? "sm:grid-cols-3" : "sm:grid-cols-2",
+        )}
+      >
         <Stat label="Variants in view" value={String(rows.length)} />
-        <Stat label="Stock value at cost" value={money(totalCost)} />
+        {canSeeCost && (
+          <Stat label="Stock value at cost" value={money(totalCost)} />
+        )}
         <Stat label="Stock value at selling price" value={money(totalSell)} />
       </div>
 
@@ -95,13 +114,19 @@ export default async function InventoryPage({
           <TableHeader>
             <TableRow>
               <TableHead>Product</TableHead>
-              <TableHead className="text-right">Avg. cost</TableHead>
-              <TableHead className="text-right">Last cost</TableHead>
+              {canSeeCost && (
+                <>
+                  <TableHead className="text-right">Avg. cost</TableHead>
+                  <TableHead className="text-right">Last cost</TableHead>
+                </>
+              )}
               <TableHead className="text-right">Selling</TableHead>
               <TableHead className="text-right">In</TableHead>
               <TableHead className="text-right">Out</TableHead>
               <TableHead className="text-right">Stock</TableHead>
-              <TableHead className="text-right">Value @ cost</TableHead>
+              {canSeeCost && (
+                <TableHead className="text-right">Value @ cost</TableHead>
+              )}
               <TableHead className="text-right">Value @ selling</TableHead>
             </TableRow>
           </TableHeader>
@@ -109,7 +134,7 @@ export default async function InventoryPage({
             {rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={9}
+                  colSpan={canSeeCost ? 9 : 6}
                   className="py-10 text-center text-sm text-muted-foreground"
                 >
                   {lowOnly ? "Nothing is running low." : "No stock yet."}
@@ -122,10 +147,16 @@ export default async function InventoryPage({
                   <span className="font-medium">{r.name}</span>
                   <span className="block text-xs text-muted-foreground">{r.sku}</span>
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{money(r.avg)}</TableCell>
-                <TableCell className="text-right tabular-nums text-muted-foreground">
-                  {r.last == null ? "—" : money(r.last)}
-                </TableCell>
+                {canSeeCost && (
+                  <>
+                    <TableCell className="text-right tabular-nums">
+                      {money(r.avg)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {r.last == null ? "—" : money(r.last)}
+                    </TableCell>
+                  </>
+                )}
                 <TableCell className="text-right tabular-nums">{money(r.sell)}</TableCell>
                 <TableCell className="text-right tabular-nums text-muted-foreground">
                   {qty(r.inQty)}
@@ -146,9 +177,11 @@ export default async function InventoryPage({
                     <span className="font-medium tabular-nums">{qty(r.stock)}</span>
                   )}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {money(r.valueCost)}
-                </TableCell>
+                {canSeeCost && (
+                  <TableCell className="text-right tabular-nums">
+                    {money(r.valueCost)}
+                  </TableCell>
+                )}
                 <TableCell className="text-right tabular-nums">
                   {money(r.valueSell)}
                 </TableCell>

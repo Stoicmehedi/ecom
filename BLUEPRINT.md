@@ -165,6 +165,19 @@ e-commerce storefront + online-order fulfillment.
       *(deferred 2026-07-11)*
 - [x] **POS scope** — cash-tendered → change due, Hold/park, and an 80mm printed receipt. **No
       delivery charge.** Exchange stays Phase 2. *(decided 2026-07-11)*
+- [x] **Who sees profit** — **Admin only.** Cost, profit and margin need `reports.profit`; cashiers
+      get sales, dues and stock without cost. Roles, not the reference app's second admin password.
+      *(decided 2026-07-11)*
+- [x] **Returns vs. profit** — sale returns **reduce gross profit**, not just net sales: the return
+      line carries both the price it sold at and the cost it left at, so both sides reverse. (The
+      reference app does not do this, and overstates profit.) *(decided 2026-07-11)*
+- [x] **Report export** — print view + **CSV** + real **Excel `.xlsx`**. *(decided 2026-07-11)*
+- [x] **Report set** — Overview, Sales (grouped by invoice/day/month), Profit & Loss, Product profit,
+      Dues; stock valuation stays on the Inventory screen. *(decided 2026-07-11)*
+- [x] **A bill's discount belongs to its lines.** Wherever a line's revenue matters — crediting a
+      return (§10.1a), counting product profit (§11.6) — it is `list × (subtotal − discount) /
+      subtotal`, never the list price. One helper (`paidRatio`) so the rule can't drift between
+      callers. *(decided 2026-07-11)*
 
 ---
 
@@ -424,6 +437,20 @@ Per line: `Product | Unit price | Sold qty | Available qty | Return qty | Return
 - Unlike a *purchase* return, there is **no reason/type** field — a customer bringing something
   back doesn't need a reason code.
 
+### 10.1a Pricing a return — credit what they actually paid
+
+A discount is given on the **bill**, but it is really a reduction on every line in it. A shirt listed
+at 12.00 on a bill discounted 10% went out the door at **10.80** — so 10.80 is what must be credited
+if it comes back. Crediting the 12.00 list price hands back money that was never taken, and it scales
+with the discount: 30% off means over-refunding by 30% of the returned goods, every time.
+
+So a return line is priced at `list price × (subtotal − discount) / subtotal` — the same
+apportioning the product-profit report does (§11.6), from the same helper (`paidRatio`). The return
+form shows the adjusted price and says why.
+
+**The test:** return every line of a sale and the customer's balance must land *exactly* back where
+it was before the sale. *(Fixed 2026-07-11 — it previously landed in the customer's favour.)*
+
 ### 10.2 Refund
 
 `Refund amount + method (Cash / Card / Bank / Mobile banking)`, capped at the return's value.
@@ -452,3 +479,135 @@ In one transaction:
 
 List: `Return no. | Date | Against | Customer | Items | Value | Refunded`.
 Deleting a return re-sells the goods: stock back out, `returnedQty` decremented, money re-owed.
+
+---
+
+## 11. Module requirements — Reports
+
+The reference app ships **43 report screens**. Most are slices of the same few questions, or belong
+to Phase-2 modules we don't have (salary, expenses, VAT, delivery, commission, quotations,
+installments, expiry, forecast). Studying them, everything Phase 1 owes the shopkeeper collapses
+into **five screens**, each answering a question a shop actually asks:
+
+| Report | The question it answers |
+|---|---|
+| Overview | How did the shop do over this period? |
+| Sales | What did we sell, to whom, and was it paid? |
+| Profit & Loss | Did we make money — and how much? |
+| Product profit | Which products earn, and which just sit there? |
+| Dues | Who owes us, and who do we owe? |
+
+Stock valuation is already answered by the **Inventory** screen (§7.4); we extend that with filters
+and export rather than build a near-duplicate "Stock report".
+
+### 11.1 Shared shape — every report
+
+- **Date range** with quick presets: Today · Yesterday · This week · This month · Last month ·
+  This year. Default **Today** (as the reference does). Reports over stock-on-hand (Inventory) are a
+  snapshot of *now* and take no date range.
+- **A totals row** — every numeric column foots. This is the single most-used feature of their
+  report screens and it is never optional.
+- **Export: print view, CSV, and Excel (`.xlsx`).** *(decided 2026-07-11)* Print hides the app shell
+  and lays out for A4, the same trick the 80mm receipt uses (§9.7).
+- A report is a **read-only projection**. No report screen ever writes.
+- Filters live in the URL (`?from=…&to=…`), so a filtered report is linkable, refresh-safe, and the
+  export endpoint can reuse the exact same query string.
+
+### 11.2 Who may see profit
+
+**Profit, cost, and margin are Admin-only.** *(decided 2026-07-11)* A cashier may open Sales, Dues,
+and Inventory-without-cost; the P&L and Product-profit screens are refused outright, and cost/profit
+columns are dropped from any shared screen. New permission keys: `reports.view` (the basic set) and
+`reports.profit` (anything revealing cost or margin).
+
+The reference app gates its profit report behind a **second admin password** typed into the report
+form. We get the same protection from the role system we already have, without a second secret to
+manage — so we use roles, not a password prompt.
+
+### 11.3 Overview
+
+Tiles for the period: **net sales, gross profit, margin %, invoices, items sold, average sale**,
+plus **cash in / cash out** and **new dues raised**. A small day-by-day sales bar for the range.
+Profit tiles are hidden without `reports.profit`.
+
+### 11.4 Sales report
+
+One screen replaces their Daily / Monthly / Yearly / Master / Detail sales reports — those differ
+only by **how the same rows are grouped**, so grouping is a control, not five screens:
+
+- **Group by: Invoice · Day · Month.**
+- Filters: date range, customer, payment status (Paid / Partial / Due), and the user who sold it.
+- Invoice rows: `Date | Invoice | Customer | Items | Subtotal | Discount | Total | Paid | Due |
+  Returned | Status`, linking to the sale.
+- Day/Month rows: `Period | Invoices | Items | Subtotal | Discount | Net sales | Paid | Due`.
+- `Returned` is the value already handed back against that sale, so a sale that came back doesn't
+  read as revenue that stuck.
+
+### 11.5 Profit & Loss — the one that has to be right
+
+The reference app's own formula, read off its debit/credit view:
+
+```
+Gross profit = Product sales profit − (service charges + expired products)
+Net profit   = Gross profit − expenses − salary
+```
+
+Two things are worth copying and one is worth **fixing**:
+
+- ✅ **Copy: purchases are not an expense.** Their gross profit is driven by the per-line
+  *Product sales profit*, not by "sales − purchases". Buying stock converts cash into inventory; it
+  costs you nothing until the goods are sold. Our `costAtSale` snapshot (§9.5) gives us exactly this.
+- ✅ **Copy: the P&L is a period cash-and-margin summary,** with purchases and payments shown
+  alongside for context even though they don't enter the profit line.
+- ❌ **Fix: their returns never reduce gross profit.** A sale return cuts their *net sales* but their
+  gross profit still counts the margin on goods that came back — so profit is overstated every time
+  something is returned. We net returns out properly: our `SaleReturnItem` carries both the `price`
+  it was sold at and the `cost` it left at, so both sides reverse cleanly. *(decided 2026-07-11)*
+
+Ours:
+
+```
+Net sales    = gross sales − sale returns (at the price they sold for)
+Net COGS     = cost of goods sold − cost of goods returned (at costAtSale)
+Gross profit = net sales − net COGS
+Margin %     = gross profit / net sales
+```
+
+> Their "%" badge is **markup on cost** (profit ÷ cost), not margin on sales. We show **margin on
+> net sales** and label it, because that is the number that compares against anything else.
+
+Shown as: a **Revenue** block (gross sales, − returns, = net sales), a **Cost of goods** block
+(COGS, − returned cost, = net COGS), then **gross profit + margin %**. Below, an informational
+**Cash movement** block (purchases, purchase returns, supplier payments, customer receipts, refunds
+paid out) — clearly separated, so nobody mistakes cash for profit. Expenses and salary are Phase 2;
+until then gross profit **is** net profit, and we say so on screen rather than printing a fake zero.
+
+### 11.6 Product profit
+
+Per variant over the range: `Product | SKU | Sold qty | Returned qty | Net qty | Sales value |
+Cost value | Profit | Margin %`, sorted by profit. Filters: category, brand. Admin-only.
+
+**The order discount has to be shared out across the lines.** A discount is given on the *bill*,
+not on a product — so a line's true revenue is `qty × price − (order discount × this line's share of
+the subtotal)`. Skip that and the product profits sum to more than §11.5's gross profit by exactly
+the discount given, and the two reports quietly disagree. Apportioned, the totals reconcile
+**exactly** — same numbers, different cut. That reconciliation is the test that either report is
+right.
+
+### 11.7 Dues
+
+Both directions on one screen, two tabs:
+
+- **Receivable** — what customers owe. Per unpaid/partial sale: `Date | Invoice | Customer | Phone |
+  Total | Paid | Due | Age (days)`, with a per-customer total. Links to the customer ledger (§8.3).
+- **Payable** — what we owe suppliers. Per unpaid/partial purchase: `Date | Purchase | Supplier |
+  Total | Paid | Due | Age (days)`, with a per-supplier total.
+
+**Age** is ours, not theirs — a due is only a problem once it is old, and neither of their due
+reports shows it.
+
+### 11.8 Out of scope (Phase 2)
+
+Expense, salary, VAT, delivery-charge, commission, quotation, installment, exchange, stock
+adjustment, expiry and forecast reports — every one of them depends on a Phase-2 module that does
+not exist yet. Their "Summary" (a pure cash-in/cash-out sheet) is folded into §11.5's cash block.

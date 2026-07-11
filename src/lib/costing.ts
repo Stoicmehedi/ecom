@@ -58,6 +58,24 @@ export function resolveDiscount(
   return round2(Math.min(Math.max(raw, 0), subtotal));
 }
 
+/**
+ * What a sale line *actually* sold for, once the bill's discount is shared out.
+ *
+ * A discount is given on the whole bill, but it is really a reduction on every
+ * line in it. A shirt listed at 12.00 on a bill discounted 10% went out the door
+ * at 10.80 — so that is what it must be credited at if it comes back, and what it
+ * earned when we count profit. Because the discount is apportioned in proportion
+ * to each line's value, every line on a bill shares the same ratio.
+ *
+ * Returns the fraction of list price the customer really paid (1 = no discount).
+ */
+export function paidRatio(subtotal: number, discount: number): number {
+  if (subtotal <= 0) return 1;
+  const ratio = (subtotal - discount) / subtotal;
+  // A discount can't exceed the bill, but never let a bad row invert the price.
+  return Math.min(Math.max(ratio, 0), 1);
+}
+
 /** Payment status implied by what's still owed. */
 export function docStatus(total: number, paid: number): "PAID" | "PARTIAL" | "DUE" {
   if (paid >= total - 0.005) return "PAID";

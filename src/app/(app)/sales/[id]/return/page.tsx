@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { num, shortDate } from "@/lib/format";
+import { paidRatio, round2 } from "@/lib/costing";
 import { SaleReturnForm } from "./return-form";
 
 export default async function SaleReturnPage({
@@ -28,12 +29,23 @@ export default async function SaleReturnPage({
 
   const isWalkIn = !sale.customerId || (sale.customer?.isWalkIn ?? false);
 
+  // Price the lines at what the customer actually paid, after the bill's
+  // discount is shared out — the same figure the server will credit.
+  const ratio = paidRatio(num(sale.subtotal), num(sale.discount));
+  const discounted = ratio < 1;
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <PageHeader
         title={`Return against ${sale.invoiceNo}`}
         description="Take goods back from a customer. Saving puts them back into stock."
       />
+      {discounted && (
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+          This sale was discounted, so each item is credited at what the customer
+          actually paid for it — not at its list price.
+        </p>
+      )}
       <SaleReturnForm
         saleId={sale.id}
         invoiceNo={sale.invoiceNo}
@@ -47,7 +59,7 @@ export default async function SaleReturnPage({
             ? `${i.variant.product.name} — ${i.variant.label}`
             : i.variant.product.name,
           sku: i.variant.sku,
-          price: num(i.price),
+          price: round2(num(i.price) * ratio),
           soldQty: num(i.qty),
           returnedQty: num(i.returnedQty),
           qty: 0,

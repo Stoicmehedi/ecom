@@ -3,7 +3,13 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { avgAfterPurchase, avgAfterReversal, round2, round3 } from "@/lib/costing";
+import {
+  avgAfterPurchase,
+  avgAfterReversal,
+  paidRatio,
+  round2,
+  round3,
+} from "@/lib/costing";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
@@ -71,10 +77,17 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
     }
   }
 
+  // Credit the goods at what the customer actually paid, not at the list price.
+  // A bill discounted 10% sold a 12.00 shirt for 10.80 — hand back 12.00 and we
+  // have refunded money that was never taken. Because the discount is shared out
+  // in proportion to line value, every line on this bill carries the same ratio.
+  const ratio = paidRatio(Number(sale.subtotal), Number(sale.discount));
+  const netPrice = (item: { price: unknown }) => Number(item.price) * ratio;
+
   const total = round2(
     lines.reduce((s, l) => {
       const item = byId.get(l.saleItemId)!;
-      return s + l.qty * Number(item.price);
+      return s + l.qty * netPrice(item);
     }, 0),
   );
 
@@ -107,7 +120,7 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
 
       for (const line of lines) {
         const item = byId.get(line.saleItemId)!;
-        const price = Number(item.price);
+        const price = netPrice(item); // what it actually sold for
         const cost = Number(item.costAtSale);
 
         await tx.saleReturnItem.create({

@@ -10,12 +10,15 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 // Small, sensible permission set for a cashier (module.action keys).
+// Note "reports.view" without "reports.profit": a cashier sees sales, dues and
+// stock, but never cost or margin (BLUEPRINT §11.2).
 const CASHIER_PERMISSIONS = [
   "pos.access",
   "sales.create",
   "sales.view",
   "products.view",
   "contacts.view",
+  "reports.view",
 ];
 
 async function main() {
