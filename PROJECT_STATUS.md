@@ -268,6 +268,39 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   cashier: profit tabs hidden, profit pages refused, and the export API returns **403** (and 401
   signed-out). Typecheck + production build pass.
 
+- **Re-studied the Products module against the reference app — it has a large gap.** Products was the
+  **first** module built, *before* the module-build protocol existed, so it never got the
+  field-by-field study every later module got. Written up as [`BLUEPRINT.md`](./BLUEPRINT.md) **§12
+  (Products, round 2)**. Headlines:
+  - **Variants must be generated, not typed.** They have **Attribute Categories, Attributes and
+    Colors** as masters plus a **Generate variants** button (size × colour → the whole grid) and an
+    **Apply to all** bulk-fill row. We make you hand-add every variant row. For a clothing shop this
+    is the difference between usable and not. We have none of those three masters.
+  - **Fields we don't have:** alert quantity (per-product low-stock threshold — we hardcode 5),
+    **minimum sale price** (a floor the POS must enforce), wholesale quantity, per-variant standing
+    discount, product code, short description (`Product` has **no description column at all**), sort
+    index, image upload (ours is a pasted URL).
+  - **`ProductVariant.wholesalePrice` is dead code** — the column exists and *nothing reads it*.
+    Wire it up with a qty threshold, or drop it.
+  - **`Product.isActive` has no UI** — so a product that has history (delete is blocked) currently
+    **cannot be retired at all**.
+  - **The product list is bare:** no search, no filters, no enable/disable, no duplicate, no import,
+    no export, no barcode/label printing.
+  - §12.7 raises the decisions this forces — including the **EAN-13 barcode** question that §6 has
+    been parking under *"decide when building barcode/label printing"* (that time is now), and
+    **discount precedence** (variant discount vs. customer-group discount vs. manual bill discount —
+    a shop that stacks all three by accident gives the store away).
+
+- ⚠️ **Process incident — a record was created in the reference app's live account.** Its Add-Product
+  screen is a two-step wizard; I assumed **"Next"** was client-side navigation to step 2, but it
+  **saves**. A product (`ZZ-READONLY-PROBE`) was created and **immediately deleted** — it had no
+  stock, barcode, purchase, sale or ledger entry, so nothing else moved. The information was then
+  obtained with zero risk by reading an **existing** product's edit page, which is what should have
+  happened first.
+  **Rule tightened (see [`AGENTS.md`](./AGENTS.md)):** on the reference app, only ever open *existing*
+  records and list/report pages. Do not fill a create form and do not click *any* button on one —
+  "Next"/"Continue"/"Save & Continue" can all persist.
+
 ---
 
 ## 5. Current state
@@ -278,7 +311,12 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ✅ **Auth + login + app shell + dashboard working**; build passes; routes protected.
 - ✅ **shadcn/ui + MPoS emerald theme** in place (11 components).
 - ✅ **Seed data present**: Main Store branch, Admin/Cashier roles, admin user, Cash account.
-- ✅ **Login browser-verified**; **Products/Catalog module done** (Categories, Brands, Units, Products+Variants — full CRUD).
+- 🟡 **Products/Catalog — built, but INCOMPLETE.** Categories, Brands, Units, Products+Variants (full
+  CRUD) all work. But it was built before the module protocol existed and never got the
+  field-by-field study: **no attribute/colour masters, no variant generator, no alert qty, no minimum
+  sale price, no product search/filters/disable/duplicate, no barcode printing, no import.**
+  See `BLUEPRINT.md` **§12** for the full gap and build order. **This is the biggest known hole in
+  the app.**
 - ✅ **Category autocomplete** works (parent-scoped suggestions + reuse-a-name across branches).
 - ✅ **Session + module build protocol** documented in `AGENTS.md` (loaded every session via `CLAUDE.md`).
 - ✅ **Purchases & Stock module done** — suppliers (+ ledger & due payment), purchase entry with
@@ -322,11 +360,15 @@ deleted by the user. Wipe and re-seed for a clean slate.
 
 ## 6. Next steps (resume here)
 
-**Phase 1 is complete and reviewed.** Nothing is half-built. Pick the next thing deliberately:
+**Phase 1 runs end to end and is reviewed — but Products has a real hole in it.** Do that before
+Phase 2: everything downstream (POS, purchases, stock) sits on top of the product model.
 
-1. **Settle the `Sale.due` question** (see §5) — a small modelling decision, not a bug.
-2. **Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Suggested sequence, each a module
-   built to protocol (study the reference app → write it into `BLUEPRINT.md` → settle §6 → build):
+1. **Products, round 2 — `BLUEPRINT.md` §12.** Start with **§12.2 (Attributes + Colors + Generate
+   variants)**; it is the one that decides whether a clothing shop can actually use the app. Settle
+   the §12.7 decisions first — especially **EAN-13 barcodes** and **discount precedence**.
+2. **Settle the `Sale.due` question** (see §5) — a small modelling decision, not a bug.
+3. **Then Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each a module built to protocol
+   (study the reference app → write it into `BLUEPRINT.md` → settle §6 → build):
    - **Expenses + accounts** — the biggest hole in the P&L. Gross profit becomes a true *net* profit
      only once expenses and salaries post against it; the P&L screen already has the slot for it.
    - **Stock adjustments** — damage, loss, corrections. Today stock can only move via buy/sell/return.

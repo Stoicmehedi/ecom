@@ -611,3 +611,113 @@ reports shows it.
 Expense, salary, VAT, delivery-charge, commission, quotation, installment, exchange, stock
 adjustment, expiry and forecast reports — every one of them depends on a Phase-2 module that does
 not exist yet. Their "Summary" (a pure cash-in/cash-out sheet) is folded into §11.5's cash block.
+
+---
+
+## 12. Module requirements — Products, round 2
+
+> **Why there is a round 2.** Products was the first module we built — *before* the module-build
+> protocol existed. It never got the field-by-field study every later module got. Going back over the
+> reference app's product module properly turned up a large gap: their Products menu has **12**
+> entries, we built **4**, and the shape of a variant is fundamentally different. This section is the
+> requirements list that should have existed the first time.
+
+### 12.1 What we already have
+
+Categories (3-level, with the quick-add branch dialog they don't have), Brands, Units, and
+Products + Variants with SKU/barcode, cost, selling price, opening stock, and safe delete. The
+costing, stock and sales machinery hanging off a variant is sound — this section adds to it and does
+not rework it.
+
+### 12.2 Variants must be **generated**, not typed — the big one
+
+Theirs: pick an **Attribute Category** (e.g. Size), tick the **Attributes** on it (30, 32, 34, 36,
+38, 40), pick the **Colors**, press **Generate Variant** → the full grid appears, one row per
+combination. Then an **Apply to All** row bulk-fills price and stock down every row.
+
+Ours: you hand-add each variant row. For a belt in six sizes that is six manual rows; for six sizes ×
+four colours it is twenty-four. **This is the difference between a clothing shop being able to use
+the app and not.**
+
+So we need three masters we do not have at all:
+
+- **Attribute Category** — a named axis (Size, Fit, Material).
+- **Attribute** — the values on that axis (30/32/34…, Slim/Regular), belonging to one category.
+- **Color** — a separate axis in their model, with a name (and a swatch is the obvious extension).
+
+…plus **Generate variants** = the cartesian product of the chosen attributes × chosen colours, and
+**Apply to all** for the price/stock grid. Regenerating must **never** orphan a variant that already
+has stock or sales history — existing rows are matched and kept, only genuinely new combinations are
+added, and a row that would be removed but has history is refused (the same rule that already guards
+product delete).
+
+Our `ProductVariant.attributes` JSON column is already the right home for `{ size: "32", color:
+"Red" }`; today nothing writes it.
+
+### 12.3 Fields on the product we simply don't have
+
+| Field | What it is for | Decide |
+|---|---|---|
+| **Alert quantity** | per-product low-stock threshold | replaces the hardcoded `LOW_STOCK = 5`; the Inventory low-stock filter and any low-stock report read it |
+| **Minimum sale price** | a price floor | **the POS must refuse to sell below it** — it is a rule, not a hint |
+| **Wholesale quantity** | the qty at which the wholesale price applies | we already carry `ProductVariant.wholesalePrice` and **nothing reads it** — it is dead half-built code today. Either wire it up or drop the column |
+| **Discount % / amount → after-discount price** | a standing per-variant discount and the effective price it implies | interacts with the customer-group discount (§8.2) — settle the precedence, see §12.7 |
+| **Product code** | a second identifier alongside SKU | |
+| **Short description** | rich text | `Product` has **no description column at all** today |
+| **Sort index** | display order, on the product and per variant | drives POS tile order |
+| **Barcode** | **mandatory per variant** for them; optional for us | see the EAN-13 decision, §12.7 |
+| **Product image** | **required** for them, with a real upload | ours is an optional pasted URL — no upload path exists |
+
+Deferred, and correctly so: **VAT/SD group** (rides with the VAT decision) and **Cross products**
+(cross-sell — Phase 2).
+
+### 12.4 Missing master — Product groups
+
+A grouping dimension beside category, used to filter the product list and several reports.
+
+### 12.5 The lifecycle around the form
+
+Our product list is a bare table. Theirs carries the whole working life of a product:
+
+- **Search** by name / SKU / barcode, and **filter** by brand, category, product group, and status.
+- **Disable / enable** — `Product.isActive` exists in our schema with **no UI to set it**. A product
+  you no longer stock should stop appearing at the POS without being deleted (deleting is blocked
+  once it has history anyway, so today there is no way to retire a product at all).
+- **Duplicate** — the fastest way to add the next near-identical product.
+- **Import** products in bulk, and **export** the list (their PDF / Excel / CSV / Print).
+  Import is what makes loading a real opening catalogue survivable.
+- **Barcode / label printing** — a per-product action *and* a dedicated print sheet.
+
+### 12.6 What we deliberately still do better
+
+Their category master is three separate pages (`/category`, `/sub-category`, `/child-category`); our
+one Add-branch dialog with parent-scoped autocomplete creates the whole path at once. Keep it. The
+same instinct applies here: their attribute/colour masters are three more pages — ours should be one
+screen with the axes on it.
+
+### 12.7 Open decisions this module forces
+
+- [ ] **Auto-generate scannable barcodes (EAN-13)?** — §6 has been carrying this as *"decide when
+      building barcode/label printing."* That is now. If barcodes become mandatory per variant
+      (§12.3), they have to come from somewhere.
+- [ ] **Discount precedence** — a variant's standing discount vs. the customer group's discount
+      (§8.2) vs. the cashier's manual bill discount. Do they stack, or does one win? *(A shop that
+      stacks all three by accident gives the store away.)*
+- [ ] **Minimum sale price** — hard block at POS, or admin override with a warning?
+- [ ] **Image upload** — where do files live (local disk under `/public`, or object storage)? And is
+      an image really mandatory, as it is for them?
+- [ ] **Wholesale pricing** — wire up `wholesalePrice` + a qty threshold, or delete the column.
+      Leaving a dead money field in the schema is the worst of the three options.
+- [ ] **Per-language product names** (their English / Bengali tabs) — ties to the standing i18n
+      decision in §6.
+
+### 12.8 Suggested build order
+
+1. **Attributes + Colors + Generate variants** (§12.2) — the one that decides whether the app is
+   usable for a real clothing shop.
+2. **Alert quantity, minimum sale price, wholesale qty** (§12.3) — small fields, real rules, and one
+   of them is already dead code in our schema.
+3. **List: search, filters, disable/enable, duplicate** (§12.5) — daily ergonomics.
+4. **Barcode / label printing** — and settle EAN-13 with it.
+5. **Import / export** — needed the first time a real catalogue is loaded.
+6. Product groups, description, sort index, image upload.

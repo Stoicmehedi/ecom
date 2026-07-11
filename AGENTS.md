@@ -28,9 +28,19 @@ Do not invent a module's shape and wait to be corrected. Before writing code for
    downstream (stock movements, ledgers, payments).
 
    > **STRICTLY READ-ONLY.** The reference account holds real production business data. Never
-   > create, edit, or delete a record there, and never submit a form. Opening an "Add" dialog to
-   > read its fields is allowed — read it, then close it without saving. We examine; we build our
-   > own.
+   > create, edit, or delete a record there, and never submit a form. We examine; we build our own.
+   >
+   > **Read existing records, not new ones.** To learn a form's fields, open the **edit page of a
+   > record that already exists** — every field is right there, at zero risk. That is the default and
+   > it is almost always sufficient.
+   >
+   > **Never click a button on a create form.** Not "Save", and *not* "Next", "Continue", or
+   > "Save & Continue" either. A multi-step wizard can **persist step 1 when you click "Next"** —
+   > this has already happened once (2026-07-11: a product was created in the live account and had to
+   > be deleted). A button that looks like navigation is not evidence that it is. You may open a
+   > create form and *read* it; you may not type into it and you may not click through it.
+   >
+   > If some field is genuinely only visible mid-wizard, **stop and ask the user** — do not click.
 2. **Write it up in [`BLUEPRINT.md`](./BLUEPRINT.md)** as that module's requirements list, in our
    own words, before implementing.
 3. **Check `BLUEPRINT.md` §6** for any open decision this module touches and settle it with the
