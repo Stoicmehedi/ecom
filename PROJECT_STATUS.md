@@ -342,6 +342,16 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   and skipped the malformed row without creating anything. Typecheck + production build pass; no new
   lint findings.
 
+- **POS grid now shows products, not variants** (`BLUEPRINT.md` §12.10). Generating variants exposed
+  the flaw immediately: the grid was a tile per *variant*, so Field Tee alone filled it with six
+  near-identical tiles and the catalogue was unreadable. One tile per **product** now — price range,
+  total stock, option count — and tapping a variable one opens a **size × colour picker** with the
+  price and stock in each cell (falling back to a list when there is only one axis). Out-of-stock
+  cells are shown and disabled, not hidden. **A scan still bypasses the picker entirely**: an exact
+  barcode or SKU names one variant and drops straight into the cart. Browser-verified: 18 variant
+  tiles collapsed to 5 product tiles; tapping M/Red added M/Red; scanning L/Navy's barcode added it
+  with no dialog; simple products still add on one tap.
+
 ---
 
 ## 5. Current state

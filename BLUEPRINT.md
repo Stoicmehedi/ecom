@@ -776,3 +776,21 @@ would expect.
   sales and returns, each of which carries a cost and an audit trail. Letting a spreadsheet set it
   would put goods on the shelf that nothing ever paid for, and the weighted-average cost — and so
   every profit figure — would be a fiction.
+
+### 12.10 The POS grid shows products, not variants *(built 2026-07-11)*
+
+A tile per **variant** does not survive a real catalogue: six sizes in four colours is twenty-four
+tiles before the shop has a second product, and the cashier reads the same product name twenty-four
+times to find one of them. So the grid shows **one tile per product** — name, price (a range when the
+variants differ), total stock across variants, and how many options there are.
+
+- **Simple product** → tapping it adds it, as before. There is no choice to make.
+- **Variable product** → tapping it opens a **picker**. When every variant sits on both axes, the
+  picker is a **size × colour matrix** with the price and stock in each cell, because that is the
+  shape of the shelf the cashier is picturing. One axis, or hand-typed labels, falls back to a plain
+  list — still one tap. Out-of-stock cells are **shown and disabled**, never hidden: *"we don't have
+  that size"* is an answer the cashier has to be able to give.
+- **A scan never opens the picker.** A barcode or an exact SKU names one variant outright, so it goes
+  straight into the cart. The fast path must not get slower in order to make the browse path better.
+- Searching a SKU or barcode *fragment* pulls up the whole **product**, so the sizes are still there
+  to choose between; only an *exact* match short-circuits.

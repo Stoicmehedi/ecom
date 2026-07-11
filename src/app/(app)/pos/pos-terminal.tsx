@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { priceLine } from "@/lib/pricing";
 import { paidRatio } from "@/lib/costing";
 import { checkout, holdSale, resumeHeldSale, discardHeldSale } from "./actions";
-import { searchPos, type PosHit } from "./search";
+import { searchPos, type PosHit, type PosProduct } from "./search";
+import { VariantPicker, needsPicker } from "./variant-picker";
 import { quickAddCustomer } from "../customers/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,7 +77,7 @@ export function PosTerminal({
 }: {
   customers: CustomerOption[];
   accounts: AccountOption[];
-  initialProducts: PosHit[];
+  initialProducts: PosProduct[];
   heldSales: HeldSaleOption[];
 }) {
   const router = useRouter();
@@ -89,7 +90,8 @@ export function PosTerminal({
   const [discountValue, setDiscountValue] = useState(0);
 
   const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<PosHit[]>(initialProducts);
+  const [hits, setHits] = useState<PosProduct[]>(initialProducts);
+  const [picking, setPicking] = useState<PosProduct | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   // A customer's group rate is NOT pre-filled as a bill discount any more — it is
@@ -139,6 +141,19 @@ export function PosTerminal({
     });
   }
 
+  /**
+   * Tapping a tile. One variant means there is no choice to make, so it goes
+   * straight in; more than one opens the picker. A scan never lands here — it
+   * names the variant outright and skips this entirely.
+   */
+  function tapProduct(p: PosProduct) {
+    if (!needsPicker(p)) {
+      addLine(p.variants[0]);
+      return;
+    }
+    setPicking(p);
+  }
+
   // Search. An exact barcode/SKU hit drops straight into the cart — that's a scan.
   useEffect(() => {
     const term = query.trim();
@@ -148,7 +163,7 @@ export function PosTerminal({
     }
     let cancelled = false;
     const t = setTimeout(async () => {
-      const { hits: found, exact } = await searchPos(term);
+      const { products: found, exact } = await searchPos(term);
       if (cancelled) return;
       if (exact) {
         addLine(exact);
@@ -382,22 +397,29 @@ export function PosTerminal({
           )}
           {hits.map((h) => {
             const out = h.stockQty <= 0;
+            const many = needsPicker(h);
+            const price =
+              h.minPrice === h.maxPrice
+                ? h.minPrice.toFixed(2)
+                : `${h.minPrice.toFixed(2)}–${h.maxPrice.toFixed(2)}`;
             return (
               <button
-                key={h.variantId}
+                key={h.productId}
                 type="button"
                 disabled={out}
-                onClick={() => addLine(h)}
+                onClick={() => tapProduct(h)}
                 className={`rounded-lg border p-3 text-left transition ${
                   out
                     ? "cursor-not-allowed opacity-50"
                     : "hover:border-primary hover:bg-accent"
                 }`}
               >
-                <p className="line-clamp-2 text-sm font-medium">{h.label}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{h.sku}</p>
-                <div className="mt-2 flex items-baseline justify-between">
-                  <span className="font-semibold tabular-nums">{h.price.toFixed(2)}</span>
+                <p className="line-clamp-2 text-sm font-medium">{h.name}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {many ? `${h.variants.length} options` : h.variants[0].sku}
+                </p>
+                <div className="mt-2 flex items-baseline justify-between gap-2">
+                  <span className="font-semibold tabular-nums">{price}</span>
                   <span
                     className={`text-xs tabular-nums ${
                       out ? "text-destructive" : "text-muted-foreground"
@@ -411,6 +433,15 @@ export function PosTerminal({
           })}
         </div>
       </div>
+
+      <VariantPicker
+        product={picking}
+        onClose={() => setPicking(null)}
+        onPick={(v) => {
+          addLine(v);
+          setPicking(null);
+        }}
+      />
 
       {/* Right: the cart */}
       <div className="flex h-fit flex-col gap-3 rounded-lg border p-4 lg:sticky lg:top-4">
