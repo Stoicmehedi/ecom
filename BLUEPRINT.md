@@ -146,3 +146,116 @@ e-commerce storefront + online-order fulfillment.
       barcode/label printing.**
 - [ ] **Bangla + English i18n** — English-only for now; revisit before it becomes costly.
       **Decide when a module first needs localized UI.**
+- [x] **Purchase numbering** — our own unique `PUR-00001` sequence, **plus** a separate optional,
+      non-unique "supplier invoice no." field. *(decided 2026-07-11)*
+- [x] **Purchase edit/delete** — allowed only while none of the purchased stock has been sold;
+      blocked afterwards, to stop stock/cost drift. *(decided 2026-07-11)*
+- [x] **Split payments on a purchase** — yes, multiple `method + account + amount` rows.
+      *(decided 2026-07-11)*
+- [x] **Purchases module scope** — suppliers, purchase entry, list/detail, stock view, purchase
+      returns, and supplier due-payment. *(decided 2026-07-11)*
+
+---
+
+## 7. Module requirements — Purchases & Stock
+
+> Written before building, from a read-only study of the reference app's purchase flow
+> (2026-07-11). Our own words, our own UI. Domain logic only.
+
+### 7.1 Suppliers (prerequisite)
+
+Purchases need a supplier, and we have no Contacts UI yet. Build the minimum:
+
+| Field | Required | Notes |
+|---|---|---|
+| Name | ✅ | |
+| Phone / mobile | ✅ | |
+| Business name | — | trading name, distinct from contact person |
+| Email, Address | — | |
+| Opening balance (due) | — | what we already owe them on day 1 |
+| Opening advance | — | what we've prepaid them |
+| Note | — | |
+
+List columns: Name, Phone, Total purchased, Total paid, **Total due**.
+(Reference also has Area / customer-group / due-dismiss — **deferred**, not our scope.)
+
+### 7.2 Purchase entry — the core flow
+
+**Header**
+
+| Field | Required | Behaviour |
+|---|---|---|
+| Supplier | ✅ | picker + inline quick-add |
+| Purchase date | ✅ | defaults to today |
+| Purchase no. | auto | **our own** unique sequence (e.g. `PUR-00001`) |
+| Supplier invoice no. | — | free text, **not unique** — the supplier's own number; may legitimately repeat |
+| Due date | — | when the payable falls due |
+| Reference, Note | — | |
+| Attachment | — | **deferred** (no file storage yet) |
+
+**Line items** — search by name / SKU / barcode → adds a row per **variant**:
+
+`Product (variant) | Qty | Purchase price | Line subtotal`
+
+- Qty allows decimals (units like kg). Must be **> 0**.
+- Purchase price **pre-fills from the variant's current cost** but is editable — this purchase's actual price.
+- Line subtotal = qty × purchase price.
+- Same variant scanned twice → increment the existing row, don't duplicate it.
+- A purchase must have **at least one line**.
+
+**Totals & payment**
+
+- Subtotal = Σ line subtotals
+- Order discount — **Amount or Percentage** (a toggle; percentage resolves to an amount)
+- Grand total = subtotal − discount
+- **Split payments**: one or more rows of `Method (Cash / Mobile banking / Card / Bank) + Account + Amount`
+- Paid = Σ payment amounts; **Due = grand total − paid** (may be 0, partial, or full credit)
+- Status derives from due: `PAID` / `PARTIAL` / `DUE`
+
+### 7.3 What saving a purchase MUST do (downstream effects)
+
+This is the part that matters. In one transaction:
+
+1. **Increase variant stock** by the purchased qty.
+2. **Recompute the variant's weighted-average cost:**
+   `newAvg = (oldQty × oldAvg + purchaseQty × purchasePrice) / (oldQty + purchaseQty)`
+   Guard the zero/negative-stock denominator (fall back to the purchase price).
+3. **Record the last purchase price** on the variant. The reference tracks *both* — average
+   purchase price (for valuation and profit) **and** last purchase price (for reordering).
+   → our `ProductVariant` needs a `lastPurchasePrice` alongside the weighted-average `purchasePrice`.
+4. **Write a `StockMovement`** row (type `PURCHASE`, +qty, ref = purchase) — the audit trail.
+5. **Post the payable**: increase the supplier's due by the grand total, decrease it by what was paid.
+6. **Record each `Payment`** (direction `OUT`) against its account.
+
+### 7.4 Stock / inventory view
+
+Per-product (and drill-down per-variant), matching what the reference exposes:
+
+`Product | Avg. purchase price | Last purchase price | Selling price | In qty | Out qty | Stock | Stock value @ cost | Stock value @ selling`
+
+- Stock = In − Out, derived from stock movements (movements are the ledger; `stockQty` is the cache).
+- Stock value @ cost = stock × avg purchase price. *(Verified against their numbers: 4 × 650 = 2600 ✅)*
+- Also worth having: a **low-stock** filter.
+
+### 7.5 Purchase return
+
+Return against an existing purchase:
+
+- Supplier is fixed (inherited from the purchase); return date; **return type is required**
+  (a small master: Damaged / Wrong item / Excess — seeded).
+- Per line: shows `Purchased qty | Used qty | Available qty | Return qty`.
+- **Hard rule: return qty ≤ available qty**, where available = purchased − already sold/consumed.
+  You cannot return stock you've already sold.
+- Effects: **decrease** variant stock, write a `PURCHASE_RETURN` movement, reduce the supplier
+  payable, and optionally record a refund received (`Cash / Mobile banking / Card / Bank`).
+
+### 7.6 Editing / deleting a purchase
+
+The reference allows both. Both must **fully reverse** the original stock movements and payable
+before re-applying — otherwise stock and cost silently drift. Safer stance for us: block edit/delete
+once any of the purchased stock has been sold (same guard we already use on product delete).
+
+### 7.7 Explicitly out of scope for this module
+
+Purchase orders (separate flow), stock adjustments, due-dismiss/write-off, supplier advances,
+attachments, areas & contact groups. These land in Phase 2.

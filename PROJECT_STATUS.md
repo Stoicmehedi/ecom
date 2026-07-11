@@ -4,7 +4,7 @@
 > account — can understand the full state without relying on private notes. **Update this file after
 > every task.**
 
-**Last updated:** 2026-07-09
+**Last updated:** 2026-07-11
 **Repo:** https://github.com/Stoicmehedi/ecom (private)
 **App name:** MPoS
 
@@ -119,6 +119,35 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   - **Module protocol** — before building a module, study the reference app's equivalent module with Playwright (fields, mandatory vs optional, validation, workflow, downstream effects), write it up as a requirements list in `BLUEPRINT.md`, settle any §6 open decision it touches, *then* build. Copy the process, never the interface.
   - Restated the hard rules (original UI, clean repo, never delete local files).
 
+### 2026-07-11
+- **Studied the reference app's purchase module** (read-only, Playwright) and wrote it up as
+  [`BLUEPRINT.md`](./BLUEPRINT.md) **§7 — Purchases & Stock**. Key findings: they track **both** an
+  average purchase price (weighted-average cost) *and* a last purchase price per variant; a purchase
+  return is capped at `purchased − already-used` qty; supplier invoice numbers are **not unique**.
+- **Settled §6 open decisions** for this module: own `PUR-00001` sequence + separate non-unique
+  supplier invoice no.; edit/delete blocked once stock is sold; split payments supported.
+- **Schema** (migration `purchases_stock`): `ProductVariant.lastPurchasePrice`;
+  `Purchase.purchaseNo` (unique) + `supplierInvoiceNo` + `discountType`/`discountValue`;
+  `PurchaseItem.returnedQty`; new `ReturnType`, `PurchaseReturn`, `PurchaseReturnItem`;
+  `Contact.businessName`/`note`/`isActive`; `Payment.purchaseReturnId`. Seeded Bank account +
+  4 return reasons.
+- **Built the Purchases & Stock module:**
+  - `src/lib/costing.ts` — weighted-average cost in/out, discount resolution, doc status.
+  - **Suppliers**: list + CRUD dialog, quick-add from the purchase form, per-supplier **ledger page**
+    (running balance) with a **Pay due** action.
+  - **Purchases**: list, detail, new/edit form (live product search by name/SKU/barcode, editable
+    qty & price, order discount amount-or-percent, **split payments**), safe delete.
+  - **Purchase returns**: per-purchase return form (return qty capped at `purchased − returned` and
+    at stock on hand), returns list with delete/restore.
+  - **Inventory**: per-variant stock with avg cost, last cost, in/out, and stock value at cost and at
+    selling price; low-stock filter.
+- **Browser-verified the whole chain end-to-end** (numbers checked against the DB):
+  buy 10 @ 8.00 on top of 20 @ 5.00 → stock **30**, weighted-average cost **6.00**
+  (`(20×5 + 10×8)/30`), last cost 8.00, supplier due 30.00, cash −50.
+  Return 2 → stock **28**, avg cost **5.86** (`(30×6 − 2×8)/28`), due 14.00. Pay due → 0.00.
+  Return qty over the cap is clamped; deleting a purchase that has a return is refused.
+  Typecheck + production build pass.
+
 ---
 
 ## 5. Current state
@@ -132,17 +161,32 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ✅ **Login browser-verified**; **Products/Catalog module done** (Categories, Brands, Units, Products+Variants — full CRUD).
 - ✅ **Category autocomplete** works (parent-scoped suggestions + reuse-a-name across branches).
 - ✅ **Session + module build protocol** documented in `AGENTS.md` (loaded every session via `CLAUDE.md`).
+- ✅ **Purchases & Stock module done** — suppliers (+ ledger & due payment), purchase entry with
+  weighted-average costing, purchase returns, inventory view. Browser-verified; build passes.
+- ✅ `BLUEPRINT.md` §7 holds the Purchases requirements (written before building, per protocol).
 - ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add later for edge-level defense-in-depth).
-- ⬜ Purchases, POS, Sales, Reports modules not built yet.
-- ⬜ `BLUEPRINT.md` has no per-module requirements lists yet — these are now written *before* each module is built (see `AGENTS.md` → Module build protocol).
+- ⬜ POS, Sales, Customers, Reports modules not built yet.
+- ⬜ Deferred to Phase 2 (out of scope for the purchases module): purchase orders, stock
+  adjustments, supplier advances/due-dismiss, attachments, areas & contact groups.
 
 **Dev login:** `admin` / `admin123`
 
+**Dev data now in the DB** (from end-to-end verification): supplier *Rahim Traders*, purchase
+`PUR-00001` (10 × 8.00), return `PRT-00001` (2 units) → Classic Tee at **28 in stock, avg cost 5.86**.
+Wipe and re-seed if you want a clean slate.
+
 ## 6. Next steps (resume here)
 
-1. **Purchases + Stock** module. Follow the module build protocol in `AGENTS.md`: study the reference app's purchase module in the browser first (fields, mandatory vs optional, validation, what saving does to stock and supplier ledgers), write it into `BLUEPRINT.md`, then build. Purchase entry (supplier + line items) must **increase variant stock** and compute weighted-average cost; supplier payables; plus a Stock/Inventory view.
-2. **POS checkout**: scan/search → cart → discount/VAT → payment → **decrement stock** + record sale + receipt; Hold.
-3. **Sales & Returns**, then **core reports** (see `BLUEPRINT.md` §5).
+1. **POS checkout** — the next module. Follow the module build protocol in `AGENTS.md`: study the
+   reference app's POS/sale screen first (fields, mandatory vs optional, validation, what saving does
+   to stock, customer dues, and accounts), write it into `BLUEPRINT.md` §8, settle any §6 open
+   decision it touches (the **receipt format** is already decided: 80mm thermal + optional A4), then
+   build. Must: scan/search → cart → discount/VAT → payment → **decrement stock**, record the sale
+   with `costAtSale` (we now have a real weighted-average cost to snapshot), post customer dues, and
+   print. Support Hold/park.
+2. **Customers** — mirror the Suppliers module (list, ledger, due collection); POS needs a customer
+   picker with a walk-in default.
+3. **Sales list & sale returns**, then **core reports** (see `BLUEPRINT.md` §5).
 
 > The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
 > live in the private session notes. If they aren't in context, ask the user for them.

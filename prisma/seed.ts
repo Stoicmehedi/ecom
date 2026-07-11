@@ -67,8 +67,24 @@ async function main() {
     await prisma.account.create({ data: { name: "Cash", type: "CASH" } });
   }
 
+  const bank = await prisma.account.findFirst({
+    where: { name: "Bank", type: "BANK" },
+  });
+  if (!bank) {
+    await prisma.account.create({ data: { name: "Bank", type: "BANK" } });
+  }
+
+  // --- Purchase-return reasons (ReturnType.name is unique → upsert) ---
+  for (const name of ["Damaged", "Wrong item", "Excess", "Expired"]) {
+    await prisma.returnType.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  }
+
   console.log(
-    "Seed complete: Main Store, Admin/Cashier roles, admin user, Cash account.",
+    "Seed complete: Main Store, Admin/Cashier roles, admin user, Cash + Bank accounts, return types.",
   );
 }
 

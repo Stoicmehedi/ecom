@@ -51,6 +51,11 @@ enum PaymentDirection {
   OUT
 }
 
+enum DiscountType {
+  AMOUNT
+  PERCENT
+}
+
 // ---------- Org / Access ----------
 model Branch {
   id        Int      @id @default(autoincrement())
@@ -140,23 +145,25 @@ model Product {
 }
 
 model ProductVariant {
-  id             Int      @id @default(autoincrement())
-  sku            String   @unique
-  barcode        String?  @unique
-  label          String? // e.g. "Red / L"
-  attributes     Json? // { color: "Red", size: "L" }
-  purchasePrice  Decimal  @default(0) @db.Decimal(14, 2) // weighted-average cost
-  sellingPrice   Decimal  @default(0) @db.Decimal(14, 2)
-  wholesalePrice Decimal? @db.Decimal(14, 2)
-  stockQty       Decimal  @default(0) @db.Decimal(14, 3)
-  createdAt      DateTime @default(now())
+  id                Int      @id @default(autoincrement())
+  sku               String   @unique
+  barcode           String?  @unique
+  label             String? // e.g. "Red / L"
+  attributes        Json? // { color: "Red", size: "L" }
+  purchasePrice     Decimal  @default(0) @db.Decimal(14, 2) // weighted-average cost
+  lastPurchasePrice Decimal? @db.Decimal(14, 2) // price on the most recent purchase
+  sellingPrice      Decimal  @default(0) @db.Decimal(14, 2)
+  wholesalePrice    Decimal? @db.Decimal(14, 2)
+  stockQty          Decimal  @default(0) @db.Decimal(14, 3)
+  createdAt         DateTime @default(now())
 
   productId Int
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  purchaseItems  PurchaseItem[]
-  saleItems      SaleItem[]
-  stockMovements StockMovement[]
+  purchaseItems       PurchaseItem[]
+  saleItems           SaleItem[]
+  stockMovements      StockMovement[]
+  purchaseReturnItems PurchaseReturnItem[]
 
   @@index([productId])
 }
@@ -166,36 +173,44 @@ model Contact {
   id             Int         @id @default(autoincrement())
   type           ContactType
   name           String
+  businessName   String?
   phone          String?
   email          String?
   address        String?
+  note           String?
   openingBalance Decimal     @default(0) @db.Decimal(14, 2)
-  dueBalance     Decimal     @default(0) @db.Decimal(14, 2) // + = they owe us
+  // For a supplier: + = we owe them (payable). For a customer: + = they owe us.
+  dueBalance     Decimal     @default(0) @db.Decimal(14, 2)
   loyaltyPoints  Int         @default(0)
+  isActive       Boolean     @default(true)
   createdAt      DateTime    @default(now())
 
-  purchases Purchase[]
-  sales     Sale[]
-  payments  Payment[]
+  purchases       Purchase[]
+  sales           Sale[]
+  payments        Payment[]
+  purchaseReturns PurchaseReturn[]
 
   @@index([type])
 }
 
 // ---------- Purchasing ----------
 model Purchase {
-  id        Int       @id @default(autoincrement())
-  invoiceNo String    @unique
-  date      DateTime  @default(now())
-  dueDate   DateTime?
-  reference String?
-  note      String?
-  subtotal  Decimal   @default(0) @db.Decimal(14, 2)
-  discount  Decimal   @default(0) @db.Decimal(14, 2)
-  total     Decimal   @default(0) @db.Decimal(14, 2)
-  paid      Decimal   @default(0) @db.Decimal(14, 2)
-  due       Decimal   @default(0) @db.Decimal(14, 2)
-  status    DocStatus @default(DUE)
-  createdAt DateTime  @default(now())
+  id                Int          @id @default(autoincrement())
+  purchaseNo        String       @unique // our own sequence, e.g. PUR-00001
+  supplierInvoiceNo String? // the supplier's invoice number — may repeat
+  date              DateTime     @default(now())
+  dueDate           DateTime?
+  reference         String?
+  note              String?
+  subtotal          Decimal      @default(0) @db.Decimal(14, 2)
+  discountType      DiscountType @default(AMOUNT)
+  discountValue     Decimal      @default(0) @db.Decimal(14, 2)
+  discount          Decimal      @default(0) @db.Decimal(14, 2) // resolved amount
+  total             Decimal      @default(0) @db.Decimal(14, 2)
+  paid              Decimal      @default(0) @db.Decimal(14, 2)
+  due               Decimal      @default(0) @db.Decimal(14, 2)
+  status            DocStatus    @default(DUE)
+  createdAt         DateTime     @default(now())
 
   supplierId Int?
   supplier   Contact? @relation(fields: [supplierId], references: [id])
@@ -204,6 +219,7 @@ model Purchase {
 
   items    PurchaseItem[]
   payments Payment[]
+  returns  PurchaseReturn[]
 }
 
 model PurchaseItem {
@@ -211,11 +227,57 @@ model PurchaseItem {
   qty           Decimal @db.Decimal(14, 3)
   purchasePrice Decimal @db.Decimal(14, 2)
   subtotal      Decimal @db.Decimal(14, 2)
+  returnedQty   Decimal @default(0) @db.Decimal(14, 3)
 
   purchaseId Int
   purchase   Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   variantId  Int
   variant    ProductVariant @relation(fields: [variantId], references: [id])
+
+  returnItems PurchaseReturnItem[]
+}
+
+// ---------- Purchase returns ----------
+model ReturnType {
+  id      Int     @id @default(autoincrement())
+  name    String  @unique // Damaged, Wrong item, Excess…
+  isActive Boolean @default(true)
+
+  returns PurchaseReturn[]
+}
+
+model PurchaseReturn {
+  id        Int      @id @default(autoincrement())
+  returnNo  String   @unique // PRT-00001
+  date      DateTime @default(now())
+  total     Decimal  @default(0) @db.Decimal(14, 2)
+  refunded  Decimal  @default(0) @db.Decimal(14, 2)
+  note      String?
+  createdAt DateTime @default(now())
+
+  purchaseId   Int
+  purchase     Purchase    @relation(fields: [purchaseId], references: [id])
+  supplierId   Int?
+  supplier     Contact?    @relation(fields: [supplierId], references: [id])
+  returnTypeId Int
+  returnType   ReturnType  @relation(fields: [returnTypeId], references: [id])
+
+  items    PurchaseReturnItem[]
+  payments Payment[]
+}
+
+model PurchaseReturnItem {
+  id       Int     @id @default(autoincrement())
+  qty      Decimal @db.Decimal(14, 3)
+  price    Decimal @db.Decimal(14, 2)
+  subtotal Decimal @db.Decimal(14, 2)
+
+  returnId       Int
+  purchaseReturn PurchaseReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  purchaseItemId Int
+  purchaseItem   PurchaseItem   @relation(fields: [purchaseItemId], references: [id])
+  variantId      Int
+  variant        ProductVariant @relation(fields: [variantId], references: [id])
 }
 
 // ---------- Sales / POS ----------
@@ -278,18 +340,20 @@ model Payment {
   id        Int              @id @default(autoincrement())
   direction PaymentDirection
   amount    Decimal          @db.Decimal(14, 2)
-  method    String? // cash, bkash, card...
+  method    String? // CASH, MOBILE, CARD, BANK, CHEQUE
   date      DateTime         @default(now())
   note      String?
 
-  accountId  Int?
-  account    Account?  @relation(fields: [accountId], references: [id])
-  contactId  Int?
-  contact    Contact?  @relation(fields: [contactId], references: [id])
-  saleId     Int?
-  sale       Sale?     @relation(fields: [saleId], references: [id])
-  purchaseId Int?
-  purchase   Purchase? @relation(fields: [purchaseId], references: [id])
+  accountId        Int?
+  account          Account?        @relation(fields: [accountId], references: [id])
+  contactId        Int?
+  contact          Contact?        @relation(fields: [contactId], references: [id])
+  saleId           Int?
+  sale             Sale?           @relation(fields: [saleId], references: [id])
+  purchaseId       Int?
+  purchase         Purchase?       @relation(fields: [purchaseId], references: [id])
+  purchaseReturnId Int?
+  purchaseReturn   PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id])
 }
 
 // ---------- Inventory audit trail ----------
