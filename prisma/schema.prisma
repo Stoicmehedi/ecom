@@ -169,6 +169,15 @@ model ProductVariant {
 }
 
 // ---------- Contacts (customers & suppliers) ----------
+model CustomerGroup {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  discount  Decimal  @default(0) @db.Decimal(5, 2) // default % off this customer's sales
+  createdAt DateTime @default(now())
+
+  customers Contact[]
+}
+
 model Contact {
   id             Int         @id @default(autoincrement())
   type           ContactType
@@ -183,7 +192,11 @@ model Contact {
   dueBalance     Decimal     @default(0) @db.Decimal(14, 2)
   loyaltyPoints  Int         @default(0)
   isActive       Boolean     @default(true)
+  isWalkIn       Boolean     @default(false) // the POS default customer; not deletable
   createdAt      DateTime    @default(now())
+
+  customerGroupId Int?
+  customerGroup   CustomerGroup? @relation(fields: [customerGroupId], references: [id])
 
   purchases       Purchase[]
   sales           Sale[]

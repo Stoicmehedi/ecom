@@ -148,6 +148,23 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   Return qty over the cap is clamped; deleting a purchase that has a return is refused.
   Typecheck + production build pass.
 
+- **Built the Customers module** (ahead of POS, which needs a customer picker). Studied the
+  reference app's customer module read-only first → `BLUEPRINT.md` **§8**. It's the mirror of
+  Suppliers, with the money flowing the other way (a customer balance is a **receivable**).
+  - Settled §6 decisions: **customer groups ship now** (name + default discount %, POS pre-fills it);
+    **phone is the only required field**, name optional (blank names fall back to `Customer <phone>`).
+  - Schema (migration `customers`): new `CustomerGroup` (name + discount %);
+    `Contact.customerGroupId` + `Contact.isWalkIn`. Seeded a **Walk-in customer** for POS.
+  - **Customers**: list, CRUD dialog, quick-add (for POS), per-customer **ledger page** with running
+    balance and a **Receive due** action (capped at the outstanding due).
+  - **Customer groups**: small master page with CRUD.
+  - **Browser-verified**: opening due 500 → received 200 → due **300**, ledger reconciles, and cash
+    went **up** (the opposite direction from a supplier payment). Phone-only customer got the
+    `Customer 01999000111` placeholder. Walk-in delete is blocked.
+  - **Bug found and fixed during verification:** deleting a customer group silently *un-grouped* its
+    customers instead of being refused — the optional FK is `ON DELETE SET NULL`, so the `isFkError`
+    guard never fired. Now an explicit count check refuses the delete. Re-verified.
+
 ---
 
 ## 5. Current state
@@ -163,9 +180,12 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ✅ **Session + module build protocol** documented in `AGENTS.md` (loaded every session via `CLAUDE.md`).
 - ✅ **Purchases & Stock module done** — suppliers (+ ledger & due payment), purchase entry with
   weighted-average costing, purchase returns, inventory view. Browser-verified; build passes.
-- ✅ `BLUEPRINT.md` §7 holds the Purchases requirements (written before building, per protocol).
+- ✅ **Customers module done** — customers (+ groups with a default discount %, ledger, receive-due),
+  walk-in customer seeded for POS. Browser-verified; build passes.
+- ✅ `BLUEPRINT.md` §7 (Purchases) and §8 (Customers) hold their requirements (written before
+  building, per protocol).
 - ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add later for edge-level defense-in-depth).
-- ⬜ POS, Sales, Customers, Reports modules not built yet.
+- ⬜ POS, Sales, Reports modules not built yet.
 - ⬜ Deferred to Phase 2 (out of scope for the purchases module): purchase orders, stock
   adjustments, supplier advances/due-dismiss, attachments, areas & contact groups.
 
@@ -173,6 +193,7 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 
 **Dev data now in the DB** (from end-to-end verification): supplier *Rahim Traders*, purchase
 `PUR-00001` (10 × 8.00), return `PRT-00001` (2 units) → Classic Tee at **28 in stock, avg cost 5.86**.
+Customers: *Walk-in* (seeded), *Karim Mia* (Gold group, 300 due), and a phone-only customer.
 Wipe and re-seed if you want a clean slate.
 
 ## 6. Next steps (resume here)
@@ -184,9 +205,10 @@ Wipe and re-seed if you want a clean slate.
    build. Must: scan/search → cart → discount/VAT → payment → **decrement stock**, record the sale
    with `costAtSale` (we now have a real weighted-average cost to snapshot), post customer dues, and
    print. Support Hold/park.
-2. **Customers** — mirror the Suppliers module (list, ledger, due collection); POS needs a customer
-   picker with a walk-in default.
-3. **Sales list & sale returns**, then **core reports** (see `BLUEPRINT.md` §5).
+2. **Sales list & sale returns**, then **core reports** (see `BLUEPRINT.md` §5).
+
+*(Customers — done 2026-07-11. The POS customer picker should default to the seeded **Walk-in**
+customer and pre-fill the sale discount from the customer's group.)*
 
 > The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
 > live in the private session notes. If they aren't in context, ask the user for them.

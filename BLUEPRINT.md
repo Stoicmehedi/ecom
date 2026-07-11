@@ -154,6 +154,10 @@ e-commerce storefront + online-order fulfillment.
       *(decided 2026-07-11)*
 - [x] **Purchases module scope** — suppliers, purchase entry, list/detail, stock view, purchase
       returns, and supplier due-payment. *(decided 2026-07-11)*
+- [x] **Customer groups** — build with the Customers module (name + default discount %); POS
+      pre-fills the sale discount from the customer's group, overridable per sale. *(decided 2026-07-11)*
+- [x] **Customer required fields** — **phone only**; name is optional (fast counter entry, phone is
+      the lookup key). Blank names fall back to a placeholder. *(decided 2026-07-11)*
 
 ---
 
@@ -259,3 +263,51 @@ once any of the purchased stock has been sold (same guard we already use on prod
 
 Purchase orders (separate flow), stock adjustments, due-dismiss/write-off, supplier advances,
 attachments, areas & contact groups. These land in Phase 2.
+
+---
+
+## 8. Module requirements — Customers
+
+> Written before building, from a read-only study of the reference app's customer module
+> (2026-07-11). Built ahead of POS, which needs a customer picker.
+
+The mirror image of Suppliers (§7.1): same contact record, same ledger shape, but the money flows
+the other way — a customer's balance is a **receivable** (they owe us), and we **receive** dues
+rather than pay them.
+
+### 8.1 Customer record
+
+| Field | Required | Notes |
+|---|---|---|
+| Phone / mobile | ✅ | the only mandatory field in the reference — it's the identity key |
+| Name | — | defaults to a placeholder if blank (walk-in trade) |
+| Customer group | — | see §8.2 — drives a default discount |
+| Business name, Email, Address | — | |
+| Opening due | — | what they already owe us on day 1 |
+| Opening loyalty points | — | the points balance carries; **earning rules are Phase 2** |
+| Note | — | |
+
+List columns: Name, Phone, Group, Total sold, Total received, **Total due**.
+
+### 8.2 Customer groups — a default discount
+
+A small master: **name + discount percentage** (their examples: "Gold 10 P" → 10%). Assigning a
+customer to a group gives their sales that discount **by default**, still overridable per sale.
+POS depends on this, so it ships with Customers rather than later.
+
+### 8.3 Ledger & receiving dues
+
+- Per-customer **ledger page**: opening balance, then every sale (+), sale return (−), and payment
+  received (−), with a running balance that must reconcile to the stored due.
+- **Receive due** action: `amount + method + account`, capped at the outstanding due. Records a
+  `Payment` (direction `IN`), decreases the customer's due, and increases the account balance.
+
+### 8.4 Walk-in customer
+
+POS needs a default. Seed a single **"Walk-in"** customer used when no one is named. It must not be
+deletable, and cash sales to it should not accrue a due.
+
+### 8.5 Out of scope (Phase 2)
+
+Loyalty *earning* rules, membership numbers/cards, areas, customer advances, due-dismiss/write-off,
+customer import/export, SMS.

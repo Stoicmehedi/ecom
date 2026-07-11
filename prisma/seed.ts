@@ -83,8 +83,16 @@ async function main() {
     });
   }
 
+  // --- Walk-in customer (POS default; no unique field → findFirst then create) ---
+  const walkIn = await prisma.contact.findFirst({ where: { isWalkIn: true } });
+  if (!walkIn) {
+    await prisma.contact.create({
+      data: { type: "CUSTOMER", name: "Walk-in customer", isWalkIn: true },
+    });
+  }
+
   console.log(
-    "Seed complete: Main Store, Admin/Cashier roles, admin user, Cash + Bank accounts, return types.",
+    "Seed complete: Main Store, Admin/Cashier roles, admin user, Cash + Bank accounts, return types, walk-in customer.",
   );
 }
 
