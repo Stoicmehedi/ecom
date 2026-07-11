@@ -1,0 +1,767 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Search, Trash2, Plus, Minus, PauseCircle, X } from "lucide-react";
+import { toast } from "sonner";
+import { checkout, holdSale, resumeHeldSale, discardHeldSale } from "./actions";
+import { searchPos, type PosHit } from "./search";
+import { quickAddCustomer } from "../customers/actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+export type CustomerOption = {
+  id: number;
+  name: string;
+  isWalkIn: boolean;
+  groupDiscount: number;
+};
+export type AccountOption = { id: number; name: string };
+export type HeldSaleOption = {
+  id: number;
+  label: string;
+  customerId: number | null;
+  count: number;
+};
+
+type Line = {
+  variantId: number;
+  label: string;
+  sku: string;
+  qty: number;
+  price: number;
+  stockQty: number;
+};
+
+type PayLine = { method: string; accountId: number | null; amount: number };
+
+const METHODS = [
+  { value: "CASH", label: "Cash" },
+  { value: "MOBILE", label: "Mobile banking" },
+  { value: "CARD", label: "Card" },
+  { value: "BANK", label: "Bank transfer" },
+  { value: "CHEQUE", label: "Cheque" },
+];
+
+const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+export function PosTerminal({
+  customers,
+  accounts,
+  initialProducts,
+  heldSales,
+}: {
+  customers: CustomerOption[];
+  accounts: AccountOption[];
+  initialProducts: PosHit[];
+  heldSales: HeldSaleOption[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  const walkIn = customers.find((c) => c.isWalkIn);
+  const [customerId, setCustomerId] = useState<number | undefined>(walkIn?.id);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">("PERCENT");
+  const [discountValue, setDiscountValue] = useState(0);
+
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<PosHit[]>(initialProducts);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Picking a customer in a group pre-fills their standing discount.
+  function pickCustomer(id: number) {
+    setCustomerId(id);
+    const c = customers.find((x) => x.id === id);
+    if (c && c.groupDiscount > 0) {
+      setDiscountType("PERCENT");
+      setDiscountValue(c.groupDiscount);
+      toast.info(`${c.name} gets ${c.groupDiscount}% off`);
+    }
+  }
+
+  function addLine(hit: PosHit) {
+    if (hit.stockQty <= 0) {
+      toast.error(`"${hit.label}" is out of stock`);
+      return;
+    }
+    setLines((prev) => {
+      const i = prev.findIndex((l) => l.variantId === hit.variantId);
+      if (i >= 0) {
+        const next = [...prev];
+        const line = next[i];
+        if (line.qty + 1 > line.stockQty) {
+          toast.error(`Only ${line.stockQty} of "${line.label}" in stock`);
+          return prev;
+        }
+        next[i] = { ...line, qty: r2(line.qty + 1) };
+        return next;
+      }
+      return [
+        {
+          variantId: hit.variantId,
+          label: hit.label,
+          sku: hit.sku,
+          qty: 1,
+          price: hit.price,
+          stockQty: hit.stockQty,
+        },
+        ...prev,
+      ];
+    });
+  }
+
+  // Search. An exact barcode/SKU hit drops straight into the cart — that's a scan.
+  useEffect(() => {
+    const term = query.trim();
+    if (!term) {
+      setHits(initialProducts);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const { hits: found, exact } = await searchPos(term);
+      if (cancelled) return;
+      if (exact) {
+        addLine(exact);
+        setQuery("");
+        setHits(initialProducts);
+        return;
+      }
+      setHits(found);
+    }, 180);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  function setQty(i: number, qty: number) {
+    setLines((prev) =>
+      prev.map((l, idx) => {
+        if (idx !== i) return l;
+        const capped = Math.min(Math.max(qty, 0), l.stockQty);
+        if (qty > l.stockQty) toast.error(`Only ${l.stockQty} of "${l.label}" in stock`);
+        return { ...l, qty: capped };
+      }),
+    );
+  }
+
+  const subtotal = r2(lines.reduce((s, l) => s + l.qty * l.price, 0));
+  const discount =
+    discountType === "PERCENT"
+      ? r2(Math.min((subtotal * discountValue) / 100, subtotal))
+      : r2(Math.min(discountValue, subtotal));
+  const total = r2(subtotal - discount);
+
+  // --- payment dialog ---
+  const [payOpen, setPayOpen] = useState(false);
+  const [payments, setPayments] = useState<PayLine[]>([]);
+  const [tendered, setTendered] = useState(0);
+  const [dueDate, setDueDate] = useState("");
+
+  const paid = r2(payments.reduce((s, p) => s + (p.amount || 0), 0));
+  const due = r2(total - paid);
+  const change = r2(Math.max(tendered - paid, 0));
+
+  const selected = customers.find((c) => c.id === customerId);
+  const isWalkIn = selected?.isWalkIn ?? false;
+
+  function openPayment() {
+    if (lines.length === 0) return toast.error("The cart is empty");
+    setPayments([{ method: "CASH", accountId: accounts[0]?.id ?? null, amount: total }]);
+    setTendered(total);
+    setPayOpen(true);
+  }
+
+  function onCheckout() {
+    if (due > 0 && isWalkIn) {
+      return toast.error("A walk-in must pay in full — pick a customer for a credit sale");
+    }
+    startTransition(async () => {
+      const res = await checkout({
+        customerId: customerId ?? null,
+        discountType,
+        discountValue,
+        dueDate: due > 0 && dueDate ? dueDate : undefined,
+        items: lines.map((l) => ({
+          variantId: l.variantId,
+          qty: l.qty,
+          price: l.price,
+        })),
+        payments: payments
+          .filter((p) => p.amount > 0)
+          .map((p) => ({ method: p.method, accountId: p.accountId, amount: p.amount })),
+      });
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      setPayOpen(false);
+      setLines([]);
+      setDiscountValue(0);
+      setCustomerId(walkIn?.id);
+      toast.success("Sale complete");
+      router.push(`/sales/${res.saleId}/receipt`);
+    });
+  }
+
+  // --- hold ---
+  const [holdOpen, setHoldOpen] = useState(false);
+  const [holdLabel, setHoldLabel] = useState("");
+
+  function onHold() {
+    if (lines.length === 0) return toast.error("The cart is empty");
+    startTransition(async () => {
+      const res = await holdSale({
+        label: holdLabel.trim() || `Cart ${new Date().toLocaleTimeString()}`,
+        customerId: customerId ?? null,
+        cart: lines,
+      });
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      setLines([]);
+      setHoldLabel("");
+      setHoldOpen(false);
+      toast.success("Sale held");
+      router.refresh();
+    });
+  }
+
+  function onResume(id: number) {
+    startTransition(async () => {
+      const held = await resumeHeldSale(id);
+      if (!held) {
+        toast.error("That held sale is gone");
+        return;
+      }
+      setLines(held.cart as unknown as Line[]);
+      if (held.customerId) setCustomerId(held.customerId);
+      toast.success(`Resumed "${held.label}"`);
+      router.refresh();
+    });
+  }
+
+  // --- quick-add customer ---
+  const [addOpen, setAddOpen] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+  const [newName, setNewName] = useState("");
+
+  async function onQuickAdd() {
+    const res = await quickAddCustomer(newPhone, newName);
+    if (res.error || !res.id) return toast.error(res.error ?? "Failed");
+    toast.success("Customer added");
+    setAddOpen(false);
+    setNewPhone("");
+    setNewName("");
+    router.refresh();
+    setCustomerId(res.id);
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
+      {/* Left: find products */}
+      <div className="space-y-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchRef}
+            className="h-12 pl-9 text-base"
+            placeholder="Scan a barcode, or search by name / SKU…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            autoFocus
+            autoComplete="off"
+          />
+        </div>
+
+        {heldSales.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-3">
+            <span className="text-sm text-muted-foreground">Held:</span>
+            {heldSales.map((h) => (
+              <span
+                key={h.id}
+                className="flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-sm"
+              >
+                <button
+                  type="button"
+                  className="hover:text-primary"
+                  onClick={() => onResume(h.id)}
+                >
+                  {h.label}{" "}
+                  <span className="text-xs text-muted-foreground">({h.count})</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Discard"
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() =>
+                    startTransition(async () => {
+                      await discardHeldSale(h.id);
+                      router.refresh();
+                    })
+                  }
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+          {hits.length === 0 && (
+            <p className="col-span-full py-10 text-center text-sm text-muted-foreground">
+              No matching product.
+            </p>
+          )}
+          {hits.map((h) => {
+            const out = h.stockQty <= 0;
+            return (
+              <button
+                key={h.variantId}
+                type="button"
+                disabled={out}
+                onClick={() => addLine(h)}
+                className={`rounded-lg border p-3 text-left transition ${
+                  out
+                    ? "cursor-not-allowed opacity-50"
+                    : "hover:border-primary hover:bg-accent"
+                }`}
+              >
+                <p className="line-clamp-2 text-sm font-medium">{h.label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{h.sku}</p>
+                <div className="mt-2 flex items-baseline justify-between">
+                  <span className="font-semibold tabular-nums">{h.price.toFixed(2)}</span>
+                  <span
+                    className={`text-xs tabular-nums ${
+                      out ? "text-destructive" : "text-muted-foreground"
+                    }`}
+                  >
+                    {out ? "out of stock" : `${h.stockQty} left`}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Right: the cart */}
+      <div className="flex h-fit flex-col gap-3 rounded-lg border p-4 lg:sticky lg:top-4">
+        <div className="flex gap-2">
+          <Select
+            value={customerId ? String(customerId) : undefined}
+            onValueChange={(v) => pickCustomer(Number(v))}
+          >
+            <SelectTrigger className="flex-1">
+              <SelectValue placeholder="Customer" />
+            </SelectTrigger>
+            <SelectContent>
+              {customers.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {c.name}
+                  {c.groupDiscount > 0 && ` · ${c.groupDiscount}%`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Add customer"
+            onClick={() => setAddOpen(true)}
+          >
+            <Plus className="size-4" />
+          </Button>
+        </div>
+
+        <div className="min-h-40 divide-y">
+          {lines.length === 0 && (
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              Scan or tap a product to start.
+            </p>
+          )}
+          {lines.map((l, i) => (
+            <div key={l.variantId} className="flex items-center gap-2 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{l.label}</p>
+                <p className="text-xs text-muted-foreground">
+                  {l.price.toFixed(2)} · {l.stockQty} in stock
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-7"
+                  aria-label="Less"
+                  onClick={() => setQty(i, l.qty - 1)}
+                >
+                  <Minus className="size-3" />
+                </Button>
+                <Input
+                  type="number"
+                  className="h-7 w-14 text-center"
+                  value={l.qty}
+                  min="0"
+                  max={l.stockQty}
+                  onChange={(e) => setQty(i, Number(e.target.value))}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-7"
+                  aria-label="More"
+                  onClick={() => setQty(i, l.qty + 1)}
+                >
+                  <Plus className="size-3" />
+                </Button>
+              </div>
+              <span className="w-20 text-right text-sm font-medium tabular-nums">
+                {r2(l.qty * l.price).toFixed(2)}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                aria-label="Remove"
+                onClick={() => setLines((p) => p.filter((_, idx) => idx !== i))}
+              >
+                <Trash2 className="size-3.5 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-2 border-t pt-3">
+          <Row label="Subtotal" value={subtotal.toFixed(2)} />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm text-muted-foreground">Discount</span>
+            <div className="flex items-center gap-1">
+              <Select
+                value={discountType}
+                onValueChange={(v) => setDiscountType(v as "AMOUNT" | "PERCENT")}
+              >
+                <SelectTrigger className="h-8 w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AMOUNT">Amount</SelectItem>
+                  <SelectItem value="PERCENT">%</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                className="h-8 w-20 text-right"
+                value={discountValue}
+                onChange={(e) => setDiscountValue(Number(e.target.value))}
+              />
+              <span className="w-20 text-right text-sm tabular-nums">
+                −{discount.toFixed(2)}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between border-t pt-2">
+            <span className="font-medium">Total</span>
+            <span className="text-2xl font-semibold tabular-nums">{total.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={lines.length === 0}
+            onClick={() => setHoldOpen(true)}
+          >
+            <PauseCircle className="size-4" />
+            Hold
+          </Button>
+          <Button
+            variant="outline"
+            disabled={lines.length === 0}
+            onClick={() => setLines([])}
+          >
+            Clear
+          </Button>
+          <Button
+            className="flex-[2]"
+            disabled={lines.length === 0}
+            onClick={openPayment}
+          >
+            Charge {total.toFixed(2)}
+          </Button>
+        </div>
+      </div>
+
+      {/* Payment */}
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Payment — {total.toFixed(2)}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {payments.map((p, i) => (
+              <div key={i} className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Method</Label>
+                  <Select
+                    value={p.method}
+                    onValueChange={(v) =>
+                      setPayments((prev) =>
+                        prev.map((x, idx) => (idx === i ? { ...x, method: v } : x)),
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {METHODS.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Account</Label>
+                  <Select
+                    value={p.accountId ? String(p.accountId) : undefined}
+                    onValueChange={(v) =>
+                      setPayments((prev) =>
+                        prev.map((x, idx) =>
+                          idx === i ? { ...x, accountId: Number(v) } : x,
+                        ),
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((a) => (
+                        <SelectItem key={a.id} value={String(a.id)}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-28 space-y-1">
+                  <Label className="text-xs">Amount</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="text-right"
+                    value={p.amount}
+                    onChange={(e) =>
+                      setPayments((prev) =>
+                        prev.map((x, idx) =>
+                          idx === i ? { ...x, amount: Number(e.target.value) } : x,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Remove payment"
+                  disabled={payments.length === 1}
+                  onClick={() =>
+                    setPayments((prev) => prev.filter((_, idx) => idx !== i))
+                  }
+                >
+                  <Trash2 className="size-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setPayments((prev) => [
+                  ...prev,
+                  { method: "CASH", accountId: accounts[0]?.id ?? null, amount: 0 },
+                ])
+              }
+            >
+              <Plus className="size-4" />
+              Split payment
+            </Button>
+
+            <div className="grid grid-cols-2 gap-3 border-t pt-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Cash tendered</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="text-right"
+                  value={tendered}
+                  onChange={(e) => setTendered(Number(e.target.value))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Change to give back</Label>
+                <div className="flex h-9 items-center justify-end rounded-md border bg-muted px-3 text-lg font-semibold tabular-nums">
+                  {change.toFixed(2)}
+                </div>
+              </div>
+            </div>
+
+            {due > 0 && (
+              <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                <p className="text-sm">
+                  <span className="font-medium text-destructive">
+                    Due {due.toFixed(2)}
+                  </span>{" "}
+                  — this is a credit sale.
+                </p>
+                {isWalkIn ? (
+                  <p className="text-sm text-destructive">
+                    A walk-in must pay in full. Pick a named customer to sell on credit.
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Due date</Label>
+                    <Input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1 border-t pt-2">
+              <Row label="Total" value={total.toFixed(2)} />
+              <Row label="Paying" value={paid.toFixed(2)} />
+              <Row
+                label="Due"
+                value={due.toFixed(2)}
+                className={due > 0 ? "text-destructive" : "text-primary"}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={onCheckout}
+              disabled={pending || (due > 0 && isWalkIn)}
+              className="w-full"
+            >
+              {pending ? "Completing…" : "Complete sale"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Hold */}
+      <Dialog open={holdOpen} onOpenChange={setHoldOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hold this sale</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="holdLabel">Name it so you can find it again</Label>
+            <Input
+              id="holdLabel"
+              value={holdLabel}
+              onChange={(e) => setHoldLabel(e.target.value)}
+              placeholder="e.g. Blue shirt guy"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button onClick={onHold} disabled={pending}>
+              Hold
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick-add customer */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Customer</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="qa-phone">Phone *</Label>
+              <Input
+                id="qa-phone"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="qa-name">Name</Label>
+              <Input
+                id="qa-name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={onQuickAdd}>Add</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className={`text-sm tabular-nums ${className}`}>{value}</span>
+    </div>
+  );
+}

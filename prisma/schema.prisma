@@ -94,7 +94,8 @@ model User {
   branchId Int?
   branch   Branch? @relation(fields: [branchId], references: [id])
 
-  salesSold Sale[] @relation("SoldBy")
+  salesSold Sale[]     @relation("SoldBy")
+  heldSales HeldSale[] @relation("HeldBy")
 }
 
 // ---------- Catalog ----------
@@ -295,20 +296,23 @@ model PurchaseReturnItem {
 
 // ---------- Sales / POS ----------
 model Sale {
-  id         Int         @id @default(autoincrement())
-  invoiceNo  String      @unique
-  date       DateTime    @default(now())
-  channel    SaleChannel @default(REGULAR)
-  itemsCount Int         @default(0)
-  subtotal   Decimal     @default(0) @db.Decimal(14, 2)
-  discount   Decimal     @default(0) @db.Decimal(14, 2)
-  vat        Decimal     @default(0) @db.Decimal(14, 2)
-  total      Decimal     @default(0) @db.Decimal(14, 2)
-  paid       Decimal     @default(0) @db.Decimal(14, 2)
-  due        Decimal     @default(0) @db.Decimal(14, 2)
-  status     DocStatus   @default(PAID)
-  note       String?
-  createdAt  DateTime    @default(now())
+  id            Int          @id @default(autoincrement())
+  invoiceNo     String       @unique // INV-00001
+  date          DateTime     @default(now())
+  dueDate       DateTime? // when a credit sale falls due
+  channel       SaleChannel  @default(REGULAR)
+  itemsCount    Int          @default(0)
+  subtotal      Decimal      @default(0) @db.Decimal(14, 2)
+  discountType  DiscountType @default(AMOUNT)
+  discountValue Decimal      @default(0) @db.Decimal(14, 2)
+  discount      Decimal      @default(0) @db.Decimal(14, 2) // resolved amount
+  vat           Decimal      @default(0) @db.Decimal(14, 2) // deferred — stays 0 for now
+  total         Decimal      @default(0) @db.Decimal(14, 2)
+  paid          Decimal      @default(0) @db.Decimal(14, 2)
+  due           Decimal      @default(0) @db.Decimal(14, 2)
+  status        DocStatus    @default(PAID)
+  note          String?
+  createdAt     DateTime     @default(now())
 
   customerId Int?
   customer   Contact? @relation(fields: [customerId], references: [id])
@@ -319,6 +323,18 @@ model Sale {
 
   items    SaleItem[]
   payments Payment[]
+}
+
+/// A parked cart. Touches no stock and no ledger until it's checked out.
+model HeldSale {
+  id         Int      @id @default(autoincrement())
+  label      String // what the cashier calls it, e.g. "Blue shirt guy"
+  cart       Json // the cart lines, as-is
+  customerId Int?
+  createdAt  DateTime @default(now())
+
+  heldById Int?
+  heldBy   User? @relation("HeldBy", fields: [heldById], references: [id])
 }
 
 model SaleItem {

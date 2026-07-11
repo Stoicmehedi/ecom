@@ -165,6 +165,34 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
     customers instead of being refused — the optional FK is `ON DELETE SET NULL`, so the `isFkError`
     guard never fired. Now an explicit count check refuses the delete. Re-verified.
 
+- **Built the POS checkout module.** Studied the reference app's POS screen read-only first →
+  `BLUEPRINT.md` **§9**.
+  - Settled §6 decisions: **overselling is blocked** (stock can never go negative);
+    **VAT deferred** (column stays 0); scope = cash-tendered → change, Hold/park, 80mm receipt;
+    **no delivery charge**; exchange stays Phase 2.
+  - Schema (migration `pos`): `Sale.dueDate` + `discountType`/`discountValue`; new **`HeldSale`**
+    (parked cart as JSON).
+  - **POS terminal**: product tiles + search by name/SKU, an **exact barcode/SKU match drops
+    straight into the cart** (a scan needs no click), cart with qty steppers, walk-in default,
+    **group discount auto-fills** from the customer, split payments, **cash tendered → change due**,
+    Hold/resume/discard.
+  - **Sales**: list with totals, detail page showing **cost of goods and profit** (from `costAtSale`),
+    delete that fully reverses stock + payments + receivable. A sale is never edited (§9.8).
+  - **80mm thermal receipt**, print-styled so the app shell drops away when printed.
+  - **Browser-verified**: sold 3 × 12.00 to a Gold customer → 10% auto-discount, total **32.40**;
+    paid 20 → **stock 20 → 17**, **`costAtSale` snapshotted at 5.00** (the weighted-average cost),
+    customer receivable 300 → **312.40**, cash +20, `soldById` recorded. Cash tendered 50 → change
+    **17.60**. Overselling clamped (99 → 20). Hold parked the cart touching **no** stock/ledger, and
+    resumed correctly.
+  - **Bug found and fixed during verification:** the credit-sale guard was `due > 0 && !customerId`,
+    but the walk-in customer *has* an id — so the server would have parked a receivable on
+    "Walk-in", i.e. money owed by nobody. It now rejects a due when the customer `isWalkIn`.
+- ⚠️ **Dev-data loss, cause not established.** At some point the `PUR-00001` purchase and its
+  return were deleted (stock returned to 20 @ cost 5.00, the 50.00 purchase payment refunded to
+  cash). Migrations are clean and nothing was reset, so a delete path ran — but I could not attribute
+  the trigger. Worth noting: the reversal arithmetic round-tripped **exactly** to the original
+  20 @ 5.00, which is good evidence the reverse logic is right. Only dev data was affected.
+
 ---
 
 ## 5. Current state
@@ -182,33 +210,35 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   weighted-average costing, purchase returns, inventory view. Browser-verified; build passes.
 - ✅ **Customers module done** — customers (+ groups with a default discount %, ledger, receive-due),
   walk-in customer seeded for POS. Browser-verified; build passes.
-- ✅ `BLUEPRINT.md` §7 (Purchases) and §8 (Customers) hold their requirements (written before
+- ✅ **POS + Sales done** — POS terminal (scan → cart → discount → split payment → change → receipt),
+  Hold/park, sales list & detail with profit, 80mm receipt. Browser-verified; build passes.
+- ✅ **The app can now run a full retail loop**: buy stock in → sell it → know the profit and who
+  owes what.
+- ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS) hold their requirements (written before
   building, per protocol).
 - ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add later for edge-level defense-in-depth).
-- ⬜ POS, Sales, Reports modules not built yet.
+- ⬜ Sale returns and Reports not built yet.
 - ⬜ Deferred to Phase 2 (out of scope for the purchases module): purchase orders, stock
   adjustments, supplier advances/due-dismiss, attachments, areas & contact groups.
 
 **Dev login:** `admin` / `admin123`
 
-**Dev data now in the DB** (from end-to-end verification): supplier *Rahim Traders*, purchase
-`PUR-00001` (10 × 8.00), return `PRT-00001` (2 units) → Classic Tee at **28 in stock, avg cost 5.86**.
-Customers: *Walk-in* (seeded), *Karim Mia* (Gold group, 300 due), and a phone-only customer.
-Wipe and re-seed if you want a clean slate.
+**Dev data now in the DB** (from end-to-end verification): supplier *Rahim Traders*; customers
+*Walk-in* (seeded), *Karim Mia* (Gold group, 10% off, **312.40** due) and a phone-only customer;
+sale `INV-00001` (3 × 12.00, 10% off, paid 20, due 12.40) → Classic Tee at **17 in stock, cost 5.00**.
+The purchase/return test data was lost (see the 2026-07-11 log note). Wipe and re-seed for a clean slate.
 
 ## 6. Next steps (resume here)
 
-1. **POS checkout** — the next module. Follow the module build protocol in `AGENTS.md`: study the
-   reference app's POS/sale screen first (fields, mandatory vs optional, validation, what saving does
-   to stock, customer dues, and accounts), write it into `BLUEPRINT.md` §8, settle any §6 open
-   decision it touches (the **receipt format** is already decided: 80mm thermal + optional A4), then
-   build. Must: scan/search → cart → discount/VAT → payment → **decrement stock**, record the sale
-   with `costAtSale` (we now have a real weighted-average cost to snapshot), post customer dues, and
-   print. Support Hold/park.
-2. **Sales list & sale returns**, then **core reports** (see `BLUEPRINT.md` §5).
+1. **Sale returns** — the last Phase-1 gap. Follow the module build protocol: study the reference
+   app's sale-return screen first (it lives at `/sale/return`), write it into `BLUEPRINT.md` §10,
+   then build. It mirrors the purchase return (§7.5): cap the return at what was sold, put stock
+   **back**, reverse the customer's receivable or refund cash, and write a `SALE_RETURN` movement.
+2. **Core reports** (see `BLUEPRINT.md` §5): daily/monthly sales, stock, **profit & loss** (now
+   computable — every sale line carries `costAtSale`), and customer/supplier dues.
+3. Then Phase 2 (see `BLUEPRINT.md` §5): exchanges, stock adjustments, expenses, VAT if needed.
 
-*(Customers — done 2026-07-11. The POS customer picker should default to the seeded **Walk-in**
-customer and pre-fill the sale discount from the customer's group.)*
+*(POS — done 2026-07-11. Exchange, VAT, and loyalty-point redemption were explicitly deferred.)*
 
 > The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
 > live in the private session notes. If they aren't in context, ask the user for them.

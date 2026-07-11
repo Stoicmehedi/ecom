@@ -158,6 +158,13 @@ e-commerce storefront + online-order fulfillment.
       pre-fills the sale discount from the customer's group, overridable per sale. *(decided 2026-07-11)*
 - [x] **Customer required fields** — **phone only**; name is optional (fast counter entry, phone is
       the lookup key). Blank names fall back to a placeholder. *(decided 2026-07-11)*
+- [x] **Overselling at POS** — **blocked**. Checkout refuses and names the short item; stock can
+      never go negative, so cost valuation stays trustworthy. *(decided 2026-07-11)*
+- [~] **VAT** — **skipped for now**; the `vat` column stays 0 and no VAT line shows on a sale.
+      Revisit when VAT invoices are actually needed (likely a single business-level rate in Settings).
+      *(deferred 2026-07-11)*
+- [x] **POS scope** — cash-tendered → change due, Hold/park, and an 80mm printed receipt. **No
+      delivery charge.** Exchange stays Phase 2. *(decided 2026-07-11)*
 
 ---
 
@@ -311,3 +318,83 @@ deletable, and cash sales to it should not accrue a due.
 
 Loyalty *earning* rules, membership numbers/cards, areas, customer advances, due-dismiss/write-off,
 customer import/export, SMS.
+
+---
+
+## 9. Module requirements — POS checkout
+
+> Written before building, from a read-only study of the reference app's POS screen
+> (2026-07-11). Their POS is one dense screen; ours is original, but the *flow* is the same.
+
+### 9.1 The screen
+
+Two columns, built for speed and a barcode scanner:
+
+- **Left — find products.** A search box that matches **product name, SKU, or a scanned barcode**
+  (a scan that hits exactly one barcode adds it straight to the cart, no click). Plus
+  category/brand filters and a tile grid for touch.
+- **Right — the cart.** `Product | Price | Qty | Line total | ✕`, with the customer picker,
+  totals, and the checkout button.
+
+### 9.2 The cart
+
+- Scanning/clicking the same variant again **increments its line**, never duplicates it.
+- Qty and unit price are editable per line (price override is a supervisor-ish act, but the
+  reference allows it plainly, and small shops need it).
+- **Customer** defaults to **Walk-in** (§8.4). Choosing a customer with a group **pre-fills the
+  order discount** from that group's percentage (§8.2), still overridable.
+
+### 9.3 Totals
+
+`Subtotal → order discount (amount or %) → Grand total`
+
+**VAT is deferred** (§6) — the column stays 0 and no VAT line shows. **No delivery charge.**
+
+**Overselling is blocked** (§6): if any line exceeds what's in stock, checkout refuses and names
+the item. Stock never goes negative, so the weighted-average cost stays meaningful.
+
+### 9.4 Payment
+
+- **Split payments**: one or more `method + account + amount` rows (Cash / Mobile banking / Card /
+  Bank / Cheque) — same widget as purchases.
+- **Cash tendered → change due.** The cashier types what the customer handed over; the screen
+  shows the change to give back. This is computed for the drawer only — it is *not* stored as
+  part of what was paid.
+- **Due** = total − paid. A sale may close with a due (credit sale) → posts to the customer's
+  receivable and needs a **due date**.
+
+### 9.5 What checkout MUST do (downstream effects)
+
+In one transaction:
+
+1. **Decrement variant stock** for every line.
+2. **Snapshot `costAtSale`** on each line from the variant's current **weighted-average cost**
+   (which Purchases maintains, §7.3). This is what makes per-product profit reporting possible —
+   it must be captured at the moment of sale, because the average moves later.
+3. Write a **`StockMovement`** (type `SALE`, −qty, ref = sale).
+4. **Record each `Payment`** (direction `IN`) against its account.
+5. **Post the receivable**: increase the customer's due by whatever is unpaid.
+6. Assign an **invoice number** from our own sequence (`INV-00001`).
+
+### 9.6 Hold (park a sale)
+
+Park the current cart and start a new one — the shop's "hang on, let me grab another item".
+A held sale **touches nothing**: no stock, no ledger, no invoice number. It can be resumed or
+discarded.
+
+### 9.7 Receipt
+
+80mm thermal receipt is the POS default, with an optional A4 invoice for credit sales
+(already decided in §6). Rendered as a print-styled page.
+
+### 9.8 Sale records
+
+List columns: `Invoice | Date | Customer | Items | Total | Paid | Due | Status | Sold by`.
+A saved sale is **not editable** — the reference only offers View / Invoice / Delete, and that's
+right: corrections belong in a sale return. Deleting must fully reverse stock, cost, and ledger.
+
+### 9.9 Out of scope for this module (Phase 2)
+
+Exchange (return + new sale with a delta payment), quotations, installments, loyalty *point*
+redemption as a payment method, customer advances as a payment method, sales commission, and
+backdating a sale behind a manager password.
