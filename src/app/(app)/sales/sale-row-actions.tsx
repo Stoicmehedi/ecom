@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, Printer, Trash2 } from "lucide-react";
+import { Eye, Printer, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { deleteSale } from "./actions";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,11 @@ export function SaleRowActions({ id, invoiceNo }: { id: number; invoiceNo: strin
       <Button variant="ghost" size="icon" aria-label="View" asChild>
         <Link href={`/sales/${id}`}>
           <Eye className="size-4" />
+        </Link>
+      </Button>
+      <Button variant="ghost" size="icon" aria-label="Return" asChild>
+        <Link href={`/sales/${id}/return`}>
+          <Undo2 className="size-4" />
         </Link>
       </Button>
       <Button variant="ghost" size="icon" aria-label="Receipt" asChild>

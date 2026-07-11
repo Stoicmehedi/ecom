@@ -398,3 +398,57 @@ right: corrections belong in a sale return. Deleting must fully reverse stock, c
 Exchange (return + new sale with a delta payment), quotations, installments, loyalty *point*
 redemption as a payment method, customer advances as a payment method, sales commission, and
 backdating a sale behind a manager password.
+
+---
+
+## 10. Module requirements — Sale returns
+
+> Written before building, from a read-only study of the reference app's sale-return screen
+> (2026-07-11). The mirror of the purchase return (§7.5), with the goods and the money both
+> flowing the other way.
+
+### 10.1 The flow
+
+Start from the invoice: **look up a sale by its invoice number**, then return lines off it. (Ours
+also reaches it straight from the sales list, which is fewer clicks than their search-first page.)
+
+| Field | Required | Notes |
+|---|---|---|
+| Customer, invoice no., sale date | — | read-only, inherited from the sale |
+| Return date | ✅ | defaults to today |
+| Note | — | |
+
+Per line: `Product | Unit price | Sold qty | Available qty | Return qty | Return subtotal`
+
+- **Available qty = sold − already returned.** Return qty is capped by it.
+- Unlike a *purchase* return, there is **no reason/type** field — a customer bringing something
+  back doesn't need a reason code.
+
+### 10.2 Refund
+
+`Refund amount + method (Cash / Card / Bank / Mobile banking)`, capped at the return's value.
+
+**A walk-in must be refunded in full.** Crediting a walk-in's "account" would push their balance
+negative — a debt we owe to nobody, the mirror of the bug caught in §9. There is no one to credit,
+so the money has to go back across the counter.
+
+### 10.3 What saving a return MUST do (downstream effects)
+
+In one transaction:
+
+1. **Increase variant stock** — the goods come back on the shelf.
+2. **Re-base the weighted-average cost at `costAtSale`** — the cost the goods left at, which the
+   sale line snapshotted (§9.5). Putting them back at today's average would silently rewrite
+   history; putting them back at what they cost when they left keeps the valuation honest.
+3. Write a **`StockMovement`** (type `SALE_RETURN`, +qty, ref = return).
+4. Bump the sale line's **`returnedQty`** so it can't be returned twice.
+5. **Settle the money.** The goods coming back cancels that much of what the customer owes:
+   `dueBalance −= returnValue`. If we hand cash back instead, the debt stands and the cash leaves:
+   `dueBalance += refund`, `account −= refund`.
+   Net: `dueBalance += (refund − returnValue)`, `account −= refund`.
+6. Assign a return number from our own sequence (`SRT-00001`).
+
+### 10.4 Records
+
+List: `Return no. | Date | Against | Customer | Items | Value | Refunded`.
+Deleting a return re-sells the goods: stock back out, `returnedQty` decremented, money re-owed.

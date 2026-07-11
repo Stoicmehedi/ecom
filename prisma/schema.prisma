@@ -165,6 +165,7 @@ model ProductVariant {
   saleItems           SaleItem[]
   stockMovements      StockMovement[]
   purchaseReturnItems PurchaseReturnItem[]
+  saleReturnItems     SaleReturnItem[]
 
   @@index([productId])
 }
@@ -203,6 +204,7 @@ model Contact {
   sales           Sale[]
   payments        Payment[]
   purchaseReturns PurchaseReturn[]
+  saleReturns     SaleReturn[]
 
   @@index([type])
 }
@@ -323,6 +325,7 @@ model Sale {
 
   items    SaleItem[]
   payments Payment[]
+  returns  SaleReturn[]
 }
 
 /// A parked cart. Touches no stock and no ledger until it's checked out.
@@ -338,17 +341,55 @@ model HeldSale {
 }
 
 model SaleItem {
-  id         Int     @id @default(autoincrement())
-  qty        Decimal @db.Decimal(14, 3)
-  price      Decimal @db.Decimal(14, 2)
-  discount   Decimal @default(0) @db.Decimal(14, 2)
-  costAtSale Decimal @default(0) @db.Decimal(14, 2) // for profit/loss
-  subtotal   Decimal @db.Decimal(14, 2)
+  id          Int     @id @default(autoincrement())
+  qty         Decimal @db.Decimal(14, 3)
+  price       Decimal @db.Decimal(14, 2)
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  costAtSale  Decimal @default(0) @db.Decimal(14, 2) // for profit/loss
+  subtotal    Decimal @db.Decimal(14, 2)
+  returnedQty Decimal @default(0) @db.Decimal(14, 3)
 
   saleId    Int
   sale      Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)
   variantId Int
   variant   ProductVariant @relation(fields: [variantId], references: [id])
+
+  returnItems SaleReturnItem[]
+}
+
+// ---------- Sale returns ----------
+model SaleReturn {
+  id        Int      @id @default(autoincrement())
+  returnNo  String   @unique // SRT-00001
+  date      DateTime @default(now())
+  total     Decimal  @default(0) @db.Decimal(14, 2)
+  refunded  Decimal  @default(0) @db.Decimal(14, 2)
+  note      String?
+  createdAt DateTime @default(now())
+
+  saleId     Int
+  sale       Sale     @relation(fields: [saleId], references: [id])
+  customerId Int?
+  customer   Contact? @relation(fields: [customerId], references: [id])
+
+  items    SaleReturnItem[]
+  payments Payment[]
+}
+
+model SaleReturnItem {
+  id       Int     @id @default(autoincrement())
+  qty      Decimal @db.Decimal(14, 3)
+  price    Decimal @db.Decimal(14, 2)
+  // The cost the goods left at — they go back on the shelf at that cost, not today's average.
+  cost     Decimal @default(0) @db.Decimal(14, 2)
+  subtotal Decimal @db.Decimal(14, 2)
+
+  returnId   Int
+  saleReturn SaleReturn     @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItemId Int
+  saleItem   SaleItem       @relation(fields: [saleItemId], references: [id])
+  variantId  Int
+  variant    ProductVariant @relation(fields: [variantId], references: [id])
 }
 
 // ---------- Accounting ----------
@@ -383,6 +424,8 @@ model Payment {
   purchase         Purchase?       @relation(fields: [purchaseId], references: [id])
   purchaseReturnId Int?
   purchaseReturn   PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id])
+  saleReturnId     Int?
+  saleReturn       SaleReturn?     @relation(fields: [saleReturnId], references: [id])
 }
 
 // ---------- Inventory audit trail ----------

@@ -187,6 +187,22 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   - **Bug found and fixed during verification:** the credit-sale guard was `due > 0 && !customerId`,
     but the walk-in customer *has* an id — so the server would have parked a receivable on
     "Walk-in", i.e. money owed by nobody. It now rejects a due when the customer `isWalkIn`.
+- **Built the Sale Returns module** — the last Phase-1 gap. Studied the reference app's sale-return
+  screen read-only first → `BLUEPRINT.md` **§10**. (Notable: a sale return has **no reason/type**
+  field, unlike a purchase return.)
+  - Schema (migration `sale_returns`): `SaleItem.returnedQty`; new `SaleReturn` / `SaleReturnItem`
+    (the item keeps the `cost` the goods left at); `Payment.saleReturnId`.
+  - Return form off any sale: return qty capped at `sold − already returned`; refund in cash, or
+    leave at zero to credit it against what the customer owes.
+  - **Restocks at `costAtSale`, not today's average** — putting goods back at the current average
+    would silently rewrite what the remaining stock is worth.
+  - **A walk-in must be refunded in full** — crediting a walk-in's "account" would leave a balance
+    owed to nobody (the same trap as the POS credit-sale bug). Enforced on the server, not just the UI.
+  - Deleting a return sends the goods back out; refused if that stock has already been re-sold.
+  - **Browser-verified**: returned 1 of 3 on a credit sale → stock 17 → **18**, item `cost` kept at
+    **5.00**, `returnedQty` 1, customer due 312.40 → **300.40**, cash untouched. Walk-in sale then
+    returned → refund forced to the full 12.00, **walk-in due stayed 0.00**, and cash netted back to
+    exactly where it started. Over-cap return clamped (99 → 3).
 - ⚠️ **Dev-data loss, cause not established.** At some point the `PUR-00001` purchase and its
   return were deleted (stock returned to 20 @ cost 5.00, the 50.00 purchase payment refunded to
   cash). Migrations are clean and nothing was reset, so a delete path ran — but I could not attribute
@@ -212,33 +228,37 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   walk-in customer seeded for POS. Browser-verified; build passes.
 - ✅ **POS + Sales done** — POS terminal (scan → cart → discount → split payment → change → receipt),
   Hold/park, sales list & detail with profit, 80mm receipt. Browser-verified; build passes.
-- ✅ **The app can now run a full retail loop**: buy stock in → sell it → know the profit and who
-  owes what.
-- ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS) hold their requirements (written before
-  building, per protocol).
+- ✅ **Sale Returns done** — return off any sale, restocked at `costAtSale`, refund or credit;
+  walk-ins refunded in full. Browser-verified.
+- ✅ **Phase 1 is functionally complete** — the app runs the whole retail loop: buy stock in →
+  sell it → take it back → and know the profit and who owes what, in both directions.
+- ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS), §10 (Sale returns) hold their
+  requirements (written before building, per protocol).
 - ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add later for edge-level defense-in-depth).
-- ⬜ Sale returns and Reports not built yet.
+- ⬜ **Reports** not built yet — the last Phase-1 item.
 - ⬜ Deferred to Phase 2 (out of scope for the purchases module): purchase orders, stock
   adjustments, supplier advances/due-dismiss, attachments, areas & contact groups.
 
 **Dev login:** `admin` / `admin123`
 
 **Dev data now in the DB** (from end-to-end verification): supplier *Rahim Traders*; customers
-*Walk-in* (seeded), *Karim Mia* (Gold group, 10% off, **312.40** due) and a phone-only customer;
-sale `INV-00001` (3 × 12.00, 10% off, paid 20, due 12.40) → Classic Tee at **17 in stock, cost 5.00**.
-The purchase/return test data was lost (see the 2026-07-11 log note). Wipe and re-seed for a clean slate.
+*Walk-in* (seeded), *Karim Mia* (Gold group, 10% off, **300.40** due) and a phone-only customer;
+sales `INV-00001` (credit) and `INV-00002` (walk-in), returns `SRT-00001` (credited) and `SRT-00002`
+(cash-refunded) → Classic Tee at **18 in stock, cost 5.00**. The purchase/return test data was lost
+(see the 2026-07-11 log note). Wipe and re-seed for a clean slate.
 
 ## 6. Next steps (resume here)
 
-1. **Sale returns** — the last Phase-1 gap. Follow the module build protocol: study the reference
-   app's sale-return screen first (it lives at `/sale/return`), write it into `BLUEPRINT.md` §10,
-   then build. It mirrors the purchase return (§7.5): cap the return at what was sold, put stock
-   **back**, reverse the customer's receivable or refund cash, and write a `SALE_RETURN` movement.
-2. **Core reports** (see `BLUEPRINT.md` §5): daily/monthly sales, stock, **profit & loss** (now
-   computable — every sale line carries `costAtSale`), and customer/supplier dues.
-3. Then Phase 2 (see `BLUEPRINT.md` §5): exchanges, stock adjustments, expenses, VAT if needed.
+1. **Core reports** — the last Phase-1 item. Follow the module build protocol: study the reference
+   app's report screens first (`/report/*` — daily/monthly sale, stock, profit, customer & supplier
+   due), write it into `BLUEPRINT.md` §11, then build. Per `BLUEPRINT.md` §5 the core set is:
+   daily/monthly sales, stock, **profit & loss** (now genuinely computable — every sale line carries
+   `costAtSale`, and every return carries the cost the goods left at), and customer/supplier dues.
+2. Then Phase 2 (see `BLUEPRINT.md` §5): exchanges, stock adjustments, expenses/accounts, employees,
+   loyalty, VAT if needed.
 
-*(POS — done 2026-07-11. Exchange, VAT, and loyalty-point redemption were explicitly deferred.)*
+*(Sale returns — done 2026-07-11. POS — done 2026-07-11; exchange, VAT, and loyalty-point redemption
+were explicitly deferred to Phase 2.)*
 
 > The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
 > live in the private session notes. If they aren't in context, ask the user for them.

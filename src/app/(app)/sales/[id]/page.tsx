@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Printer } from "lucide-react";
+import { Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
@@ -55,12 +55,20 @@ export default async function SaleDetailPage({
           sale.soldBy ? ` · sold by ${sale.soldBy.name}` : ""
         }`}
       >
-        <Button variant="outline" asChild>
-          <Link href={`/sales/${sale.id}/receipt`}>
-            <Printer className="size-4" />
-            Receipt
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href={`/sales/${sale.id}/return`}>
+              <Undo2 className="size-4" />
+              Return
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/sales/${sale.id}/receipt`}>
+              <Printer className="size-4" />
+              Receipt
+            </Link>
+          </Button>
+        </div>
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-4">
