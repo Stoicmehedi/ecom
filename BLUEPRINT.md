@@ -942,3 +942,20 @@ honest without a single special case in the reports.**
 - **A walk-in can exchange.** The existing "a walk-in must be refunded in full" rule exists because a
   credit balance owed to nobody is a bug — but here the credit is spent immediately, so the rule is
   relaxed for exchange and only re-applies to the `C > T` remainder, which is refunded in cash.
+
+---
+
+## 15. Loyalty points *(decision settled 2026-07-11; not yet built)*
+
+The reference shop runs points live — invoices show *Earned / Redeemed / Available*, and customers
+hold real balances. We have none of it.
+
+**Settled: balances start at zero.** MPoS is a new system, not a migration of the old one, so no
+historic point balance is carried across. That removes the only hard part of this module — there is
+no import, no reconciliation, and no cut-over date to agree.
+
+Still to settle when it is built: the earn rate (points per unit of spend), what a point is worth on
+redemption, whether points are earned on a discounted line, and — the one that actually bites —
+**what happens to points when goods come back**. A return or an exchange that leaves the points
+already earned in place is a way to farm points for free, so earned points must reverse with the
+goods, in proportion to what was credited (the same `paidRatio` rule as §10.1a).

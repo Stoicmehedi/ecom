@@ -458,7 +458,11 @@ sales `INV-00001` (credit) and `INV-00002` (walk-in), returns `SRT-00001` (credi
 (cash-refunded) → Classic Tee at **18 in stock, cost 5.00**. The purchase/return test data was
 deleted by the user. Products round 2 then added: axis **Size** {S, M, L}, colours **Red/Navy/Olive**,
 and the variable products *Field Tee* (6 variants, min sale price 9.00, wholesale 10.00 @ qty 5),
-*Field Tee (copy)* and *Trail Hoodie* (imported from CSV). Wipe and re-seed for a clean slate.
+*Field Tee (copy)* and *Trail Hoodie* (imported from CSV). Exchange verification then added
+`EXC-00001` (even swap, Karim) and `EXC-00002` (walk-in, 12.00 refunded in cash).
+
+The dev DB is now a pile of verification leftovers rather than a coherent dataset. **Wipe and
+re-seed before the next module** — do not reason about business behaviour from these numbers.
 
 ## 6. Next steps (resume here)
 
@@ -466,32 +470,53 @@ and the variable products *Field Tee* (6 variants, min sale price 9.00, wholesal
 next is now chosen from the reference shop's *own data* rather than from the reference software's
 feature list (see the 2026-07-11 log entry — that method already deleted one wrong priority).
 
-1. **Loyalty points — the one live feature we don't have.** The shop's invoices show points earned and
-   an available balance (one customer holds 410). Switching to MPoS today would silently lose those
-   balances. Decide first: **do existing balances migrate across, or does everyone start at zero?**
-   Then: earn rate, redemption value, and whether points survive a return or an exchange.
-2. **Sale remark, and allow a zero-value sale.** The shop uses remarks (an invoice reads "Qc Out" for
-   a free issue) — and note our **minimum sale price currently forbids a 0.00 line**, so a free issue
-   needs a deliberate exemption rather than a workaround.
+**START HERE TOMORROW (2026-07-12).** Do these two, in this order.
+
+1. **Sale remark + allow a zero-value sale — FIRST, because it is a defect, not a feature.**
+   Adding the minimum sale price (§12.7) made it **impossible to sell a line at 0.00**. The shop does
+   exactly that: an invoice in their live account reads remark **"Qc Out"** on a zero-value sale — a
+   free issue / QC write-off. As it stands MPoS would *refuse* that sale outright. So: add a `remark`
+   to the sale, and give the price floor a deliberate exemption for a genuinely free line (rather
+   than letting a cashier work around the floor by typing 0). Small, and it unbreaks a working flow.
+
+2. **Loyalty points.** ✅ **Settled: balances start at ZERO** — MPoS is a new system, not a migration,
+   so nothing is carried across from the old one. That removes the import/reconciliation problem
+   entirely (see `BLUEPRINT.md` §15).
+   **Still to ask the user before building:**
+   - **Earn rate** — their data shows 60 points earned on a 660 bill, i.e. ≈ 1 point per 10 taka.
+     Confirm that is the rule.
+   - **Redemption value** — what is one point worth when spent?
+   - **Points on returned goods** — the one that bites. Buy → earn points → return the goods → keep
+     the points is free money. **Recommendation: earned points reverse with the goods, in proportion
+     to what was actually credited** — the same `paidRatio` rule as §10.1a, which returns and
+     exchanges already use.
+
+**Then, in rough order of value:**
+
 3. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
-4. **`/settings`** — still 404. It is where the shop-wide toggles belong (§13.4) and where the
-   hardcoded default alert quantity of 5 should move to.
-5. **Settle the `Sale.due` question** (see §5) — a small modelling decision, not a bug.
-6. **Then Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each a module built to protocol
-   (study the reference app → write it into `BLUEPRINT.md` → settle §6 → build):
+4. **`/settings`** — still 404 though the sidebar links to it. Where the shop-wide toggles belong
+   (§13.4), and where the hardcoded default alert quantity of **5** should move to.
+5. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
+6. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
+7. **Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each built to protocol
+   (study the reference app → write it into `BLUEPRINT.md` → settle the open decisions → build):
    - **Expenses + accounts** — the biggest hole in the P&L. Gross profit becomes a true *net* profit
      only once expenses and salaries post against it; the P&L screen already has the slot for it.
-   - **Stock adjustments** — damage, loss, corrections. Today stock can only move via buy/sell/return.
-   - Then: employees/salary, loyalty points, VAT (if it's actually needed).
-3. Housekeeping whenever convenient: `middleware.ts` for edge-level route protection, and a
-   `/settings` page (the sidebar links to one that doesn't exist yet). The shop-wide default alert
-   quantity is still the constant 5 — it belongs in `/settings` once that page exists.
-4. Still open from `BLUEPRINT.md` §12: **product image upload** (ours is a pasted URL — needs a
-   storage decision), **per-language product names**, and a **Product Groups** master.
+   - **Stock adjustments** — damage, loss, corrections. Today stock only moves via buy/sell/return.
+   - Then: employees/salary, VAT (only if it is actually needed).
+8. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
+   upload** (ours is a pasted URL — needs a storage decision), **per-language product names**, and a
+   **Product Groups** master.
 
-*(Products round 2 — done 2026-07-11. Reports — done 2026-07-11, then reviewed and hardened. Sale
-returns, POS, Customers, Purchases — done 2026-07-11. Exchange, VAT, and loyalty-point redemption
-were explicitly deferred to Phase 2.)*
+**Build only on request — no trace of these in the shop's actual sales** (§13): wholesale cart mode
+(ask: do they sell to resellers?), delivery charge, cheque details, back-dated sale date.
+**Dropped** — the shop's own data killed it: line price/discount override with a manager password.
+**Skip** — wholesale/grocery ideas, not clothing: instalments, carton selling.
+**Deferred, needs HTTPS:** in-POS camera barcode scanning (§13.7). A phone paired as a Bluetooth
+keyboard already types into the search box today and needs no code.
+
+*(Exchange, Products round 2, Reports, Sale returns, POS, Customers, Purchases — all done 2026-07-11.
+Reports were reviewed and hardened by a multi-agent review.)*
 
 > The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
 > live in the private session notes. If they aren't in context, ask the user for them.
