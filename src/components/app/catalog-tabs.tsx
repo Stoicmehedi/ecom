@@ -9,6 +9,8 @@ const tabs = [
   { label: "Categories", href: "/categories" },
   { label: "Brands", href: "/brands" },
   { label: "Units", href: "/units" },
+  { label: "Attributes & colours", href: "/attributes" },
+  { label: "Labels", href: "/labels" },
 ];
 
 export function CatalogTabs() {

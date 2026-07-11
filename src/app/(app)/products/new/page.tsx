@@ -6,7 +6,7 @@ export default async function NewProductPage() {
   const options = await getCatalogOptions();
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6">
       <PageHeader
         title="New product"
         description="Add a product to your catalog."

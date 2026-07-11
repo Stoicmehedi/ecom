@@ -5,14 +5,17 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { docStatus, resolveDiscount, round2, round3 } from "@/lib/costing";
+import { priceLine } from "@/lib/pricing";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type CheckoutResult = { ok?: boolean; error?: string; saleId?: number };
 
+// The client sends WHAT and HOW MANY. It does not send the price — the server
+// prices every line itself (BLUEPRINT §12.7a), because a price floor that the
+// browser could talk its way around would not be a floor.
 const lineSchema = z.object({
   variantId: z.number().int().positive(),
   qty: z.number().positive("Quantity must be greater than zero"),
-  price: z.number().min(0, "Price cannot be negative"),
 });
 
 const paymentSchema = z.object({
@@ -49,41 +52,115 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const s = parsed.data;
 
-  // The same variant scanned twice is one line.
-  const merged = new Map<number, { variantId: number; qty: number; price: number }>();
+  // The same variant scanned twice is one line — and it must be, or the wholesale
+  // threshold could be dodged by scanning 5 × 1 instead of 1 × 5.
+  const merged = new Map<number, { variantId: number; qty: number }>();
   for (const it of s.items) {
     const prev = merged.get(it.variantId);
-    if (prev) {
-      prev.qty = round3(prev.qty + it.qty);
-      prev.price = it.price;
-    } else {
-      merged.set(it.variantId, { ...it });
-    }
+    if (prev) prev.qty = round3(prev.qty + it.qty);
+    else merged.set(it.variantId, { ...it });
   }
-  const items = [...merged.values()];
+  const lines = [...merged.values()];
 
-  // Overselling is blocked: check every line against stock before touching anything.
   const variants = await prisma.productVariant.findMany({
-    where: { id: { in: items.map((i) => i.variantId) } },
-    include: { product: { select: { name: true } } },
+    where: { id: { in: lines.map((i) => i.variantId) } },
+    include: {
+      product: { select: { name: true, minSalePrice: true, isActive: true } },
+    },
   });
   const byId = new Map(variants.map((v) => [v.id, v]));
 
-  for (const it of items) {
+  // The customer's group rate is one of the two candidate discounts per line.
+  const customer = s.customerId
+    ? await prisma.contact.findUnique({
+        where: { id: s.customerId },
+        select: { isWalkIn: true, customerGroup: { select: { discount: true } } },
+      })
+    : null;
+  if (s.customerId && !customer) return { error: "That customer no longer exists." };
+
+  const groupPct = Number(customer?.customerGroup?.discount ?? 0);
+
+  // A manual bill discount REPLACES the automatic one rather than adding to it —
+  // stacking every discount is how a shop gives itself away (BLUEPRINT §12.7a).
+  const manual = round2(s.discountValue) > 0;
+
+  const nameOf = (v: (typeof variants)[number]) =>
+    v.label ? `${v.product.name} — ${v.label}` : v.product.name;
+
+  const items: {
+    variantId: number;
+    qty: number;
+    listPrice: number;
+    price: number;
+    discount: number;
+    subtotal: number;
+  }[] = [];
+
+  for (const it of lines) {
     const v = byId.get(it.variantId);
     if (!v) return { error: "A product in the cart no longer exists." };
+    if (!v.product.isActive) {
+      return { error: `"${nameOf(v)}" is no longer on sale.` };
+    }
+
+    // Overselling is blocked — stock can never go negative.
     const inStock = Number(v.stockQty);
     if (it.qty > inStock + 0.0005) {
-      const label = v.label ? `${v.product.name} — ${v.label}` : v.product.name;
       return {
-        error: `Only ${inStock} of "${label}" in stock — you cannot sell ${it.qty}.`,
+        error: `Only ${inStock} of "${nameOf(v)}" in stock — you cannot sell ${it.qty}.`,
       };
     }
+
+    const p = priceLine({
+      sellingPrice: Number(v.sellingPrice),
+      wholesalePrice: v.wholesalePrice == null ? null : Number(v.wholesalePrice),
+      wholesaleQty: v.wholesaleQty == null ? null : Number(v.wholesaleQty),
+      discountType: manual ? "AMOUNT" : v.discountType,
+      discountValue: manual ? 0 : Number(v.discountValue),
+      groupDiscountPct: manual ? 0 : groupPct,
+      minSalePrice:
+        v.product.minSalePrice == null ? null : Number(v.product.minSalePrice),
+      qty: it.qty,
+    });
+
+    // The price floor is a rule, not a hint — refuse, and say which item.
+    if (p.belowMin) {
+      return {
+        error: `"${nameOf(v)}" would sell at ${p.price.toFixed(2)}, below its ${p.minSalePrice?.toFixed(2)} minimum. Reduce the discount.`,
+      };
+    }
+
+    items.push({
+      variantId: it.variantId,
+      qty: it.qty,
+      listPrice: p.listPrice,
+      price: p.price,
+      discount: p.discount,
+      subtotal: p.subtotal,
+    });
   }
 
-  const subtotal = round2(items.reduce((a, i) => a + i.qty * i.price, 0));
+  // `subtotal` is already net of every per-line discount, so `discount` below
+  // carries ONLY the bill-level one. That keeps the discount-apportioning rule
+  // for returns (§10.1a) and product profit (§11.6) exact, with no special cases.
+  const subtotal = round2(items.reduce((a, i) => a + i.subtotal, 0));
   const discount = resolveDiscount(subtotal, s.discountType, s.discountValue);
   const total = round2(subtotal - discount);
+
+  // A bill discount must not sneak a line under its floor either.
+  if (discount > 0) {
+    const ratio = subtotal > 0 ? (subtotal - discount) / subtotal : 1;
+    for (const it of items) {
+      const v = byId.get(it.variantId)!;
+      const min = v.product.minSalePrice == null ? 0 : Number(v.product.minSalePrice);
+      if (min > 0 && it.price * ratio < min - 0.005) {
+        return {
+          error: `That bill discount would push "${nameOf(v)}" below its ${min.toFixed(2)} minimum.`,
+        };
+      }
+    }
+  }
 
   const payments = s.payments.filter((p) => p.amount > 0);
   const paid = round2(payments.reduce((a, p) => a + p.amount, 0));
@@ -96,14 +173,9 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   // customer has an id, so checking for a missing id is not enough — a due parked
   // on "Walk-in" is a receivable owed by nobody.
   if (due > 0) {
-    if (!s.customerId) {
+    if (!s.customerId || !customer) {
       return { error: "A credit sale needs a named customer — a walk-in must pay in full." };
     }
-    const customer = await prisma.contact.findUnique({
-      where: { id: s.customerId },
-      select: { isWalkIn: true },
-    });
-    if (!customer) return { error: "That customer no longer exists." };
     if (customer.isWalkIn) {
       return { error: "A walk-in must pay in full — pick a named customer to sell on credit." };
     }
@@ -145,11 +217,15 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
             saleId: sale.id,
             variantId: it.variantId,
             qty: round3(it.qty),
-            price: round2(it.price),
+            // `price` is what we actually charged; `listPrice` is what the catalogue
+            // says, so the receipt can show what the customer saved.
+            price: it.price,
+            listPrice: it.listPrice,
+            discount: it.discount,
             // Snapshot the cost NOW — the weighted average moves with later purchases,
             // and profit on this sale must be measured against what it cost today.
             costAtSale: round2(Number(v.purchasePrice)),
-            subtotal: round2(it.qty * it.price),
+            subtotal: it.subtotal,
           },
         });
 

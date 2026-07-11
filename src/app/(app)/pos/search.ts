@@ -3,6 +3,11 @@
 import { prisma } from "@/lib/prisma";
 import { num } from "@/lib/format";
 
+/**
+ * A sellable variant, carrying everything the cart needs to price it the same
+ * way the server will (BLUEPRINT §12.7a) — its own discount, its wholesale
+ * break, and its product's floor.
+ */
 export type PosHit = {
   variantId: number;
   label: string;
@@ -10,17 +15,32 @@ export type PosHit = {
   barcode: string | null;
   price: number;
   stockQty: number;
+  discountType: "AMOUNT" | "PERCENT";
+  discountValue: number;
+  wholesalePrice: number | null;
+  wholesaleQty: number | null;
+  minSalePrice: number | null;
 };
 
-function toHit(v: {
+const variantSelect = {
+  product: { select: { name: true, minSalePrice: true } },
+} as const;
+
+type VariantWithProduct = {
   id: number;
   sku: string;
   barcode: string | null;
   label: string | null;
   sellingPrice: unknown;
   stockQty: unknown;
-  product: { name: string };
-}): PosHit {
+  discountType: "AMOUNT" | "PERCENT";
+  discountValue: unknown;
+  wholesalePrice: unknown;
+  wholesaleQty: unknown;
+  product: { name: string; minSalePrice: unknown };
+};
+
+function toHit(v: VariantWithProduct): PosHit {
   return {
     variantId: v.id,
     label: v.label ? `${v.product.name} — ${v.label}` : v.product.name,
@@ -28,6 +48,12 @@ function toHit(v: {
     barcode: v.barcode,
     price: num(v.sellingPrice as number),
     stockQty: num(v.stockQty as number),
+    discountType: v.discountType,
+    discountValue: num(v.discountValue as number),
+    wholesalePrice: v.wholesalePrice == null ? null : num(v.wholesalePrice as number),
+    wholesaleQty: v.wholesaleQty == null ? null : num(v.wholesaleQty as number),
+    minSalePrice:
+      v.product.minSalePrice == null ? null : num(v.product.minSalePrice as number),
   };
 }
 
@@ -49,7 +75,7 @@ export async function searchPos(
       OR: [{ barcode: term }, { sku: term }],
       product: { isActive: true },
     },
-    include: { product: { select: { name: true } } },
+    include: variantSelect,
   });
 
   const variants = await prisma.productVariant.findMany({
@@ -62,8 +88,8 @@ export async function searchPos(
       product: { isActive: true },
     },
     take: 24,
-    orderBy: { id: "asc" },
-    include: { product: { select: { name: true } } },
+    orderBy: [{ product: { sortIndex: "asc" } }, { sortIndex: "asc" }, { id: "asc" }],
+    include: variantSelect,
   });
 
   return {
@@ -77,8 +103,8 @@ export async function browsePos(): Promise<PosHit[]> {
   const variants = await prisma.productVariant.findMany({
     where: { product: { isActive: true } },
     take: 24,
-    orderBy: { id: "asc" },
-    include: { product: { select: { name: true } } },
+    orderBy: [{ product: { sortIndex: "asc" } }, { sortIndex: "asc" }, { id: "asc" }],
+    include: variantSelect,
   });
   return variants.map(toHit);
 }

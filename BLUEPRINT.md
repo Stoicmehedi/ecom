@@ -141,9 +141,9 @@ e-commerce storefront + online-order fulfillment.
 - [x] **Receipt / invoice format** — 80mm thermal receipt as the POS default + optional A4
       invoice for formal/credit sales; rendered via a print-styled page / PDF. *(decided 2026-07-09;
       implement in the POS module)*
-- [~] **SKU / barcode scheme** — SKU auto-generates (`SLUG-XXXXX`) with manual override *(done)*.
-      Open: whether to auto-generate scannable barcodes (numeric / EAN-13) — **decide when building
-      barcode/label printing.**
+- [x] **SKU / barcode scheme** — SKU auto-generates (`SLUG-XXXXX`) with manual override *(done)*.
+      Barcodes auto-generate as **EAN-13 in the in-store `20` range**, check digit included, and stay
+      editable. *(decided 2026-07-11 — see §12.7)*
 - [ ] **Bangla + English i18n** — English-only for now; revisit before it becomes costly.
       **Decide when a module first needs localized UI.**
 - [x] **Purchase numbering** — our own unique `PUR-00001` sequence, **plus** a separate optional,
@@ -695,21 +695,49 @@ one Add-branch dialog with parent-scoped autocomplete creates the whole path at 
 same instinct applies here: their attribute/colour masters are three more pages — ours should be one
 screen with the axes on it.
 
-### 12.7 Open decisions this module forces
+### 12.7 Decisions *(settled 2026-07-11)*
 
-- [ ] **Auto-generate scannable barcodes (EAN-13)?** — §6 has been carrying this as *"decide when
-      building barcode/label printing."* That is now. If barcodes become mandatory per variant
-      (§12.3), they have to come from somewhere.
-- [ ] **Discount precedence** — a variant's standing discount vs. the customer group's discount
-      (§8.2) vs. the cashier's manual bill discount. Do they stack, or does one win? *(A shop that
-      stacks all three by accident gives the store away.)*
-- [ ] **Minimum sale price** — hard block at POS, or admin override with a warning?
-- [ ] **Image upload** — where do files live (local disk under `/public`, or object storage)? And is
-      an image really mandatory, as it is for them?
-- [ ] **Wholesale pricing** — wire up `wholesalePrice` + a qty threshold, or delete the column.
-      Leaving a dead money field in the schema is the worst of the three options.
+- [x] **Barcodes: auto-generate EAN-13, editable.** Every variant gets a scannable, check-digit-valid
+      EAN-13 on save, from the **in-store range (prefix `20`)** which is reserved by GS1 for exactly
+      this — internal codes that never collide with a manufacturer's. Overridable, so a product that
+      arrives with a real barcode keeps it. This is what lets barcode be mandatory-by-default without
+      anyone typing thirteen digits.
+- [x] **Discount precedence: the best *single* discount wins — they never stack.** A line takes
+      whichever is larger, the variant's own standing discount or the customer group's rate, and only
+      that one. A manual bill discount typed by the cashier **replaces** the automatic one. Stacking
+      three discounts is how a shop gives itself away without noticing.
+- [x] **Minimum sale price: a hard block, for everyone.** Checkout refuses and names the item. A floor
+      that can be waived is not a floor. Enforced on the server, not just the UI — same as the
+      overselling and walk-in-credit rules.
+- [x] **Wholesale: wired up.** `wholesalePrice` gains a `wholesaleQty` threshold — sell that many or
+      more of a line and the price switches automatically. (The alternative was deleting the column;
+      leaving it dead was not an option.)
+- [ ] **Image upload** — where files live (local disk under `/public`, or object storage). Still open;
+      an image stays **optional** for us (it is required for them, which is an e-commerce concern we
+      don't have).
 - [ ] **Per-language product names** (their English / Bengali tabs) — ties to the standing i18n
       decision in §6.
+
+### 12.7a How a line is priced — one rule, one place
+
+Because three discounts can now touch one line, the order is fixed and lives in **one** function
+(`src/lib/pricing.ts`), so it cannot drift between the POS screen and the server:
+
+```
+unit price   = wholesaleQty reached ? wholesalePrice : sellingPrice
+auto discount= max(variant's own discount, customer group's rate)   ← the BEST one, never both
+effective    = unit price − auto discount
+                                        …then the server REFUSES if effective < minSalePrice
+```
+
+The cashier's manual bill discount is applied **after** that, at the bill level, and replaces the
+automatic one rather than adding to it.
+
+**The effective price is what goes onto the sale line** (`SaleItem.price`), with the catalogue price
+kept alongside it in `SaleItem.listPrice` so a receipt can show what was saved. This matters: it
+means `Sale.subtotal` is already net of every per-line discount, and `Sale.discount` holds only the
+bill-level one — so the discount-apportioning rule for returns (§10.1a) and product profit (§11.6)
+keeps working **exactly**, with no special cases.
 
 ### 12.8 Suggested build order
 
@@ -721,3 +749,30 @@ screen with the axes on it.
 4. **Barcode / label printing** — and settle EAN-13 with it.
 5. **Import / export** — needed the first time a real catalogue is loaded.
 6. Product groups, description, sort index, image upload.
+
+### 12.9 The import file *(built 2026-07-11)*
+
+One row per **variant**; the **SKU is the key** (a known SKU updates, a new one creates). Rows that
+share a `name` join the same product, so "one more size of the shirt we already sell" lands where you
+would expect.
+
+| | columns |
+|---|---|
+| **Required** | `sku`, `name`, `price` |
+| **Optional** | `code`, `category`, `brand`, `unit`, `variant`, `axis`, `size`, `color`, `barcode`, `cost`, `discount_type`, `discount_value`, `wholesale_price`, `wholesale_qty`, `min_sale_price`, `alert_qty`, `active` |
+
+- `size` is a value on an **axis**; `axis` names which one, defaulting to **Size**. Carrying the axis
+  in the file is what makes an export re-import losslessly — otherwise `M` the *Size* and `M` the
+  *Fit* are indistinguishable on the way back in. Sizes and colours the file names but the shop does
+  not have yet are **created**, so a whole clothing catalogue loads in one pass. The product also
+  collects the axes its variants use, so an imported catalogue can be extended with the variant
+  generator afterwards rather than only in a spreadsheet.
+- A missing `barcode` is **generated** (EAN-13, §12.7).
+- **Preview before write.** The importer names every row it will create, update or skip — and every
+  category, brand, unit, size and colour it would have to create — before anything is written. A row
+  with no SKU, no name, an unparseable price, or a SKU repeated inside the file is **skipped**, never
+  guessed at.
+- **Stock is exported (`stock_readonly`) but never imported.** Stock moves only through purchases,
+  sales and returns, each of which carries a cost and an audit trail. Letting a spreadsheet set it
+  would put goods on the shelf that nothing ever paid for, and the weighted-average cost — and so
+  every profit figure — would be a fiction.

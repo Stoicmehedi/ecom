@@ -118,6 +118,47 @@ model Brand {
   products Product[]
 }
 
+// ---------- Variant dimensions ----------
+
+/// A named axis a product can vary along — Size, Fit, Material.
+model AttributeCategory {
+  id         Int         @id @default(autoincrement())
+  name       String      @unique
+  createdAt  DateTime    @default(now())
+  attributes Attribute[]
+  products   Product[]
+}
+
+/// A value on that axis — 32, 34, Slim, Cotton.
+model Attribute {
+  id        Int      @id @default(autoincrement())
+  name      String
+  sortIndex Int      @default(0)
+  createdAt DateTime @default(now())
+
+  attributeCategoryId Int
+  attributeCategory   AttributeCategory @relation(fields: [attributeCategoryId], references: [id], onDelete: Cascade)
+
+  /// Which products offer this value (the picker on the product form).
+  products Product[]
+  /// Which generated variants carry it.
+  variants ProductVariant[]
+
+  @@unique([attributeCategoryId, name])
+}
+
+/// Colour is its own axis, crossed with the attribute to generate variants.
+model Color {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  hex       String? // for a swatch; optional
+  sortIndex Int      @default(0)
+  createdAt DateTime @default(now())
+
+  products Product[]
+  variants ProductVariant[]
+}
+
 model Unit {
   id        Int       @id @default(autoincrement())
   name      String
@@ -126,12 +167,20 @@ model Unit {
 }
 
 model Product {
-  id        Int         @id @default(autoincrement())
-  name      String
-  type      ProductType @default(SIMPLE)
-  imageUrl  String?
-  isActive  Boolean     @default(true)
-  createdAt DateTime    @default(now())
+  id          Int         @id @default(autoincrement())
+  name        String
+  code        String? // a second identifier alongside the variants' SKUs
+  description String?
+  type        ProductType @default(SIMPLE)
+  imageUrl    String?
+  isActive    Boolean     @default(true)
+  sortIndex   Int         @default(0)
+  createdAt   DateTime    @default(now())
+
+  /// Low-stock threshold for THIS product. Null falls back to the global default.
+  alertQty Decimal? @db.Decimal(14, 3)
+  /// A price floor. Checkout refuses to sell any variant below it (BLUEPRINT §12.7).
+  minSalePrice Decimal? @db.Decimal(14, 2)
 
   categoryId Int?
   category   Category? @relation(fields: [categoryId], references: [id])
@@ -142,21 +191,43 @@ model Product {
   branchId   Int?
   branch     Branch?   @relation(fields: [branchId], references: [id])
 
+  /// The axis this product varies along, and the values picked on it — kept so the
+  /// variant grid can be regenerated on edit without re-picking everything.
+  attributeCategoryId Int?
+  attributeCategory   AttributeCategory? @relation(fields: [attributeCategoryId], references: [id])
+  attributes          Attribute[]
+  colors              Color[]
+
   variants ProductVariant[]
 }
 
 model ProductVariant {
   id                Int      @id @default(autoincrement())
   sku               String   @unique
-  barcode           String?  @unique
+  barcode           String?  @unique // auto EAN-13 (in-store `20` range), editable
   label             String? // e.g. "Red / L"
   attributes        Json? // { color: "Red", size: "L" }
+  sortIndex         Int      @default(0)
   purchasePrice     Decimal  @default(0) @db.Decimal(14, 2) // weighted-average cost
   lastPurchasePrice Decimal? @db.Decimal(14, 2) // price on the most recent purchase
   sellingPrice      Decimal  @default(0) @db.Decimal(14, 2)
-  wholesalePrice    Decimal? @db.Decimal(14, 2)
   stockQty          Decimal  @default(0) @db.Decimal(14, 3)
   createdAt         DateTime @default(now())
+
+  /// Sell this many or more on one line and the price switches to wholesale.
+  wholesalePrice Decimal? @db.Decimal(14, 2)
+  wholesaleQty   Decimal? @db.Decimal(14, 3)
+
+  /// A standing discount on this variant. Competes with the customer group's rate —
+  /// the bigger of the two wins, they never stack (BLUEPRINT §12.7a).
+  discountType  DiscountType @default(AMOUNT)
+  discountValue Decimal      @default(0) @db.Decimal(14, 2)
+
+  /// What this variant *is*, on each axis — set by the variant generator.
+  attributeId Int?
+  attribute   Attribute? @relation(fields: [attributeId], references: [id])
+  colorId     Int?
+  color       Color?     @relation(fields: [colorId], references: [id])
 
   productId Int
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -341,10 +412,15 @@ model HeldSale {
 }
 
 model SaleItem {
-  id          Int     @id @default(autoincrement())
-  qty         Decimal @db.Decimal(14, 3)
-  price       Decimal @db.Decimal(14, 2)
-  discount    Decimal @default(0) @db.Decimal(14, 2)
+  id  Int     @id @default(autoincrement())
+  qty Decimal @db.Decimal(14, 3)
+  /// What we actually charged per unit — already net of the variant/group discount
+  /// and of any wholesale switch (BLUEPRINT §12.7a). Everything downstream (returns,
+  /// profit) reads THIS, so `Sale.subtotal` carries only bill-level discounting.
+  price Decimal @db.Decimal(14, 2)
+  /// The catalogue price, kept so a receipt can show what was saved.
+  listPrice   Decimal @default(0) @db.Decimal(14, 2)
+  discount    Decimal @default(0) @db.Decimal(14, 2) // (listPrice − price) × qty
   costAtSale  Decimal @default(0) @db.Decimal(14, 2) // for profit/loss
   subtotal    Decimal @db.Decimal(14, 2)
   returnedQty Decimal @default(0) @db.Decimal(14, 3)

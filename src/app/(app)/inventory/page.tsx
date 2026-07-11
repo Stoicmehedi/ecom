@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-const LOW_STOCK = 5;
+/** The fallback threshold. A product with its own `alertQty` overrides it. */
+const DEFAULT_ALERT_QTY = 5;
 
 export default async function InventoryPage({
   searchParams,
@@ -33,7 +34,9 @@ export default async function InventoryPage({
   const [variants, movements] = await Promise.all([
     prisma.productVariant.findMany({
       orderBy: [{ productId: "asc" }, { id: "asc" }],
-      include: { product: { select: { name: true, isActive: true } } },
+      include: {
+        product: { select: { name: true, isActive: true, alertQty: true } },
+      },
     }),
     prisma.stockMovement.groupBy({
       by: ["variantId"],
@@ -58,6 +61,9 @@ export default async function InventoryPage({
       const stock = num(v.stockQty);
       const avg = num(v.purchasePrice);
       const sell = num(v.sellingPrice);
+      // The product's own threshold if it set one, else the shop default.
+      const alertAt =
+        v.product.alertQty == null ? DEFAULT_ALERT_QTY : num(v.product.alertQty);
       return {
         id: v.id,
         name: v.label ? `${v.product.name} — ${v.label}` : v.product.name,
@@ -69,11 +75,13 @@ export default async function InventoryPage({
         inQty: inByVariant.get(v.id) ?? 0,
         outQty: outByVariant.get(v.id) ?? 0,
         stock,
+        alertAt,
+        low: stock <= alertAt,
         valueCost: stock * avg,
         valueSell: stock * sell,
       };
     })
-    .filter((r) => (lowOnly ? r.stock <= LOW_STOCK : true));
+    .filter((r) => (lowOnly ? r.low : true));
 
   const totalCost = rows.reduce((s, r) => s + r.valueCost, 0);
   const totalSell = rows.reduce((s, r) => s + r.valueSell, 0);
@@ -92,7 +100,7 @@ export default async function InventoryPage({
           href={lowOnly ? "/inventory" : "/inventory?low=1"}
           className="text-sm text-primary underline"
         >
-          {lowOnly ? "Show all" : `Low stock only (≤ ${LOW_STOCK})`}
+          {lowOnly ? "Show all" : "Low stock only"}
         </Link>
       </PageHeader>
 
@@ -169,7 +177,7 @@ export default async function InventoryPage({
                     <Badge className="bg-destructive/10 text-destructive hover:bg-destructive/10">
                       {qty(r.stock)}
                     </Badge>
-                  ) : r.stock <= LOW_STOCK ? (
+                  ) : r.low ? (
                     <Badge className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/10">
                       {qty(r.stock)}
                     </Badge>

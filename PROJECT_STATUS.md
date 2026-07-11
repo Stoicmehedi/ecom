@@ -301,6 +301,47 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   records and list/report pages. Do not fill a create form and do not click *any* button on one —
   "Next"/"Continue"/"Save & Continue" can all persist.
 
+- **Products, round 2 — BUILT (`BLUEPRINT.md` §12).** Every gap §12 named is now closed. Migration
+  `products_v2`.
+  - **Attributes, Colours and the variant generator.** New masters — an **axis** (Size, Fit…) holding
+    its **values**, and **Colours** as their own axis — on a new `/attributes` screen. A variable
+    product picks its sizes and colours as chips and presses **Generate variants**: the grid is the
+    cross-product (3 sizes × 2 colours → 6 rows). Regenerating **keeps existing variants** — their
+    prices, stock and history survive; a variant that a purchase or sale has touched cannot be
+    dropped. **Apply to all** bulk-fills cost/price/discount/wholesale/opening down the grid.
+  - **The pricing rule, written once** (`src/lib/pricing.ts`, `BLUEPRINT.md` §12.7a) and called by
+    **both** the POS client and the server, so what the cashier sees is what is charged:
+    **wholesale price** takes over at its qty threshold → then the **single best** discount applies
+    (per-variant vs customer-group — **never stacked**) → a **manual bill discount replaces** the
+    automatic one → **minimum sale price** is a hard floor. The POS now sends only *variantId + qty*;
+    the server prices the bill. A floor the browser could talk around is not a floor.
+  - **Alert quantity** (per-product low-stock threshold, replacing the hardcoded 5), **minimum sale
+    price**, **wholesale quantity**, per-variant standing discount, product code, description and
+    sort index — all added. `wholesalePrice` is no longer dead code.
+  - **Product list:** search, category/brand/status filters, **enable/disable** (a product with
+    history can now be retired — it vanishes from POS search), **duplicate** (fresh SKUs and
+    barcodes, zero stock) and per-row actions.
+  - **Barcodes and labels.** **EAN-13 settled**: we generate real, check-digit-valid EAN-13s in the
+    in-store `20` prefix range, automatically, for every variant that has none. `/labels` prints a
+    label sheet — barcode drawn as inline SVG from the digits themselves (no dependency, no image
+    hosting, crisp at any size), with optional name and price.
+  - **Import / export.** CSV export of the whole catalogue (one row per variant, honouring the list's
+    filters) and an importer that **previews before it writes** — it names every row it will create,
+    update or skip, and every category, brand, unit, size and colour it would have to create. The
+    SKU is the key. **Stock is never importable** — it moves only through purchases, sales and
+    returns, each of which carries a cost and an audit trail. An export re-imports losslessly (the
+    `axis` column travels with `size`, so "M" comes back a Size and not a Fit).
+
+  **Browser-verified end to end:** Size {S,M,L} × {Red, Navy} → 6 generated variants, all with valid
+  auto EAN-13s; wholesale switched at qty 5 (12.00 → 10.00); a 20% bill discount on top was **refused
+  by the server** *and* blocked in the UI as it was typed (it breached the 9.00 floor); for a Gold
+  customer, a 20% variant discount beat the group's 10% (**9.60, not 8.64** — no stacking) and the
+  sale wrote `listPrice` 12.00 alongside the charged 9.60; disable removed the product from POS
+  search; duplicate produced distinct SKUs/barcodes at zero stock; the label sheet rendered; and a
+  CSV round-trip created a new size (XL) and colour (Olive), updated a price without touching stock,
+  and skipped the malformed row without creating anything. Typecheck + production build pass; no new
+  lint findings.
+
 ---
 
 ## 5. Current state
@@ -311,12 +352,15 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ✅ **Auth + login + app shell + dashboard working**; build passes; routes protected.
 - ✅ **shadcn/ui + MPoS emerald theme** in place (11 components).
 - ✅ **Seed data present**: Main Store branch, Admin/Cashier roles, admin user, Cash account.
-- 🟡 **Products/Catalog — built, but INCOMPLETE.** Categories, Brands, Units, Products+Variants (full
-  CRUD) all work. But it was built before the module protocol existed and never got the
-  field-by-field study: **no attribute/colour masters, no variant generator, no alert qty, no minimum
-  sale price, no product search/filters/disable/duplicate, no barcode printing, no import.**
-  See `BLUEPRINT.md` **§12** for the full gap and build order. **This is the biggest known hole in
-  the app.**
+- ✅ **Products/Catalog — COMPLETE (round 2 shipped).** Categories, Brands, Units, Products+Variants,
+  plus **attribute/colour masters + variant generator**, alert qty, **minimum sale price** (enforced
+  at checkout), wholesale price/qty, per-variant discount, product search/filters/disable/duplicate,
+  **auto EAN-13 barcodes + label printing**, and **CSV import/export**. The hole `BLUEPRINT.md` §12
+  described is closed. Browser-verified; build passes.
+- ✅ **Pricing has exactly one rule, in one file** (`src/lib/pricing.ts`, spec in `BLUEPRINT.md`
+  §12.7a): wholesale threshold → best *single* discount (variant vs group, never stacked) → manual
+  bill discount *replaces* the automatic one → minimum-sale-price floor. The POS client and the
+  server both call it, and the server is the authority (the client sends only variantId + qty).
 - ✅ **Category autocomplete** works (parent-scoped suggestions + reuse-a-name across branches).
 - ✅ **Session + module build protocol** documented in `AGENTS.md` (loaded every session via `CLAUDE.md`).
 - ✅ **Purchases & Stock module done** — suppliers (+ ledger & due payment), purchase entry with
@@ -356,29 +400,32 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 *Walk-in* (seeded), *Karim Mia* (Gold group, 10% off, **300.40** due) and a phone-only customer;
 sales `INV-00001` (credit) and `INV-00002` (walk-in), returns `SRT-00001` (credited) and `SRT-00002`
 (cash-refunded) → Classic Tee at **18 in stock, cost 5.00**. The purchase/return test data was
-deleted by the user. Wipe and re-seed for a clean slate.
+deleted by the user. Products round 2 then added: axis **Size** {S, M, L}, colours **Red/Navy/Olive**,
+and the variable products *Field Tee* (6 variants, min sale price 9.00, wholesale 10.00 @ qty 5),
+*Field Tee (copy)* and *Trail Hoodie* (imported from CSV). Wipe and re-seed for a clean slate.
 
 ## 6. Next steps (resume here)
 
-**Phase 1 runs end to end and is reviewed — but Products has a real hole in it.** Do that before
-Phase 2: everything downstream (POS, purchases, stock) sits on top of the product model.
+**Phase 1 is complete and Products round 2 has closed the last known hole.** The product model now
+carries everything the modules above it need, so Phase 2 can start on solid ground.
 
-1. **Products, round 2 — `BLUEPRINT.md` §12.** Start with **§12.2 (Attributes + Colors + Generate
-   variants)**; it is the one that decides whether a clothing shop can actually use the app. Settle
-   the §12.7 decisions first — especially **EAN-13 barcodes** and **discount precedence**.
-2. **Settle the `Sale.due` question** (see §5) — a small modelling decision, not a bug.
-3. **Then Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each a module built to protocol
+1. **Settle the `Sale.due` question** (see §5) — a small modelling decision, not a bug.
+2. **Then Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each a module built to protocol
    (study the reference app → write it into `BLUEPRINT.md` → settle §6 → build):
    - **Expenses + accounts** — the biggest hole in the P&L. Gross profit becomes a true *net* profit
      only once expenses and salaries post against it; the P&L screen already has the slot for it.
    - **Stock adjustments** — damage, loss, corrections. Today stock can only move via buy/sell/return.
    - **Exchanges** — deferred from POS; a very common counter request.
-   - Then: employees/salary, loyalty points, VAT (if it's actually needed), barcode label printing.
+   - Then: employees/salary, loyalty points, VAT (if it's actually needed).
 3. Housekeeping whenever convenient: `middleware.ts` for edge-level route protection, and a
-   `/settings` page (the sidebar links to one that doesn't exist yet).
+   `/settings` page (the sidebar links to one that doesn't exist yet). The shop-wide default alert
+   quantity is still the constant 5 — it belongs in `/settings` once that page exists.
+4. Still open from `BLUEPRINT.md` §12: **product image upload** (ours is a pasted URL — needs a
+   storage decision), **per-language product names**, and a **Product Groups** master.
 
-*(Reports — done 2026-07-11, then reviewed and hardened. Sale returns, POS, Customers, Purchases —
-done 2026-07-11. Exchange, VAT, and loyalty-point redemption were explicitly deferred to Phase 2.)*
+*(Products round 2 — done 2026-07-11. Reports — done 2026-07-11, then reviewed and hardened. Sale
+returns, POS, Customers, Purchases — done 2026-07-11. Exchange, VAT, and loyalty-point redemption
+were explicitly deferred to Phase 2.)*
 
 > The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
 > live in the private session notes. If they aren't in context, ask the user for them.

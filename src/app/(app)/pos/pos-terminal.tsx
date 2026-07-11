@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Trash2, Plus, Minus, PauseCircle, X } from "lucide-react";
 import { toast } from "sonner";
+import { priceLine } from "@/lib/pricing";
+import { paidRatio } from "@/lib/costing";
 import { checkout, holdSale, resumeHeldSale, discardHeldSale } from "./actions";
 import { searchPos, type PosHit } from "./search";
 import { quickAddCustomer } from "../customers/actions";
@@ -39,13 +41,19 @@ export type HeldSaleOption = {
   count: number;
 };
 
+/** The cart holds the variant's pricing rules; the price itself is derived. */
 type Line = {
   variantId: number;
   label: string;
   sku: string;
   qty: number;
-  price: number;
+  price: number; // the catalogue selling price
   stockQty: number;
+  discountType: "AMOUNT" | "PERCENT";
+  discountValue: number;
+  wholesalePrice: number | null;
+  wholesaleQty: number | null;
+  minSalePrice: number | null;
 };
 
 type PayLine = { method: string; accountId: number | null; amount: number };
@@ -84,13 +92,13 @@ export function PosTerminal({
   const [hits, setHits] = useState<PosHit[]>(initialProducts);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // Picking a customer in a group pre-fills their standing discount.
+  // A customer's group rate is NOT pre-filled as a bill discount any more — it is
+  // one of the two candidates each line is priced against, and the better of the
+  // two wins (BLUEPRINT §12.7a). Filling it in here as well would double it.
   function pickCustomer(id: number) {
     setCustomerId(id);
     const c = customers.find((x) => x.id === id);
     if (c && c.groupDiscount > 0) {
-      setDiscountType("PERCENT");
-      setDiscountValue(c.groupDiscount);
       toast.info(`${c.name} gets ${c.groupDiscount}% off`);
     }
   }
@@ -120,6 +128,11 @@ export function PosTerminal({
           qty: 1,
           price: hit.price,
           stockQty: hit.stockQty,
+          discountType: hit.discountType,
+          discountValue: hit.discountValue,
+          wholesalePrice: hit.wholesalePrice,
+          wholesaleQty: hit.wholesaleQty,
+          minSalePrice: hit.minSalePrice,
         },
         ...prev,
       ];
@@ -163,12 +176,45 @@ export function PosTerminal({
     );
   }
 
-  const subtotal = r2(lines.reduce((s, l) => s + l.qty * l.price, 0));
+  const selected = customers.find((c) => c.id === customerId);
+  const groupPct = selected?.groupDiscount ?? 0;
+
+  // A manual bill discount REPLACES the automatic per-line ones — never adds to
+  // them. Priced through the very same function the server uses, so what the
+  // cashier is looking at is what will actually be charged.
+  const manual = discountValue > 0;
+  const priced = lines.map((l) => ({
+    line: l,
+    p: priceLine({
+      sellingPrice: l.price,
+      wholesalePrice: l.wholesalePrice,
+      wholesaleQty: l.wholesaleQty,
+      discountType: manual ? "AMOUNT" : l.discountType,
+      discountValue: manual ? 0 : l.discountValue,
+      groupDiscountPct: manual ? 0 : groupPct,
+      minSalePrice: l.minSalePrice,
+      qty: l.qty,
+    }),
+  }));
+
+  const subtotal = r2(priced.reduce((s, x) => s + x.p.subtotal, 0));
+  const autoDiscount = r2(priced.reduce((s, x) => s + x.p.discount, 0));
   const discount =
     discountType === "PERCENT"
       ? r2(Math.min((subtotal * discountValue) / 100, subtotal))
       : r2(Math.min(discountValue, subtotal));
   const total = r2(subtotal - discount);
+
+  // The bill discount lands on each line pro-rata, so it can breach a floor that
+  // the line on its own clears. The server refuses either way; checking it here
+  // too means the cashier learns it while typing, not at "Complete sale".
+  const ratio = paidRatio(subtotal, discount);
+  const blocked = priced.filter(
+    (x) =>
+      x.p.belowMin ||
+      (x.p.minSalePrice != null && x.p.price * ratio < x.p.minSalePrice - 0.005),
+  );
+  const blockedIds = new Set(blocked.map((x) => x.line.variantId));
 
   // --- payment dialog ---
   const [payOpen, setPayOpen] = useState(false);
@@ -180,11 +226,15 @@ export function PosTerminal({
   const due = r2(total - paid);
   const change = r2(Math.max(tendered - paid, 0));
 
-  const selected = customers.find((c) => c.id === customerId);
   const isWalkIn = selected?.isWalkIn ?? false;
 
   function openPayment() {
     if (lines.length === 0) return toast.error("The cart is empty");
+    if (blocked.length > 0) {
+      return toast.error(
+        `"${blocked[0].line.label}" is below its minimum price — checkout will refuse it.`,
+      );
+    }
     setPayments([{ method: "CASH", accountId: accounts[0]?.id ?? null, amount: total }]);
     setTendered(total);
     setPayOpen(true);
@@ -200,11 +250,8 @@ export function PosTerminal({
         discountType,
         discountValue,
         dueDate: due > 0 && dueDate ? dueDate : undefined,
-        items: lines.map((l) => ({
-          variantId: l.variantId,
-          qty: l.qty,
-          price: l.price,
-        })),
+        // No price is sent — the server prices every line itself.
+        items: lines.map((l) => ({ variantId: l.variantId, qty: l.qty })),
         payments: payments
           .filter((p) => p.amount > 0)
           .map((p) => ({ method: p.method, accountId: p.accountId, amount: p.amount })),
@@ -401,13 +448,37 @@ export function PosTerminal({
               Scan or tap a product to start.
             </p>
           )}
-          {lines.map((l, i) => (
+          {priced.map(({ line: l, p }, i) => (
             <div key={l.variantId} className="flex items-center gap-2 py-2">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{l.label}</p>
                 <p className="text-xs text-muted-foreground">
-                  {l.price.toFixed(2)} · {l.stockQty} in stock
+                  {p.discountPerUnit > 0 ? (
+                    <>
+                      <span className="line-through">{l.price.toFixed(2)}</span>{" "}
+                      <span className="font-medium text-primary">
+                        {p.price.toFixed(2)}
+                      </span>{" "}
+                      <span>
+                        ({p.source === "variant" ? "product" : "group"} discount)
+                      </span>
+                    </>
+                  ) : (
+                    <>{p.price.toFixed(2)}</>
+                  )}
+                  {p.isWholesale && (
+                    <span className="ml-1 font-medium text-primary">· wholesale</span>
+                  )}
+                  {" · "}
+                  {l.stockQty} in stock
                 </p>
+                {blockedIds.has(l.variantId) && (
+                  <p className="text-xs font-medium text-destructive">
+                    {p.belowMin
+                      ? `Below its ${p.minSalePrice?.toFixed(2)} minimum — checkout will refuse this.`
+                      : `The bill discount takes this under its ${p.minSalePrice?.toFixed(2)} minimum — checkout will refuse it.`}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1">
                 <Button
@@ -440,7 +511,7 @@ export function PosTerminal({
                 </Button>
               </div>
               <span className="w-20 text-right text-sm font-medium tabular-nums">
-                {r2(l.qty * l.price).toFixed(2)}
+                {p.subtotal.toFixed(2)}
               </span>
               <Button
                 type="button"
@@ -457,9 +528,20 @@ export function PosTerminal({
         </div>
 
         <div className="space-y-2 border-t pt-3">
-          <Row label="Subtotal" value={subtotal.toFixed(2)} />
+          {autoDiscount > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-primary">Automatic discount</span>
+              <span className="tabular-nums text-primary">
+                −{autoDiscount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          <Row
+            label={autoDiscount > 0 ? "Subtotal (after auto discount)" : "Subtotal"}
+            value={subtotal.toFixed(2)}
+          />
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm text-muted-foreground">Discount</span>
+            <span className="text-sm text-muted-foreground">Manual discount</span>
             <div className="flex items-center gap-1">
               <Select
                 value={discountType}
@@ -486,6 +568,12 @@ export function PosTerminal({
               </span>
             </div>
           </div>
+          {manual && (
+            <p className="text-xs text-muted-foreground">
+              A manual discount <span className="font-medium">replaces</span> the
+              automatic one — discounts never stack.
+            </p>
+          )}
           <div className="flex items-center justify-between border-t pt-2">
             <span className="font-medium">Total</span>
             <span className="text-2xl font-semibold tabular-nums">{total.toFixed(2)}</span>
