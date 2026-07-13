@@ -12,6 +12,8 @@ const prisma = new PrismaClient({ adapter });
 // Small, sensible permission set for a cashier (module.action keys).
 // Note "reports.view" without "reports.profit": a cashier sees sales, dues and
 // stock, but never cost or margin (BLUEPRINT §11.2).
+// Note also NO "sales.free_issue": only an Admin may hand goods over at 0.00
+// (BLUEPRINT §16.2). Admin holds ["*"], so it needs no entry there.
 const CASHIER_PERMISSIONS = [
   "pos.access",
   "sales.create",

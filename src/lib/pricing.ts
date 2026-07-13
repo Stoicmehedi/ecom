@@ -10,6 +10,10 @@
  *
  * The cashier's manual bill discount is applied afterwards, at the bill level,
  * and replaces the automatic one rather than adding to it.
+ *
+ * A line marked FREE (a QC write-off / free issue, BLUEPRINT §16) sits outside all
+ * of it: price 0, no floor. That is deliberate — it is the one way goods leave at
+ * zero, it is Admin-only, and it must be declared rather than typed into a price box.
  */
 
 import { round2 } from "./costing";
@@ -25,6 +29,11 @@ export type PricingInput = {
   groupDiscountPct?: number | null;
   /** The floor, from the product. */
   minSalePrice?: number | null;
+  /**
+   * A free issue / QC write-off (BLUEPRINT §16). The goods leave at 0.00 and the
+   * floor does not apply — a declared give-away, never a price a cashier typed.
+   */
+  isFree?: boolean;
   qty: number;
 };
 
@@ -40,10 +49,12 @@ export type LinePrice = {
   subtotal: number;
   isWholesale: boolean;
   /** Which discount won — for showing the cashier why. */
-  source: "none" | "variant" | "group";
+  source: "none" | "variant" | "group" | "free";
   /** Set when the price would fall below the product's floor. */
   belowMin: boolean;
   minSalePrice: number | null;
+  /** A free issue — the goods left at 0.00 on purpose (BLUEPRINT §16). */
+  isFree: boolean;
 };
 
 const pct = (base: number, p: number) => (base * p) / 100;
@@ -64,6 +75,25 @@ export function priceLine(i: PricingInput): LinePrice {
   const wPrice = Number(i.wholesalePrice ?? 0);
   const isWholesale = wQty > 0 && wPrice > 0 && qty >= wQty;
   const listPrice = round2(isWholesale ? wPrice : Number(i.sellingPrice) || 0);
+
+  // A free issue is a declared give-away, not the bottom of the discount ladder:
+  // it skips every discount and the floor alike (BLUEPRINT §16.1). `listPrice`
+  // still carries what the goods were worth, so the loss is visible rather than
+  // the goods looking worthless.
+  if (i.isFree) {
+    return {
+      listPrice,
+      price: 0,
+      discountPerUnit: listPrice,
+      discount: round2(listPrice * qty),
+      subtotal: 0,
+      isWholesale,
+      source: "free",
+      belowMin: false,
+      minSalePrice: null,
+      isFree: true,
+    };
+  }
 
   const fromVariant = variantDiscount(listPrice, i);
   const groupPct = Number(i.groupDiscountPct ?? 0);
@@ -100,5 +130,6 @@ export function priceLine(i: PricingInput): LinePrice {
     source,
     belowMin,
     minSalePrice: hasMin ? min : null,
+    isFree: false,
   };
 }

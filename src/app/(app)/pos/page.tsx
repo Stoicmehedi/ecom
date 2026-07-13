@@ -1,9 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { num } from "@/lib/format";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { browsePos } from "./search";
 import { PosTerminal } from "./pos-terminal";
 
 export default async function PosPage() {
+  const session = await auth();
+  // Only an Admin may give goods away (BLUEPRINT §16.2). Hiding the control is a
+  // courtesy; the server refuses a free line regardless of what the browser sends.
+  const canFreeIssue = hasPermission(session, "sales.free_issue");
+
   const [customers, accounts, products, held] = await Promise.all([
     prisma.contact.findMany({
       where: { type: "CUSTOMER" },
@@ -25,6 +32,7 @@ export default async function PosPage() {
           groupDiscount: c.customerGroup ? num(c.customerGroup.discount) : 0,
         }))}
         accounts={accounts}
+        canFreeIssue={canFreeIssue}
         initialProducts={products}
         heldSales={held.map((h) => ({
           id: h.id,

@@ -2,7 +2,16 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Trash2, Plus, Minus, PauseCircle, RefreshCw, X } from "lucide-react";
+import {
+  Search,
+  Trash2,
+  Plus,
+  Minus,
+  PauseCircle,
+  RefreshCw,
+  X,
+  Gift,
+} from "lucide-react";
 import { toast } from "sonner";
 import { priceLine } from "@/lib/pricing";
 import { paidRatio } from "@/lib/costing";
@@ -56,6 +65,8 @@ type Line = {
   wholesalePrice: number | null;
   wholesaleQty: number | null;
   minSalePrice: number | null;
+  /** Given away — a QC write-off / free issue (BLUEPRINT §16). Admin only. */
+  free?: boolean;
 };
 
 type PayLine = { method: string; accountId: number | null; amount: number };
@@ -73,11 +84,13 @@ const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 export function PosTerminal({
   customers,
   accounts,
+  canFreeIssue,
   initialProducts,
   heldSales,
 }: {
   customers: CustomerOption[];
   accounts: AccountOption[];
+  canFreeIssue: boolean;
   initialProducts: PosProduct[];
   heldSales: HeldSaleOption[];
 }) {
@@ -89,6 +102,7 @@ export function PosTerminal({
   const [lines, setLines] = useState<Line[]>([]);
   const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">("PERCENT");
   const [discountValue, setDiscountValue] = useState(0);
+  const [remark, setRemark] = useState("");
 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<PosProduct[]>(initialProducts);
@@ -192,6 +206,17 @@ export function PosTerminal({
     );
   }
 
+  /**
+   * Give this line away, or take the gift back. Deliberately a toggle and not a
+   * price box: the minimum sale price is only a floor if there is no way to type
+   * your way under it (BLUEPRINT §16.1).
+   */
+  function toggleFree(i: number) {
+    setLines((prev) =>
+      prev.map((l, idx) => (idx === i ? { ...l, free: !l.free } : l)),
+    );
+  }
+
   const selected = customers.find((c) => c.id === customerId);
   const groupPct = selected?.groupDiscount ?? 0;
 
@@ -209,12 +234,26 @@ export function PosTerminal({
       discountValue: manual ? 0 : l.discountValue,
       groupDiscountPct: manual ? 0 : groupPct,
       minSalePrice: l.minSalePrice,
+      isFree: l.free === true,
       qty: l.qty,
     }),
   }));
 
+  // A free issue must say why (BLUEPRINT §16.3) — a zero-value sale with no reason
+  // is indistinguishable from a mistake. The server enforces this too.
+  const hasFree = lines.some((l) => l.free);
+  const needsRemark = hasFree && remark.trim() === "";
+
   const subtotal = r2(priced.reduce((s, x) => s + x.p.subtotal, 0));
-  const autoDiscount = r2(priced.reduce((s, x) => s + x.p.discount, 0));
+  // A free line's whole value reads as "discount" in `priceLine`, which is true but
+  // would misreport a give-away as a price cut. The two are counted separately.
+  const autoDiscount = r2(
+    priced.filter((x) => !x.p.isFree).reduce((s, x) => s + x.p.discount, 0),
+  );
+  /** What the goods given away were worth at the till (BLUEPRINT §16). */
+  const givenAway = r2(
+    priced.filter((x) => x.p.isFree).reduce((s, x) => s + x.p.discount, 0),
+  );
   const discount =
     discountType === "PERCENT"
       ? r2(Math.min((subtotal * discountValue) / 100, subtotal))
@@ -257,6 +296,9 @@ export function PosTerminal({
 
   function openPayment() {
     if (lines.length === 0) return toast.error("The cart is empty");
+    if (needsRemark) {
+      return toast.error('A free issue needs a remark saying why (e.g. "QC out")');
+    }
     if (blocked.length > 0) {
       return toast.error(
         `"${blocked[0].line.label}" is below its minimum price — checkout will refuse it.`,
@@ -277,8 +319,14 @@ export function PosTerminal({
         discountType,
         discountValue,
         dueDate: due > 0 && dueDate ? dueDate : undefined,
-        // No price is sent — the server prices every line itself.
-        items: lines.map((l) => ({ variantId: l.variantId, qty: l.qty })),
+        note: remark.trim() || undefined,
+        // No price is sent — the server prices every line itself. `free` is a flag,
+        // not a price, and the server re-checks the permission behind it.
+        items: lines.map((l) => ({
+          variantId: l.variantId,
+          qty: l.qty,
+          free: l.free === true,
+        })),
         payments: payments
           .filter((p) => p.amount > 0)
           .map((p) => ({ method: p.method, accountId: p.accountId, amount: p.amount })),
@@ -303,6 +351,7 @@ export function PosTerminal({
       setPayOpen(false);
       setLines([]);
       setDiscountValue(0);
+      setRemark("");
       setExchange(null);
       setCustomerId(walkIn?.id);
       toast.success(exchange ? "Exchange complete" : "Sale complete");
@@ -508,9 +557,23 @@ export function PosTerminal({
           {priced.map(({ line: l, p }, i) => (
             <div key={l.variantId} className="flex items-center gap-2 py-2">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{l.label}</p>
+                <p className="truncate text-sm font-medium">
+                  {l.label}
+                  {p.isFree && (
+                    <span className="ml-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                      Free
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  {p.discountPerUnit > 0 ? (
+                  {p.isFree ? (
+                    <>
+                      <span className="line-through">{l.price.toFixed(2)}</span>{" "}
+                      <span className="font-medium text-amber-700 dark:text-amber-400">
+                        given away
+                      </span>
+                    </>
+                  ) : p.discountPerUnit > 0 ? (
                     <>
                       <span className="line-through">{l.price.toFixed(2)}</span>{" "}
                       <span className="font-medium text-primary">
@@ -519,12 +582,17 @@ export function PosTerminal({
                       <span>
                         ({p.source === "variant" ? "product" : "group"} discount)
                       </span>
+                      {p.isWholesale && (
+                        <span className="ml-1 font-medium text-primary">· wholesale</span>
+                      )}
                     </>
                   ) : (
-                    <>{p.price.toFixed(2)}</>
-                  )}
-                  {p.isWholesale && (
-                    <span className="ml-1 font-medium text-primary">· wholesale</span>
+                    <>
+                      {p.price.toFixed(2)}
+                      {p.isWholesale && (
+                        <span className="ml-1 font-medium text-primary">· wholesale</span>
+                      )}
+                    </>
                   )}
                   {" · "}
                   {l.stockQty} in stock
@@ -570,6 +638,23 @@ export function PosTerminal({
               <span className="w-20 text-right text-sm font-medium tabular-nums">
                 {p.subtotal.toFixed(2)}
               </span>
+              {canFreeIssue && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  aria-label={p.isFree ? "Charge for this" : "Give this free"}
+                  title={p.isFree ? "Charge for this" : "Give this free (QC out)"}
+                  onClick={() => toggleFree(i)}
+                >
+                  <Gift
+                    className={`size-3.5 ${
+                      p.isFree ? "text-amber-600" : "text-muted-foreground"
+                    }`}
+                  />
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -631,10 +716,40 @@ export function PosTerminal({
               automatic one — discounts never stack.
             </p>
           )}
+          {givenAway > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-amber-700 dark:text-amber-400">
+                Given away (free issue)
+              </span>
+              <span className="tabular-nums text-amber-700 dark:text-amber-400">
+                {givenAway.toFixed(2)}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between border-t pt-2">
             <span className="font-medium">Total</span>
             <span className="text-2xl font-semibold tabular-nums">{total.toFixed(2)}</span>
           </div>
+
+          {(hasFree || remark !== "") && (
+            <div className="space-y-1">
+              <Label htmlFor="remark" className="text-xs">
+                Remark {hasFree && <span className="text-destructive">*</span>}
+              </Label>
+              <Input
+                id="remark"
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                placeholder={hasFree ? 'Why is this free? e.g. "QC out"' : "Optional"}
+                className={needsRemark ? "border-destructive" : ""}
+              />
+              {needsRemark && (
+                <p className="text-xs font-medium text-destructive">
+                  Goods leaving free must say why — checkout will refuse this.
+                </p>
+              )}
+            </div>
+          )}
 
           {exchange && (
             <div className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-3">

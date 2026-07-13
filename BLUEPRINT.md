@@ -959,3 +959,57 @@ redemption, whether points are earned on a discounted line, and — the one that
 **what happens to points when goods come back**. A return or an exchange that leaves the points
 already earned in place is a way to farm points for free, so earned points must reverse with the
 goods, in proportion to what was credited (the same `paidRatio` rule as §10.1a).
+
+---
+
+## 16. Free issue & sale remark *(defect — the price floor made a real flow impossible)*
+
+Adding the **minimum sale price** (§12.7) closed a hole and opened another: with a floor above zero,
+**a line can no longer be sold at 0.00**. But the shop does exactly that — an invoice in their live
+account carries the remark **"Qc Out"** on a zero-value sale: goods leaving the counter for nothing,
+a QC write-off or a free issue. As it stands MPoS would *refuse* that sale outright, and the
+shopkeeper's only workaround is not to record it at all — which means the stock never leaves the
+books and the loss is never seen.
+
+This is a defect, not a feature. It is fixed before loyalty points.
+
+### 16.1 A free line is declared, not priced
+
+The naive fix — "let the price go to zero" — hands every cashier a way around the floor. The floor
+exists precisely to stop goods walking out cheap; a cashier who can type `0.00` has no floor at all.
+
+So a free issue is **its own explicit act**, not a price:
+
+- A cart line is either **priced** (the §12.7a rule applies, floor and all) or **free** (`price = 0`).
+- Marking a line free is a **toggle**, not a number the cashier types. There is no path from a
+  discount box to zero — the floor still binds every priced line, without exception.
+- `listPrice` still records what the catalogue says, so the receipt and the reports can show what was
+  given away rather than pretending the goods were worthless.
+
+### 16.2 Only an Admin may give goods away
+
+Gated on a new **`sales.free_issue`** permission — Admin only, the same way profit is (§11.2). A
+cashier's POS does not show the control, **and the server refuses a free line from a role without the
+permission.** A gate the browser enforces is not a gate.
+
+### 16.3 A free line must say why
+
+A zero-value sale with no reason is indistinguishable from a mistake. The sale's **remark** is
+therefore **mandatory whenever any line is free** — enforced on the server. (`Sale.note` already
+exists on the model and was never surfaced; it becomes the remark. No new column.)
+
+### 16.4 What a free line does downstream — all of it falls out for free
+
+- **Stock** moves exactly as a sale: the goods leave. That is the entire point.
+- **Profit** — the line has a real `costAtSale` and zero revenue, so it lands in the P&L as a
+  **loss of exactly what the goods cost**. Correct: a write-off *is* a loss, and it should be visible.
+- **A return of a free line credits 0.00.** It already does — returns are priced at what the customer
+  actually paid (§10.1a), and they paid nothing. No special case.
+- **The bill discount** never applies to a free line (0 × anything is 0), and the floor check must
+  **skip** free lines — or a floor of 9.00 would refuse the very sale we just made possible.
+
+### 16.5 What we are not doing
+
+Not a per-line price override, and not a per-line discount box (§13.1 — the shop's own data killed
+that: `PRODUCT_WISE_DISCOUNT=0`, and not one of their invoices carries a line discount). A line is
+sold at the catalogue rule, or it is given away. There is no third thing.

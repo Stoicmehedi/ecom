@@ -102,7 +102,15 @@ export default async function ReceiptPage({
                   </div>
                   <div className="flex justify-between">
                     <span>
-                      {qty(i.qty)} × {money(i.price)}
+                      {i.isFree ? (
+                        <>
+                          {qty(i.qty)} × FREE
+                        </>
+                      ) : (
+                        <>
+                          {qty(i.qty)} × {money(i.price)}
+                        </>
+                      )}
                     </span>
                     <span>{money(i.subtotal)}</span>
                   </div>
@@ -152,6 +160,9 @@ export default async function ReceiptPage({
         <p className="text-center">
           {sale.items.length} item{sale.items.length === 1 ? "" : "s"}
         </p>
+        {sale.note && (
+          <p className="mt-1 text-center">Remark: {sale.note}</p>
+        )}
         <p className="mt-2 text-center font-semibold">Thank you!</p>
         <p className="text-center">Goods once sold are exchangeable within 7 days.</p>
       </div>

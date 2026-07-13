@@ -4,7 +4,7 @@
 > account — can understand the full state without relying on private notes. **Update this file after
 > every task.**
 
-**Last updated:** 2026-07-11
+**Last updated:** 2026-07-13
 **Repo:** https://github.com/Stoicmehedi/ecom (private)
 **App name:** MPoS
 
@@ -395,6 +395,49 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   it happened to be applied last. **A fresh clone could not build the database at all.** Renamed to
   sort correctly and proved it by replaying every migration into an empty database from scratch.
 
+### 2026-07-13
+
+- **Free issue & sale remark — BUILT (`BLUEPRINT.md` §16). The defect §6 flagged is closed.**
+  Adding the minimum sale price (§12.7) had made it **impossible to sell a line at 0.00** — but the
+  shop does exactly that (an invoice in their live account reads remark **"Qc Out"** on a zero-value
+  sale: a QC write-off). MPoS would have refused that sale outright, so the stock could never have
+  left the books. Migration `free_issue` (`SaleItem.isFree`).
+  - **A free line is declared, not priced.** The naive fix — letting the price go to zero — would have
+    handed every cashier a way around the floor. It is a **toggle**, so there is no path from a
+    discount box to zero: the floor still binds every priced line, without exception.
+  - **Admin-only**, on a new **`sales.free_issue`** permission (settled with the user). The cashier's
+    POS does not render the control **and the server refuses a free line regardless of what the
+    browser sends**.
+  - **A free line must say why.** `Sale.note` already existed on the model and had never been
+    surfaced — it becomes the **remark**, mandatory whenever any line is free, enforced server-side.
+    It prints on the receipt.
+  - Everything downstream fell out with no special case: the goods leave stock; the line keeps its
+    real `costAtSale`, so the P&L books the write-off as **a loss of exactly what the goods cost**;
+    and a **return of a free line credits 0.00** on its own, because returns are already priced at
+    what the customer actually paid (§10.1a).
+
+  **Browser-verified against hand-computed figures, as admin and as cashier.** Gave away a Field Tee
+  M/Red — **a product with a 9.00 floor, i.e. the exact line that could not be sold before** — beside
+  a paid L/Red: total 24.00 → **12.00**, "Given away 12.00", stock moved on **both** (9→8, 10→9), cash
+  +12.00, and **gross profit 0.00** (the 6.00 earned on the sold shirt exactly cancelled by the 6.00
+  written off). Then an **all-free sale**: total **0.00**, status PAID, **no payment rows**, remark
+  "Qc Out", stock 10→9, profit **−6.00**. `check-reports.ts` still reconciles with the free line in
+  the data. Typecheck + build pass; **no new lint findings** (the 9 existing ones pre-date this).
+
+  **The gates were proven by forging the wire, not by trusting the UI** — the checkout payload was
+  rewritten in flight with Playwright: a **cashier** sending `free:true` is refused *("You do not have
+  permission to give goods away free")*, and an **admin** sending a free line with the remark stripped
+  is refused too. Neither created a sale.
+- ⚠️ **Bug found and fixed in passing (pre-existing):** the Hold/park schema declared only six of the
+  cart line's fields, and zod strips what it doesn't declare — so a **resumed held cart came back
+  having silently lost `discountType`, `discountValue`, `wholesalePrice`, `wholesaleQty` and
+  `minSalePrice`**. The cashier saw list prices with no discount and no floor warning. No money was
+  ever wrong (the server re-reads the variant and prices it itself — which is exactly why that design
+  holds), but the screen lied. The schema now carries the whole line.
+- **Dev-data note:** a botched first attempt at the wire-forgery test created a real paid sale
+  (`INV-00011`, 12.00). It was deleted through the app's own reversal path — cash and stock went back
+  to where they were. Said here rather than quietly cleaned up.
+
 ---
 
 ## 5. Current state
@@ -429,6 +472,10 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   lists them. Browser-verified both ways (even swap moves no money; an excess is refunded).
 - ✅ **Reports done** — Overview, Sales (grouped by invoice/day/month), Profit & Loss, Product
   profit, Dues. Print + CSV + Excel export on each. Profit is Admin-only. Browser-verified.
+- ✅ **Free issue & sale remark done** (`BLUEPRINT.md` §16) — goods can leave at 0.00 as a declared
+  QC write-off: **Admin-only** (`sales.free_issue`), **remark mandatory**, and the minimum sale price
+  still binds every *priced* line. The P&L books it as a loss of what the goods cost. Both gates
+  verified against a **forged checkout payload**, not just the UI.
 - 🎉 **PHASE 1 IS COMPLETE.** The app runs the whole retail loop end to end: buy stock in → sell it →
   take it back → and know the profit, the margin, and who owes what in both directions.
 - ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS), §10 (Sale returns), §11 (Reports) hold
@@ -470,19 +517,15 @@ re-seed before the next module** — do not reason about business behaviour from
 next is now chosen from the reference shop's *own data* rather than from the reference software's
 feature list (see the 2026-07-11 log entry — that method already deleted one wrong priority).
 
-**START HERE TOMORROW (2026-07-12).** Do these two, in this order.
+~~1. Sale remark + allow a zero-value sale~~ — ✅ **DONE 2026-07-13** (`BLUEPRINT.md` §16). See the
+progress log.
 
-1. **Sale remark + allow a zero-value sale — FIRST, because it is a defect, not a feature.**
-   Adding the minimum sale price (§12.7) made it **impossible to sell a line at 0.00**. The shop does
-   exactly that: an invoice in their live account reads remark **"Qc Out"** on a zero-value sale — a
-   free issue / QC write-off. As it stands MPoS would *refuse* that sale outright. So: add a `remark`
-   to the sale, and give the price floor a deliberate exemption for a genuinely free line (rather
-   than letting a cashier work around the floor by typing 0). Small, and it unbreaks a working flow.
+**START HERE (2026-07-13).**
 
-2. **Loyalty points.** ✅ **Settled: balances start at ZERO** — MPoS is a new system, not a migration,
+1. **Loyalty points.** ✅ **Settled: balances start at ZERO** — MPoS is a new system, not a migration,
    so nothing is carried across from the old one. That removes the import/reconciliation problem
    entirely (see `BLUEPRINT.md` §15).
-   **Still to ask the user before building:**
+   **Three questions must be put to the user before any code is written:**
    - **Earn rate** — their data shows 60 points earned on a 660 bill, i.e. ≈ 1 point per 10 taka.
      Confirm that is the rule.
    - **Redemption value** — what is one point worth when spent?
@@ -493,18 +536,18 @@ feature list (see the 2026-07-11 log entry — that method already deleted one w
 
 **Then, in rough order of value:**
 
-3. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
-4. **`/settings`** — still 404 though the sidebar links to it. Where the shop-wide toggles belong
+2. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
+3. **`/settings`** — still 404 though the sidebar links to it. Where the shop-wide toggles belong
    (§13.4), and where the hardcoded default alert quantity of **5** should move to.
-5. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
-6. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
-7. **Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each built to protocol
+4. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
+5. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
+6. **Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each built to protocol
    (study the reference app → write it into `BLUEPRINT.md` → settle the open decisions → build):
    - **Expenses + accounts** — the biggest hole in the P&L. Gross profit becomes a true *net* profit
      only once expenses and salaries post against it; the P&L screen already has the slot for it.
    - **Stock adjustments** — damage, loss, corrections. Today stock only moves via buy/sell/return.
    - Then: employees/salary, VAT (only if it is actually needed).
-8. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
+7. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
    upload** (ours is a pasted URL — needs a storage decision), **per-language product names**, and a
    **Product Groups** master.
 
@@ -515,8 +558,8 @@ feature list (see the 2026-07-11 log entry — that method already deleted one w
 **Deferred, needs HTTPS:** in-POS camera barcode scanning (§13.7). A phone paired as a Bluetooth
 keyboard already types into the search box today and needs no code.
 
-*(Exchange, Products round 2, Reports, Sale returns, POS, Customers, Purchases — all done 2026-07-11.
-Reports were reviewed and hardened by a multi-agent review.)*
+*(Free issue & sale remark done 2026-07-13. Exchange, Products round 2, Reports, Sale returns, POS,
+Customers, Purchases — all done 2026-07-11. Reports were reviewed and hardened by a multi-agent review.)*
 
 > The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
 > live in the private session notes. If they aren't in context, ask the user for them.

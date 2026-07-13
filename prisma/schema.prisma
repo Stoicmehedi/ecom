@@ -428,6 +428,10 @@ model SaleItem {
   costAtSale  Decimal @default(0) @db.Decimal(14, 2) // for profit/loss
   subtotal    Decimal @db.Decimal(14, 2)
   returnedQty Decimal @default(0) @db.Decimal(14, 3)
+  /// A free issue / QC write-off (BLUEPRINT §16): the goods left at 0.00 on purpose.
+  /// Recorded as a fact rather than inferred from `price = 0`, so a write-off can
+  /// never be mistaken for a mispriced line. Requires `sales.free_issue` + a remark.
+  isFree      Boolean @default(false)
 
   saleId    Int
   sale      Sale           @relation(fields: [saleId], references: [id], onDelete: Cascade)

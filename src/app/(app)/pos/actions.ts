@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { docStatus, resolveDiscount, round2, round3 } from "@/lib/costing";
 import { priceLine } from "@/lib/pricing";
 import { creditFor, validateReturnLines, writeSaleReturn } from "@/lib/sale-return";
@@ -17,6 +18,8 @@ export type CheckoutResult = { ok?: boolean; error?: string; saleId?: number };
 const lineSchema = z.object({
   variantId: z.number().int().positive(),
   qty: z.number().positive("Quantity must be greater than zero"),
+  /** A free issue / QC write-off (BLUEPRINT §16) — Admin-only, and needs a remark. */
+  free: z.boolean().optional(),
 });
 
 const paymentSchema = z.object({
@@ -88,14 +91,30 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   const s = parsed.data;
 
   // The same variant scanned twice is one line — and it must be, or the wholesale
-  // threshold could be dodged by scanning 5 × 1 instead of 1 × 5.
-  const merged = new Map<number, { variantId: number; qty: number }>();
+  // threshold could be dodged by scanning 5 × 1 instead of 1 × 5. Free and priced
+  // lines of the same variant stay APART, though: giving one shirt away and selling
+  // another is two different things, and merging them would price the gift.
+  const merged = new Map<string, { variantId: number; qty: number; free: boolean }>();
   for (const it of s.items) {
-    const prev = merged.get(it.variantId);
+    const free = it.free === true;
+    const key = `${it.variantId}:${free}`;
+    const prev = merged.get(key);
     if (prev) prev.qty = round3(prev.qty + it.qty);
-    else merged.set(it.variantId, { ...it });
+    else merged.set(key, { variantId: it.variantId, qty: it.qty, free });
   }
   const lines = [...merged.values()];
+
+  // ---- Free issue (BLUEPRINT §16). The floor exists to stop goods walking out
+  // cheap, so the one hole in it is gated and must state its reason.
+  const session = await auth();
+  const hasFree = lines.some((l) => l.free);
+
+  if (hasFree && !hasPermission(session, "sales.free_issue")) {
+    return { error: "You do not have permission to give goods away free." };
+  }
+  if (hasFree && !s.note?.trim()) {
+    return { error: "A free issue needs a remark saying why (e.g. \"QC out\")." };
+  }
 
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: lines.map((i) => i.variantId) } },
@@ -159,6 +178,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     price: number;
     discount: number;
     subtotal: number;
+    isFree: boolean;
   }[] = [];
 
   for (const it of lines) {
@@ -186,6 +206,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       groupDiscountPct: manual ? 0 : groupPct,
       minSalePrice:
         v.product.minSalePrice == null ? null : Number(v.product.minSalePrice),
+      isFree: it.free,
       qty: it.qty,
     });
 
@@ -203,6 +224,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
       price: p.price,
       discount: p.discount,
       subtotal: p.subtotal,
+      isFree: p.isFree,
     });
   }
 
@@ -213,10 +235,13 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   const discount = resolveDiscount(subtotal, s.discountType, s.discountValue);
   const total = round2(subtotal - discount);
 
-  // A bill discount must not sneak a line under its floor either.
+  // A bill discount must not sneak a line under its floor either. A free line is
+  // already at zero by design — testing it against the floor would refuse the very
+  // sale §16 exists to allow.
   if (discount > 0) {
     const ratio = subtotal > 0 ? (subtotal - discount) / subtotal : 1;
     for (const it of items) {
+      if (it.isFree) continue;
       const v = byId.get(it.variantId)!;
       const min = v.product.minSalePrice == null ? 0 : Number(v.product.minSalePrice);
       if (min > 0 && it.price * ratio < min - 0.005) {
@@ -264,7 +289,6 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     };
   }
 
-  const session = await auth();
   const soldById = session?.user?.id ? Number(session.user.id) : null;
 
   try {
@@ -341,6 +365,9 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
             // and profit on this sale must be measured against what it cost today.
             costAtSale: round2(Number(v.purchasePrice)),
             subtotal: it.subtotal,
+            // Free goods still carry their cost — that is exactly why the P&L shows
+            // a write-off as a loss of what the goods cost us (BLUEPRINT §16.4).
+            isFree: it.isFree,
           },
         });
 
@@ -466,6 +493,10 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
 
 // ---------- Hold / park ----------
 
+// The parked cart must carry the WHOLE line, pricing rules included. Zod strips
+// what it doesn't declare, so anything missing here comes back off the hold shelf
+// silently repriced — the server would still charge correctly (it re-reads the
+// variant), but the cashier would be looking at the wrong number.
 const holdSchema = z.object({
   label: z.string().trim().min(1, "Give the held sale a name").max(80),
   customerId: z.number().int().positive().nullable().optional(),
@@ -477,6 +508,12 @@ const holdSchema = z.object({
       qty: z.number(),
       price: z.number(),
       stockQty: z.number(),
+      discountType: z.enum(["AMOUNT", "PERCENT"]).optional(),
+      discountValue: z.number().optional(),
+      wholesalePrice: z.number().nullable().optional(),
+      wholesaleQty: z.number().nullable().optional(),
+      minSalePrice: z.number().nullable().optional(),
+      free: z.boolean().optional(),
     }),
   ),
 });

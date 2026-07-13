@@ -85,6 +85,13 @@ export default async function SaleDetailPage({
         />
       </div>
 
+      {sale.note && (
+        <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+          <span className="text-muted-foreground">Remark: </span>
+          <span className="font-medium">{sale.note}</span>
+        </div>
+      )}
+
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
@@ -105,6 +112,11 @@ export default async function SaleDetailPage({
                       ? `${i.variant.product.name} — ${i.variant.label}`
                       : i.variant.product.name}
                   </span>
+                  {i.isFree && (
+                    <span className="ml-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                      Free issue
+                    </span>
+                  )}
                   <span className="block text-xs text-muted-foreground">
                     {i.variant.sku}
                   </span>
