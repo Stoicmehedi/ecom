@@ -494,6 +494,33 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   due 180.00"* when the server correctly credited **166.00** (it was showing the goods' value, not the
   money value). Server was right, screen was wrong — fixed.
 
+- **Dev DB wiped and re-seeded** — the leftovers §6 warned about are gone. `prisma/seed.ts` now lays
+  down **base data + a small demo catalogue**, and is idempotent (it re-runs safely and declines to
+  re-lay a catalogue that already exists).
+  - **Base:** Main Store, Admin/Cashier roles, **both users now seeded** (`cashier` had only ever
+    existed by hand — a wipe would have taken it, and the permission gates can only be proven by
+    logging in as one), Cash (**50,000 float**) + Bank, return reasons, walk-in customer, and the
+    settings row.
+  - **Catalogue:** 5 products / **20 variants** — Classic Tee (S/M/L × Red/Navy), Field Tee (with the
+    **9.00 floor** and a **wholesale break at qty 5**, so the §12.7a pricing rules have something that
+    actually exercises them), Trail Hoodie (M/L/XL × Navy/Olive), Canvas Cap, Cotton Socks. Every
+    variant carries a valid, distinct auto EAN-13.
+  - **Stock is never written directly.** It arrives on **`PUR-00001`**, a real purchase document from
+    Rahim Traders, paid in full from Cash — and the seed calls the same `costing.ts` helpers the
+    purchase action calls, so the weighted-average cost is *computed*, not asserted. **No sales,
+    returns, exchanges or points**: every ledger starts at zero, so any figure seen later is one we
+    caused.
+  - `scripts/check-seed.ts` reads the result **back out of the DB** and asserts it. The load-bearing
+    check is that **stock value at cost (1448.00) equals what the purchase paid (1448.00)** — stock
+    and cost are written by different code paths, so their agreeing means the goods on the shelf are
+    worth exactly the money that left the drawer. Cash reconciles too (50,000 − 1,448 = **48,552**),
+    and every unit on hand has a stock movement behind it (226 = 226).
+  - **Browser-verified:** logged in on the fresh DB and the POS grid renders **5 product tiles**
+    (not 20 variant tiles) with the right stock and prices, cart empty.
+  - ⚠️ **`prisma migrate reset` does not run the seed here** — the schema replays but the DB comes up
+    empty. The sequence is `migrate reset` **then** `npx prisma db seed` (§7). The reset did re-prove
+    that all 10 migrations replay into an empty database from scratch.
+
 ---
 
 ## 5. Current state
@@ -550,7 +577,6 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   balance exactly where it started. See `BLUEPRINT.md` §10.1a.
 - ✅ **Reports reviewed by a multi-agent code review at high effort**; all 10 confirmed defects fixed
   (money math, the `reports.view` gate on screens, two 500s, and the totals/links/rounding nits).
-- ⬜ `/settings` is in the sidebar but has no page yet (404).
 - ⬜ **`Sale.due` is not reduced by a return** — a return settles against the *customer's account
   balance*, never the invoice. So a fully-returned credit sale still shows its original due on the
   Sales and Dues reports, while the customer's ledger is correctly square. Both numbers are
@@ -560,20 +586,25 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ⬜ Deferred to Phase 2 (out of scope for the purchases module): purchase orders, stock
   adjustments, supplier advances/due-dismiss, attachments, areas & contact groups.
 
-**Dev logins:** `admin` / `admin123` (Admin — sees everything) · `cashier` / `cashier123`
-(Cashier — no cost, no profit; use it to check the permission gates).
+- ✅ **The dev DB is clean** (re-seeded 2026-07-13, replacing six modules' worth of verification
+  leftovers). Rebuild it any time with `npx prisma migrate reset --force && npx prisma db seed`, and
+  check it with `npx tsx scripts/check-seed.ts`.
 
-**Dev data now in the DB** (from end-to-end verification): supplier *Rahim Traders*; customers
-*Walk-in* (seeded), *Karim Mia* (Gold group, 10% off, **300.40** due) and a phone-only customer;
-sales `INV-00001` (credit) and `INV-00002` (walk-in), returns `SRT-00001` (credited) and `SRT-00002`
-(cash-refunded) → Classic Tee at **18 in stock, cost 5.00**. The purchase/return test data was
-deleted by the user. Products round 2 then added: axis **Size** {S, M, L}, colours **Red/Navy/Olive**,
-and the variable products *Field Tee* (6 variants, min sale price 9.00, wholesale 10.00 @ qty 5),
-*Field Tee (copy)* and *Trail Hoodie* (imported from CSV). Exchange verification then added
-`EXC-00001` (even swap, Karim) and `EXC-00002` (walk-in, 12.00 refunded in cash).
+**Dev logins** (both seeded): `admin` / `admin123` (Admin — sees everything) · `cashier` /
+`cashier123` (Cashier — no cost, no profit; use it to check the permission gates).
 
-The dev DB is now a pile of verification leftovers rather than a coherent dataset. **Wipe and
-re-seed before the next module** — do not reason about business behaviour from these numbers.
+**What is in the DB after a seed** — a coherent starting point, not leftovers:
+- **Accounts:** Cash **48,552.00** (a 50,000 float, less the opening purchase), Bank 0.
+- **Catalogue:** 5 products / 20 variants, all with valid EAN-13s — *Classic Tee* (S/M/L × Red/Navy,
+  12.00), *Field Tee* (S/M/L × Navy/Olive, 12.00, **min sale price 9.00**, **wholesale 10.00 @ qty 5**),
+  *Trail Hoodie* (M/L/XL × Navy/Olive, 39.00), *Canvas Cap* (9.00), *Cotton Socks* (3.50, wholesale
+  2.80 @ qty 10).
+- **Stock:** all of it from **`PUR-00001`** (supplier *Rahim Traders*, 1,448.00, paid in full, so the
+  supplier starts square). Stock value at cost = **1,448.00**, which is exactly what the purchase paid.
+- **Customers:** *Walk-in*, *Karim Mia* (**Gold**, 10% off) and *Nadia Rahman* — all at **zero** due
+  and **zero** points.
+- **Nothing else:** no sales, returns, exchanges, points or held carts. Every figure you see after
+  this is one you caused.
 
 ## 6. Next steps (resume here)
 
@@ -584,30 +615,29 @@ feature list (see the 2026-07-11 log entry — that method already deleted one w
 ~~1. Sale remark + allow a zero-value sale~~ — ✅ **DONE 2026-07-13** (`BLUEPRINT.md` §16). See the
 progress log.
 
+~~1. Wipe and re-seed the dev DB~~ — ✅ **DONE 2026-07-13.** The DB is now a clean, coherent starting
+point (base data + a 5-product catalogue whose stock arrived on a real purchase). See the progress log.
+
 **START HERE (next session).**
 
-1. **Wipe and re-seed the dev DB.** It is now a pile of verification leftovers from six modules and
-   is actively misleading — do not reason about business behaviour from these numbers. Do this
-   *before* the next module, not during it.
+1. **Expenses + accounts** — the biggest hole in the P&L, and the first Phase-2 module. Gross profit
+   becomes a true *net* profit only once expenses and salaries post against it; the P&L screen already
+   has the slot for it. Build to protocol (study the reference app → write it into `BLUEPRINT.md` →
+   settle the open decisions → build).
 
-2. **The loyalty accounting question** (`BLUEPRINT.md` §15.7) — a redemption pays a bill with
-   something that is not money, so revenue is booked in full while the drawer is short by the
-   redeemed value. Internally consistent (the exchange credit already behaves this way), but the
-   **cost of the loyalty scheme is not yet visible anywhere in the P&L**. The honest home for it is
-   an expense — which lands naturally with **Expenses** below. Decide it there rather than fudging
-   it now.
+   **Settle the loyalty accounting question while building it** (`BLUEPRINT.md` §15.7): a redemption
+   pays a bill with something that is not money, so revenue is booked in full while the drawer is short
+   by the redeemed value. Internally consistent (the exchange credit already behaves this way), but the
+   **cost of the loyalty scheme is not visible anywhere in the P&L**. Its honest home is an expense —
+   which is exactly what this module introduces. Decide it here rather than fudging it earlier.
 
 **Then, in rough order of value:**
 
+2. **Stock adjustments** — damage, loss, corrections. Today stock only moves via buy/sell/return.
 3. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
 4. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
 5. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
-6. **Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each built to protocol
-   (study the reference app → write it into `BLUEPRINT.md` → settle the open decisions → build):
-   - **Expenses + accounts** — the biggest hole in the P&L. Gross profit becomes a true *net* profit
-     only once expenses and salaries post against it; the P&L screen already has the slot for it.
-   - **Stock adjustments** — damage, loss, corrections. Today stock only moves via buy/sell/return.
-   - Then: employees/salary, VAT (only if it is actually needed).
+6. Then the rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary, VAT (only if actually needed).
 7. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
    upload** (ours is a pasted URL — needs a storage decision), **per-language product names**, and a
    **Product Groups** master.
@@ -641,12 +671,22 @@ npm install
 npx prisma migrate dev
 npx prisma generate
 
-# 4. Dev server
+# 4. Seed: base data (users, accounts, walk-in, settings) + a demo catalogue
+npx prisma db seed
+
+# 5. Dev server
 npm run dev            # http://localhost:3000
+
+# Rebuild the DB from scratch (DESTRUCTIVE — dev only; wipes every row):
+npx prisma migrate reset --force   # drops the DB and replays all migrations…
+npx prisma db seed                 # …but does NOT seed, so seed it yourself
+npx tsx scripts/check-seed.ts      # read the result back and assert it
 
 # Other:
 npm run build          # production build
 npx tsx scripts/dbcheck.ts        # quick DB connectivity check
+npx tsx scripts/check-seed.ts     # assert the seeded DB is coherent — the real check is that
+                                  # stock value at cost equals what the opening purchase paid
 npx tsx scripts/check-reports.ts  # recompute every report figure from the raw rows and
                                   # assert the reports agree — including that product profit
                                   # reconciles exactly with the P&L's gross profit
