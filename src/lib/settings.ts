@@ -11,6 +11,12 @@ import type { LoyaltySettings } from "./loyalty";
 
 export type ShopSettings = LoyaltySettings & {
   defaultAlertQty: number;
+  /// Who the shop is — printed on every receipt and invoice (§20.1).
+  shopName: string;
+  shopAddress: string | null;
+  shopPhone: string | null;
+  shopEmail: string | null;
+  currencyWord: string;
 };
 
 /** The settings row, created from the schema defaults the first time it is asked for. */
@@ -31,5 +37,10 @@ export async function getSettings(): Promise<ShopSettings> {
     minRedeemPoints: row.minRedeemPoints,
     maxRedeemPct: row.maxRedeemPct,
     defaultAlertQty: row.defaultAlertQty,
+    shopName: row.shopName,
+    shopAddress: row.shopAddress,
+    shopPhone: row.shopPhone,
+    shopEmail: row.shopEmail,
+    currencyWord: row.currencyWord,
   };
 }

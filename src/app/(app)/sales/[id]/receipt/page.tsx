@@ -1,15 +1,8 @@
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { money, num, qty } from "@/lib/format";
+import { loadInvoice, lineName } from "@/lib/invoice";
+import { ShopHeader, methodLabel } from "@/components/invoice/invoice-doc";
 import { ReceiptActions } from "./print-button";
-
-const METHOD_LABELS: Record<string, string> = {
-  CASH: "Cash",
-  MOBILE: "Mobile banking",
-  CARD: "Card",
-  BANK: "Bank transfer",
-  CHEQUE: "Cheque",
-};
 
 export default async function ReceiptPage({
   params,
@@ -20,17 +13,11 @@ export default async function ReceiptPage({
   const saleId = Number(id);
   if (!Number.isFinite(saleId)) notFound();
 
-  const sale = await prisma.sale.findUnique({
-    where: { id: saleId },
-    include: {
-      customer: { select: { name: true, phone: true, loyaltyPoints: true } },
-      soldBy: { select: { name: true } },
-      items: { include: { variant: { include: { product: true } } } },
-      payments: true,
-      branch: { select: { name: true, address: true, phone: true } },
-    },
-  });
-  if (!sale) notFound();
+  // The same loader the A4 invoice and the public link use, so the three documents
+  // can never disagree about what was sold (§20).
+  const doc = await loadInvoice({ id: saleId });
+  if (!doc) notFound();
+  const { sale, shop, totalInWords, tendered, change } = doc;
 
   const stamp = sale.date.toLocaleString(undefined, {
     day: "2-digit",
@@ -57,15 +44,10 @@ export default async function ReceiptPage({
         }
       `}</style>
 
-      <ReceiptActions />
+      <ReceiptActions saleId={sale.id} />
 
       <div className="receipt mx-auto w-[80mm] rounded-lg border bg-white p-4 font-mono text-[11px] leading-tight text-black">
-        <div className="text-center">
-          <p className="text-base font-bold tracking-wide">MPoS</p>
-          <p className="font-semibold">{sale.branch?.name ?? "Main Store"}</p>
-          {sale.branch?.address && <p>{sale.branch.address}</p>}
-          {sale.branch?.phone && <p>{sale.branch.phone}</p>}
-        </div>
+        <ShopHeader shop={shop} />
 
         <Divider />
 
@@ -95,11 +77,7 @@ export default async function ReceiptPage({
             {sale.items.map((i) => (
               <tr key={i.id} className="align-top">
                 <td colSpan={2} className="pb-1">
-                  <div>
-                    {i.variant.label
-                      ? `${i.variant.product.name} — ${i.variant.label}`
-                      : i.variant.product.name}
-                  </div>
+                  <div>{lineName(i)}</div>
                   <div className="flex justify-between">
                     <span>
                       {i.isFree ? (
@@ -142,18 +120,28 @@ export default async function ReceiptPage({
         <div className="my-1 border-t border-dashed border-black" />
 
         {sale.payments.map((p) => (
-          <Line
-            key={p.id}
-            label={METHOD_LABELS[p.method ?? ""] ?? p.method ?? "Paid"}
-            value={money(p.amount)}
-          />
+          <Line key={p.id} label={methodLabel(p.method)} value={money(p.amount)} />
         ))}
+
+        {/* Recorded at the till, so a reprint shows the same figures as the original
+            slip in the customer's hand (§20.3). */}
+        {tendered != null && (
+          <>
+            <Line label="Cash received" value={money(tendered)} />
+            <Line label="Change" value={money(change ?? 0)} />
+          </>
+        )}
         {num(sale.due) > 0 && (
           <div className="mt-1 flex justify-between font-bold">
             <span>DUE</span>
             <span>{money(sale.due)}</span>
           </div>
         )}
+
+        <Divider />
+
+        {/* A digit can be altered with a pen; a sentence cannot. */}
+        <p className="text-center">In words: {totalInWords}</p>
 
         <Divider />
 

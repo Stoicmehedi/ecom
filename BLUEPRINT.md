@@ -1362,3 +1362,72 @@ loyalty credit and the exchange credit.
    and the two report differently: a giveaway is a sale at 0.00, a loss is a loss.
 5. One **system expense type** ("Stock loss") keeps the P&L short; the *adjustment* type
    (Damage / Theft / Miscount) rides on the document, where the detail belongs.
+
+---
+
+## 20. Receipt & invoice *(studied read-only 2026-07-13 — reference app; nothing created, edited or deleted)*
+
+The receipt is the one screen that leaves the building. It is on **every sale the shop makes**, which
+makes it the highest-frequency thing still unfinished.
+
+### 20.1 The real gap is not "polish" — our receipt has no shop on it
+
+Ours is headed **"MPoS"** — the name of the *software* — followed by the branch name, and a branch
+address and phone that are **empty in the seed and have no UI to fill**. A customer walks out with a
+slip advertising our till software and telling them nothing about the shop they just bought from.
+
+Their print settings carry exactly what is missing, and the shop has all of it filled in:
+**business name, address, mobile, email, logo**. That is the fix, and it is a Settings change (§17)
+before it is a receipt change.
+
+### 20.2 What their invoice actually carries *(content, never layout — hard rule 1)*
+
+Read off a real invoice of theirs:
+
+- shop **name, address, mobile, email**, and **"Sold By"**;
+- invoice no, **date *and* time**;
+- **Billing To**: customer name and mobile;
+- lines: item (with **size/colour**), price, qty **with unit** ("1 PCS"), line total; plus a **total qty**;
+- subtotal, total, paid, **cash received**, **change**;
+- **amount in words** — *"One Thousand Four Hundred Fifty TK Only"*;
+- a **payment details** table (date, method, amount);
+- a **points block**: redeemed / earned / **available**;
+- **signature lines** ("Received By", "Authorised By") — A4 only;
+- **Export PDF**, **Share WhatsApp**, **Print**.
+
+Their live print settings also say **`default_print = Pos`** — the 80mm receipt is what actually comes
+out of the printer, day to day. A4 is the exception, for when a customer wants a document.
+
+We already have: the 80mm receipt, size/colour on the line, the points block, the remark (§16), and
+payments. **Missing: the shop's identity, the amount in words, cash-and-change on a reprint, an A4
+document, PDF, and share.**
+
+### 20.3 Cash and change cannot be reprinted — and that is a schema hole
+
+Their invoice prints **Cash Receive** and **Change**. Ours shows change at the till and then *forgets
+it*: `Sale` has no `tendered` column, so a reprinted receipt can never show what was handed over or
+handed back. A receipt that disagrees with the one the customer is holding is worse than no reprint.
+**Add `Sale.tendered`.**
+
+### 20.4 What we build
+
+- **Shop identity in Settings** (§17): name, address, phone, email — one typed row, already exists.
+  The receipt reads from it. **No logo yet**: an image needs a storage decision, which §12 has been
+  parking, and a text header is what makes the receipt usable today.
+- **Amount in words**, our own implementation (`src/lib/words.ts`), rendered on both documents.
+- **`Sale.tendered`**, so cash-and-change survive a reprint.
+- **An A4 invoice** beside the 80mm receipt — the same data, a document you can hand over or attach.
+- **PDF and share** — see the decisions below.
+
+### 20.5 Decisions this forces *(settle before building)*
+
+1. **How is a PDF produced?** A real server-generated file costs a heavy dependency; the browser's own
+   print-to-PDF costs nothing and produces the same document. Recommend the browser: **Print → Save as
+   PDF**, with the A4 invoice styled for it.
+2. **What does "share" mean?** Theirs shares a **public invoice link** — a page anyone with the URL can
+   read, no login. That is a real exposure decision (customer name, phone, what they bought), not a
+   button. Alternative: a **WhatsApp message with the invoice summary as text**, which leaks nothing
+   and needs no hosting.
+3. **Amount in words: which currency word?** Their invoice says *"… TK Only"*. Ours is single-currency
+   and unnamed. Recommend making the currency word a **Settings field** (default "TK"), so the receipt
+   speaks the shop's language rather than ours.

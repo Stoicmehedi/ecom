@@ -17,6 +17,13 @@ const schema = z.object({
   minRedeemPoints: z.number().int().min(0),
   maxRedeemPct: z.number().int().min(0).max(100, "A bill cannot be more than 100% paid in points"),
   defaultAlertQty: z.number().int().min(0),
+  // Who the shop is (§20.1). A receipt headed with the name of our software tells
+  // the customer nothing about the shop they just bought from.
+  shopName: z.string().trim().min(1, "The shop needs a name — it goes on every receipt").max(80),
+  shopAddress: z.string().trim().max(200).nullable().optional(),
+  shopPhone: z.string().trim().max(40).nullable().optional(),
+  shopEmail: z.string().trim().max(80).nullable().optional(),
+  currencyWord: z.string().trim().min(1).max(20),
 });
 
 export type SettingsInput = z.input<typeof schema>;
@@ -47,14 +54,22 @@ export async function saveSettings(input: SettingsInput): Promise<SettingsResult
     }
   }
 
+  const row = {
+    ...s,
+    shopAddress: s.shopAddress?.trim() || null,
+    shopPhone: s.shopPhone?.trim() || null,
+    shopEmail: s.shopEmail?.trim() || null,
+  };
+
   await prisma.shopSetting.upsert({
     where: { id: 1 },
-    update: s,
-    create: { id: 1, ...s },
+    update: row,
+    create: { id: 1, ...row },
   });
 
   revalidatePath("/settings");
   revalidatePath("/pos");
   revalidatePath("/inventory");
+  revalidatePath("/sales");
   return { ok: true };
 }

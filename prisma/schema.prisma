@@ -64,6 +64,16 @@ model ShopSetting {
   /// Shop-wide low-stock threshold; a product's own `alertQty` overrides it.
   defaultAlertQty Int @default(5)
 
+  /// Who the shop IS — printed on every receipt and invoice (BLUEPRINT §20.1).
+  /// Without these the receipt is headed with the name of our software, which tells
+  /// the customer nothing about the shop they just bought from.
+  shopName    String  @default("MPoS")
+  shopAddress String?
+  shopPhone   String?
+  shopEmail   String?
+  /// The word the amount-in-words line ends with — "TK Only", "Taka Only".
+  currencyWord String @default("TK")
+
   updatedAt DateTime @updatedAt
 }
 
@@ -451,6 +461,14 @@ model Sale {
   /// points are settled as a `POINTS` payment, not as a discount on the line.
   pointsEarned   Int         @default(0)
   pointsRedeemed Int         @default(0)
+  /// Cash handed over at the till. Without it, a REPRINTED receipt can never show
+  /// what was tendered or what change was given (§20.3) — and a reprint that
+  /// disagrees with the slip in the customer's hand is worse than no reprint.
+  tendered      Decimal?     @db.Decimal(14, 2)
+  /// Unguessable key for the public invoice link (§20.5). Null until someone
+  /// shares it, and settable back to null to revoke — a shared invoice carries the
+  /// customer's name, phone and purchase, so it must be revocable.
+  publicToken   String?      @unique
   createdAt     DateTime     @default(now())
 
   customerId Int?

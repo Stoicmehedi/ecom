@@ -68,6 +68,8 @@ const checkoutSchema = z.object({
   exchange: exchangeSchema.optional(),
   /** Points the customer wants to spend on this bill (BLUEPRINT §15.4). */
   redeemPoints: z.number().int().min(0).default(0),
+  /** Cash handed over, so a reprint can still show it and the change (§20.3). */
+  tendered: z.number().min(0).optional(),
 });
 
 export type CheckoutInput = z.input<typeof checkoutSchema>;
@@ -404,6 +406,9 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
           note: s.note?.trim() || null,
           pointsEarned: earned,
           pointsRedeemed: redeemPoints,
+          // Recorded, not recomputed: the change given is a fact about what happened
+          // at the counter, and a reprint must show the same figures as the original.
+          tendered: s.tendered && s.tendered > 0 ? round2(s.tendered) : null,
         },
       });
 

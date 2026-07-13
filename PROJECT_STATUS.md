@@ -612,6 +612,44 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   *Not browser-tested:* the "undoing would leave negative stock" refusal (it mirrors the purchase guard
   and needed a large throwaway sale to trigger) — covered by code, not by a driven test.
 
+- **Receipt & invoice — BUILT (`BLUEPRINT.md` §20).** Migration `receipt_and_shop_identity`.
+  Studied their invoice, print settings and share settings read-only first.
+
+  ⚠️ **This was not "polish" — our receipt had no shop on it.** It was headed **"MPoS"**, the name of
+  our *till software*, over a branch address and phone that were **empty in the seed with no UI to fill
+  them**. Every customer walked out with a slip that advertised us and told them nothing about the shop
+  they had just bought from. Their print settings carry exactly what was missing — **business name,
+  address, mobile, email** — and the shop has all of it filled in.
+  - **Shop identity now lives in Settings** (§17) and the documents read it. No logo yet: an image needs
+    the storage decision §12 has been parking, and a text header is what makes the receipt usable today.
+  - **Amount in words** (`src/lib/words.ts`, ours) — *"One Thousand Four Hundred Fifty TK Only"*, which
+    **matches their real invoice for the same figure exactly**. A digit can be altered with a pen; a
+    sentence cannot. The **currency word is a setting**, so the receipt speaks the shop's language.
+  - 🐛 **A schema hole found by the study: change could not be reprinted.** The till showed change and
+    then *forgot it* — `Sale` had no `tendered` column, so a reprint could never show what was handed
+    over or handed back, and a reprint that disagrees with the slip in the customer's hand is worse than
+    no reprint. **`Sale.tendered` added**, sent from the POS (which already knew it and threw it away).
+  - **An A4 invoice** beside the 80mm receipt. **PDF is the browser's own Print → Save as PDF** — no PDF
+    library, so the printed page and the PDF cannot drift apart.
+  - **One loader for all three documents** (`src/lib/invoice.ts`): receipt, A4 and public link read the
+    same data, so they can never disagree about what was sold. **It does not even `select` `costAtSale`**
+    — this document leaves the building.
+  - **Sharing (settled with the user: both).** WhatsApp gets the invoice **as text** (leaks nothing, no
+    hosting). A **public link** is the deliberate second step: token is **32 bytes of CSPRNG hex**, minted
+    **only on demand** (a sale nobody shared has no public face), **revocable**, and the page is
+    **`noindex, nofollow`** — a shared invoice in a search engine would publish a customer's name, phone
+    and purchase.
+
+  **Browser-verified.** Set the shop to *Zephyr & Co.*; sold 2 tees + a cap = **30.00**, tendered
+  **50.00** → the receipt now prints the **shop's** name and address, **"In words: Thirty TK Only"**, and
+  **Cash received 50.00 / Change 20.00** *from the database* — a true reprint, not a leftover of the till
+  screen. An older sale with no `tendered` correctly prints **no** cash/change line rather than a fake
+  0.00, and renders paisa (1263.60 → *"…Sixty Three TK and Sixty Paisa Only"*). The A4 invoice carries
+  lines with SKU and unit, total qty, payment details and signature lines.
+  **Link security checked signed-out with `curl`:** valid token **200**, wrong token **404**, malformed
+  token **404**, `noindex` present, and **the cost figures (5.00, 4.00) appear nowhere in the HTML**.
+  After **Revoke**, the previously-working link **404s**. `check-reports.ts` still reconciles.
+
 ---
 
 ## 5. Current state
@@ -671,7 +709,13 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   (`stock.adjust`), proven against a **forged wire payload**. ⚠️ Worth knowing: the reference shop has
   **never made one** — they write off via a zero-value "Qc Out" sale (§16). We built it for what free
   issue cannot do: move stock **up**, and report damage as damage rather than as a giveaway.
-- 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses, then Stock adjustments). The app runs the
+- ✅ **Receipt & invoice done** (`BLUEPRINT.md` §20) — the receipt finally carries **the shop's own name,
+  address, phone and email** (from Settings) instead of being headed with our software's name. Plus
+  **amount in words**, **cash-and-change that survive a reprint** (`Sale.tendered` — it was not stored at
+  all), an **A4 invoice**, **PDF via the browser's own print**, and **sharing**: WhatsApp as text, plus an
+  optional **public link** (32-byte CSPRNG token, minted on demand, revocable, `noindex`, no cost data).
+  All three documents read **one loader**, so they cannot disagree.
+- 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses → Stock adjustments → Receipt & invoice). The app runs the
   whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
   margin, and who owes what in both directions.
 - ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS), §10 (Sale returns), §11 (Reports) hold
@@ -699,6 +743,8 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   `SRT-00001` (that sale returned in full → Karim holds **120 points** again and is owed **31.20**).
   Cash sits at **24,846.80**. Verifying Stock adjustments then added reason **Damage** and
   **`ADJ-00001`** (Field Tee M/Navy counted 4 of 10 → **−6**, a **36.00** stock loss).
+  Receipt work then set the shop to **Zephyr & Co.** in Settings and added `INV-00003`
+  (2 tees + a cap = 30.00, tendered 50.00 → change 20.00).
   Re-seed before the next module if you want a clean slate.
 
 **Dev logins** (both seeded): `admin` / `admin123` (Admin — sees everything) · `cashier` /
@@ -733,20 +779,23 @@ point (base data + a 5-product catalogue whose stock arrived on a real purchase)
 (`BLUEPRINT.md` §18). Both closed — the P&L has a Net profit line at last, and the loyalty scheme's
 cost is visible in it. See the progress log.
 
-~~3. Stock adjustments~~ — ✅ **DONE 2026-07-13** (`BLUEPRINT.md` §19). See the progress log.
+~~3. Stock adjustments~~ — ✅ **DONE 2026-07-13** (`BLUEPRINT.md` §19).
+~~4. Receipt polish~~ — ✅ **DONE 2026-07-13** (`BLUEPRINT.md` §20). It turned out to be more than
+polish: the receipt had no shop identity on it at all, and change was never stored.
 
 **START HERE (next session).**
 
-1. **Receipt polish** — amount in words, PDF export, WhatsApp share. It is on **every invoice the shop
-   issues**, which makes it the highest-frequency thing left undone.
+1. **POS grid filters** (brand / category) — cheap, and it only bites once a real catalogue is loaded.
 
 **Then, in rough order of value:**
 
-2. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
-3. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
-4. Then the rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary (**salary is an expense type
+2. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
+3. Then the rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary (**salary is an expense type
    today** — it earns its own subsystem when there are employees to attach it to), VAT (only if it is
    actually needed).
+4. Still open from §20: a **shop logo** on the receipt — deliberately deferred, because an image needs
+   the **storage decision** §12 has been parking (where do uploaded files live?). Settle that once and
+   it unblocks product images too.
 6. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
    upload** (ours is a pasted URL — needs a storage decision), **per-language product names**, and a
    **Product Groups** master.

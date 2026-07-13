@@ -341,6 +341,9 @@ export function PosTerminal({
         dueDate: due > 0 && dueDate ? dueDate : undefined,
         note: remark.trim() || undefined,
         redeemPoints: spendable,
+        // Sent so a reprint can still show what was handed over and what came back
+        // as change — the till knows it, but only for as long as this screen lives.
+        tendered: tendered > 0 ? tendered : undefined,
         // No price is sent — the server prices every line itself. `free` is a flag,
         // not a price, and the server re-checks the permission behind it.
         items: lines.map((l) => ({

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Printer, Undo2 } from "lucide-react";
+import { FileText, Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,12 @@ export default async function SaleDetailPage({
             <Link href={`/sales/${sale.id}/receipt`}>
               <Printer className="size-4" />
               Receipt
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/sales/${sale.id}/invoice`}>
+              <FileText className="size-4" />
+              Invoice
             </Link>
           </Button>
         </div>

@@ -46,6 +46,70 @@ export function SettingsForm({ settings }: { settings: ShopSettings }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
       <div className="space-y-6">
+        {/* Who the shop is — this is what a customer reads on the slip (§20.1). */}
+        <section className="rounded-lg border p-4">
+          <h2 className="font-medium">Your shop</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            This is the heading on every receipt and invoice you hand over. Until you set
+            it, customers walk out with a slip named after the till software.
+          </p>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="shopName">Shop name *</Label>
+              <Input
+                id="shopName"
+                value={s.shopName}
+                onChange={(e) => set("shopName", e.target.value)}
+                placeholder="Hansum"
+              />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="shopAddress">Address</Label>
+              <Input
+                id="shopAddress"
+                value={s.shopAddress ?? ""}
+                onChange={(e) => set("shopAddress", e.target.value)}
+                placeholder="Shaheb Ali Road, Natun Bazar"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="shopPhone">Phone</Label>
+              <Input
+                id="shopPhone"
+                value={s.shopPhone ?? ""}
+                onChange={(e) => set("shopPhone", e.target.value)}
+                placeholder="01914678838"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="shopEmail">Email</Label>
+              <Input
+                id="shopEmail"
+                value={s.shopEmail ?? ""}
+                onChange={(e) => set("shopEmail", e.target.value)}
+                placeholder="shop@example.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="currencyWord">Currency word</Label>
+              <Input
+                id="currencyWord"
+                value={s.currencyWord}
+                onChange={(e) => set("currencyWord", e.target.value)}
+                placeholder="TK"
+              />
+              <p className="text-xs text-muted-foreground">
+                Ends the amount-in-words line: &ldquo;… {s.currencyWord || "TK"} Only&rdquo;.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Loyalty */}
         <section className="rounded-lg border p-4">
           <div className="flex items-start justify-between gap-4">
