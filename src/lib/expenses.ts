@@ -25,20 +25,25 @@ type Tx = Prisma.TransactionClient;
 /** The system expense type that loyalty redemptions post against. */
 export const LOYALTY_EXPENSE_TYPE = "Loyalty points";
 
-/** Find-or-create the system type. It is never created by hand, so it is created here. */
-export async function loyaltyExpenseTypeId(tx: Tx): Promise<number> {
+/** The system expense type that a stock write-off posts against (§19.6). */
+export const STOCK_LOSS_EXPENSE_TYPE = "Stock loss";
+
+/** Find-or-create a system type. These are never created by hand, so they are created here. */
+export async function systemExpenseTypeId(tx: Tx, name: string): Promise<number> {
   const existing = await tx.expenseType.findUnique({
-    where: { name: LOYALTY_EXPENSE_TYPE },
+    where: { name },
     select: { id: true },
   });
   if (existing) return existing.id;
 
   const created = await tx.expenseType.create({
-    data: { name: LOYALTY_EXPENSE_TYPE, isSystem: true },
+    data: { name, isSystem: true },
     select: { id: true },
   });
   return created.id;
 }
+
+export const loyaltyExpenseTypeId = (tx: Tx) => systemExpenseTypeId(tx, LOYALTY_EXPENSE_TYPE);
 
 /**
  * Book what a points redemption cost the shop.
@@ -97,6 +102,44 @@ export async function reverseLoyaltyExpense(
       saleReturnId: args.saleReturnId,
       branchId: args.branchId ?? null,
       note: `${args.points} points returned on ${args.returnNo}`,
+    },
+  });
+}
+
+/**
+ * Book what a stock write-off cost the shop (§19.6).
+ *
+ * `value` is qty × weighted-average cost — what the goods actually cost us, not what
+ * they would have sold for. Like the loyalty expense, it carries **no account**: the
+ * shop lost *goods*, not cash, and no drawer is any lighter for it.
+ *
+ * Goods *found* are a negative expense — a contra — because finding stock is the
+ * opposite of losing it, and the P&L should net the two.
+ */
+export async function postStockLossExpense(
+  tx: Tx,
+  args: {
+    adjustmentId: number;
+    adjustmentNo: string;
+    typeName: string;
+    value: number;
+    branchId?: number | null;
+  },
+) {
+  if (args.value === 0) return;
+
+  await tx.expense.create({
+    data: {
+      date: new Date(),
+      amount: round2(args.value),
+      expenseTypeId: await systemExpenseTypeId(tx, STOCK_LOSS_EXPENSE_TYPE),
+      accountId: null, // goods, not cash
+      stockAdjustmentId: args.adjustmentId,
+      branchId: args.branchId ?? null,
+      note:
+        args.value > 0
+          ? `${args.typeName} written off on ${args.adjustmentNo}`
+          : `Stock found on ${args.adjustmentNo} (${args.typeName})`,
     },
   });
 }

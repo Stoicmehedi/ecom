@@ -1253,3 +1253,112 @@ Net profit is the number that was missing. It is the point of the whole module.
 4. **An expense may be back-dated.** Their entire workflow depends on it — everything is booked at
    month-end, December's rent entered as 31-Dec. So the P&L keys off the expense **date**, never its
    creation time.
+
+---
+
+## 19. Stock adjustments *(studied read-only 2026-07-13 — reference app; nothing created, edited or deleted)*
+
+Today stock moves **only** through buy, sell and return. A shirt that is torn, stolen, or simply
+miscounted **cannot leave the books at all**. That is the gap. But the study turned up something that
+changes what the module should be.
+
+### 19.1 The shop has never made a stock adjustment — not once
+
+The reference app has a full stock-adjustment module (`/stock-adjustments`, an adjustment-type master,
+and a report). In the shop's live account, over **2020 → 2026**, with the date filters empty so nothing
+is being hidden:
+
+- **zero adjustments**, ever;
+- **zero adjustment types defined** — the mandatory `Type` dropdown on their own create form is empty,
+  so the form cannot even be submitted as it stands.
+
+*(Checked twice. The first look at their account ledger this session was wrong because the table was
+paginated at 25 rows — so this time the filters were explicitly widened before concluding anything.)*
+
+### 19.2 So how do goods actually leave, when they aren't sold?
+
+Two ways, and we already support both:
+
+1. **A zero-value sale with a remark** — the invoice reading **"Qc Out"** that forced §16 into
+   existence. That is the shop's real write-off: the goods go out at 0.00 against a customer, and the
+   P&L books the loss as exactly what they cost.
+2. **A purchase return marked "Damaged"** — faulty goods go *back to the supplier*, which is money
+   recovered rather than a loss taken.
+
+**This is the fourth time the shop's own data has corrected an assumption** (after the discount
+override, the loyalty earn rate, and the expense/account model). The need is real — goods *do* leave
+without being sold — but the shop satisfies it with tools we already have.
+
+### 19.3 What a real adjustment adds that free issue cannot
+
+Free issue is not a substitute, and the gaps are specific:
+
+- **It cannot move stock UP.** A miscount found in the shop's favour, or goods that turn up behind a
+  shelf, have no path at all. A sale of −1 is not a thing.
+- **It invents a customer and an invoice.** Their "Qc Out" write-off is an invoice, against a person,
+  in the sales sequence — so the sale count, the invoice numbering and every sales report carry a
+  document that was never a sale. Ours does the same today.
+- **A loss is not a sale of 0.00.** It should be reported as *damage*, in its own line, not buried in
+  net sales as a giveaway.
+
+So: build it — but build the thing the shop needs (a way to write goods off and correct a count),
+not the thing the software offers.
+
+### 19.4 Their model: count, don't compute the delta
+
+Their create form (read, not filled) is: **Branch\***, **Date\***, **Type\*** (from the adjustment-type
+master), **Remark**, and lines of:
+
+| Product Name | Stock Quantity | **Counted Quantity** | **Adjustment Quantity** |
+
+You type **what you counted**, and the delta is *derived* — you never type a signed number. That is a
+good idea and we are keeping it: it makes an adjustment impossible to get backwards, and it handles a
+correction up and a write-off down through one field. Their list also carries a **Loss** column (the
+value of what went missing) and a status.
+
+### 19.5 What we build
+
+- **Adjustment types** — a small master (Damage, Loss, Theft, Miscount…), like the expense types.
+  We seed none: the shop names its own.
+- **An adjustment document** — date, type, remark, and lines. Per line: pick a variant, see its
+  **stock on hand**, type the **counted quantity**; the **delta is derived and shown** before saving.
+- **It moves stock, at cost.** Each line writes a `StockMovement` (`ADJUSTMENT`) and moves
+  `stockQty`. **The weighted-average cost per unit does not change** — a lost shirt does not make the
+  remaining shirts cheaper or dearer; there are simply fewer of them. Goods found are brought back in
+  at the current average, which is the only price we can honestly claim to know for them.
+- **Deleting an adjustment reverses it**, and is refused if the stock it added has since been sold —
+  the same discipline as a purchase.
+
+### 19.6 The loss has to land in the P&L, and we already have the machinery
+
+A write-off that only changes a stock number is a write-off nobody sees. The value of the goods lost
+(**qty × weighted-average cost**) posts as an **automatic expense** — the exact shape the loyalty
+redemption took in §18.8:
+
+- an `Expense` of a system type (**"Stock loss"**), **carrying no account**, because no cash crossed
+  the counter — the shop lost *goods*, not money;
+- a **stock gain posts a negative expense** (a contra), because finding goods is the opposite of
+  losing them;
+- deleting the adjustment deletes its expense with it (cascade on the adjustment).
+
+So damage shows up in **Operating expenses**, and **net profit falls by exactly what the goods cost**.
+Nothing new is invented — this is the third user of the same "expense with no account" idea, after the
+loyalty credit and the exchange credit.
+
+### 19.7 Decisions — **settled with the user 2026-07-13**
+
+1. **Admin-only**, on a new **`stock.adjust`** permission — page *and* every server action. An
+   adjustment silently destroys stock and books a loss: type a lower count and the shortfall becomes
+   "damage". It is the easiest place in the whole app to hide theft, so it stays in one pair of hands.
+2. **The loss lands in the P&L.** Value lost = **qty × weighted-average cost**, posted as an automatic
+   **"Stock loss"** expense with **no account** — the shop lost *goods*, not cash. Stock found posts a
+   **negative contra**. Damage therefore appears in Operating expenses and **net profit falls by exactly
+   what the goods cost**. A write-off nobody sees in the profit figure is a write-off nobody acts on.
+3. **Lines are entered as a counted quantity, never a signed number.** Pick a variant, see what is on
+   hand, type what you actually counted; the delta is derived and shown before saving. A correction up
+   and a write-off down go through one field, and the sign can never be typed backwards.
+4. **Free issue stays exactly as it is** (§16) — it serves a real case (goods physically handed to
+   someone) and it is the shop's actual habit. But an adjustment is now the right way to record damage,
+   and the two report differently: a giveaway is a sale at 0.00, a loss is a loss.
+5. One **system expense type** ("Stock loss") keeps the P&L short; the *adjustment* type
+   (Damage / Theft / Miscount) rides on the document, where the detail belongs.

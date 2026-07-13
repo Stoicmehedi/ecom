@@ -569,6 +569,49 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   hostile 9,999 payload** — refused (*"You do not have permission to manage expenses"*), **zero rows
   written**. The cashier's sidebar has no Expenses link and `/expenses` redirects.
 
+- **Stock adjustments — BUILT (`BLUEPRINT.md` §19).** Migration `stock_adjustments`. Stock could
+  previously move *only* via buy/sell/return, so a torn shirt could not leave the books at all.
+
+  ⚠️ **The study found the shop has never made a single stock adjustment — not one, 2020→2026** —
+  and has **no adjustment types defined**, so their own create form could not even be submitted.
+  (Filters were explicitly widened before concluding that, having misread a paginated table earlier
+  the same day.) What they actually do: write goods off as a **zero-value sale remarked "Qc Out"** —
+  the very invoice that forced free issue (§16) into existence — and send damaged goods **back to the
+  supplier** as a purchase return. **Fourth time the shop's own data has corrected an assumption.**
+
+  Built anyway, but for the three things free issue genuinely *cannot* do: **move stock up** (a
+  miscount in the shop's favour had no path at all), avoid **inventing a customer and an invoice** for
+  a write-off, and report damage **as damage** rather than burying it in net sales as a giveaway.
+  - **You type what you counted, never a signed delta** (their model, and it is a good one): pick a
+    variant, see what is on hand, type the count — the adjustment is derived and shown before saving,
+    so the sign can never come out backwards, and a correction up and a write-off down use one field.
+  - **The weighted-average cost does not move.** A lost shirt does not make the remaining shirts
+    cheaper or dearer — there are simply fewer of them. Only `stockQty` changes.
+  - **The loss lands in the P&L** (§19.6) as an automatic **"Stock loss"** expense at
+    `qty × weighted-average cost`, carrying **no account** — the shop lost *goods*, not cash. Stock
+    *found* posts a **negative contra**. This is the third user of the "expense with no account" idea,
+    after the loyalty credit (§18.8) and the exchange credit (§14) — nothing new was invented.
+  - **Admin-only** on a new **`stock.adjust`** permission — it is the easiest place in the app to hide
+    theft (type a lower count and the shortfall becomes "damage"), so the gate is on the page *and*
+    every server action.
+  - **Undo restores stock and takes the loss with it** (the expense cascades). Refused if undoing would
+    drive stock negative — i.e. the goods have been sold since.
+
+  **Browser-verified against hand-computed figures.** One document counting **both directions at once**:
+  Field Tee M/Navy 10 → counted **4** (−6, loss 36.00 at its 6.00 cost) and Canvas Cap 20 → counted
+  **22** (+2, −8.00 found) → net **−4 units, 28.00**. Stock moved, **the average cost stayed at 6.00 and
+  4.00**, and **cash never moved** (24,846.80 throughout). The P&L showed **Stock loss (28.00)** in
+  Operating expenses and net profit fell by exactly 28.00. **Undo put it all back exactly** — stock 10
+  and 20, movements gone, and **zero** Stock-loss expenses left. `check-reports.ts` reconciles.
+
+  **The gate was proven by forging the wire.** The genuine `saveAdjustment` call was captured from a
+  real admin save and **replayed from a cashier's session** with a payload counting a variant to zero —
+  refused (*"You do not have permission to adjust stock"*), **zero rows written**. The cashier's sidebar
+  has no Adjustments link and `/adjustments` redirects.
+
+  *Not browser-tested:* the "undoing would leave negative stock" refusal (it mirrors the purchase guard
+  and needed a large throwaway sale to trigger) — covered by code, not by a driven test.
+
 ---
 
 ## 5. Current state
@@ -621,7 +664,14 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   the shop made. **The loyalty scheme's cost is visible at last** — a redemption posts an automatic
   `Loyalty points` expense with **no account** (no cash moved), reversed by a contra entry when the
   goods come back. Browser-verified; the permission gate proven against a **forged wire payload**.
-- 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 has begun (Expenses is its first module). The app runs the
+- ✅ **Stock adjustments done** (`BLUEPRINT.md` §19) — damage, theft and miscounts. You **count** what
+  is on the shelf and the adjustment is derived, so the sign can never be typed backwards; stock moves
+  but the **weighted-average cost does not**. The loss posts to the P&L as a **Stock loss** expense at
+  cost, with **no account** (goods lost, not cash); stock found posts a negative contra. **Admin-only**
+  (`stock.adjust`), proven against a **forged wire payload**. ⚠️ Worth knowing: the reference shop has
+  **never made one** — they write off via a zero-value "Qc Out" sale (§16). We built it for what free
+  issue cannot do: move stock **up**, and report damage as damage rather than as a giveaway.
+- 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses, then Stock adjustments). The app runs the
   whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
   margin, and who owes what in both directions.
 - ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS), §10 (Sale returns), §11 (Reports) hold
@@ -647,7 +697,9 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   **Since the re-seed, verifying Expenses added:** a `Space Rent` expense (25,000, from Cash),
   `INV-00001` (36 hoodies to Karim, 1,263.60), `INV-00002` (43.20, 120 points redeemed) and
   `SRT-00001` (that sale returned in full → Karim holds **120 points** again and is owed **31.20**).
-  Cash sits at **24,846.80**. Re-seed before the next module if you want a clean slate.
+  Cash sits at **24,846.80**. Verifying Stock adjustments then added reason **Damage** and
+  **`ADJ-00001`** (Field Tee M/Navy counted 4 of 10 → **−6**, a **36.00** stock loss).
+  Re-seed before the next module if you want a clean slate.
 
 **Dev logins** (both seeded): `admin` / `admin123` (Admin — sees everything) · `cashier` /
 `cashier123` (Cashier — no cost, no profit; use it to check the permission gates).
@@ -681,19 +733,18 @@ point (base data + a 5-product catalogue whose stock arrived on a real purchase)
 (`BLUEPRINT.md` §18). Both closed — the P&L has a Net profit line at last, and the loyalty scheme's
 cost is visible in it. See the progress log.
 
+~~3. Stock adjustments~~ — ✅ **DONE 2026-07-13** (`BLUEPRINT.md` §19). See the progress log.
+
 **START HERE (next session).**
 
-1. **Stock adjustments** — damage, loss, corrections. Today stock moves *only* via buy/sell/return, so
-   a torn shirt or a miscount **cannot leave the books at all**. It is the last routine counter event
-   the shop has no way to record. Build to protocol (study the reference app → write it into
-   `BLUEPRINT.md` → settle the open decisions → build).
+1. **Receipt polish** — amount in words, PDF export, WhatsApp share. It is on **every invoice the shop
+   issues**, which makes it the highest-frequency thing left undone.
 
 **Then, in rough order of value:**
 
-2. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
-3. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
-4. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
-5. Then the rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary (**salary is an expense type
+2. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
+3. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
+4. Then the rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary (**salary is an expense type
    today** — it earns its own subsystem when there are employees to attach it to), VAT (only if it is
    actually needed).
 6. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image

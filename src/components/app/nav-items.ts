@@ -12,6 +12,7 @@ import {
   Truck,
   BarChart3,
   Wallet,
+  ClipboardCheck,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,12 @@ export const navItems: NavItem[] = [
   { label: "Purchases", href: "/purchases", icon: ShoppingBag },
   { label: "Purchase Returns", href: "/purchase-returns", icon: Undo2 },
   { label: "Inventory", href: "/inventory", icon: Boxes },
+  {
+    label: "Adjustments",
+    href: "/adjustments",
+    icon: ClipboardCheck,
+    permission: "stock.adjust",
+  },
   { label: "POS", href: "/pos", icon: ScanBarcode },
   { label: "Sales", href: "/sales", icon: Receipt },
   { label: "Sale Returns", href: "/sale-returns", icon: RotateCcw },

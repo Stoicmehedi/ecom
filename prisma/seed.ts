@@ -17,7 +17,7 @@ import bcrypt from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { avgAfterPurchase, docStatus, round2, round3 } from "../src/lib/costing";
 import { makeEan13 } from "../src/lib/barcode";
-import { LOYALTY_EXPENSE_TYPE } from "../src/lib/expenses";
+import { LOYALTY_EXPENSE_TYPE, STOCK_LOSS_EXPENSE_TYPE } from "../src/lib/expenses";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -119,11 +119,13 @@ async function seedBase() {
 
   // --- The one expense type nobody types by hand (§18.8): loyalty redemptions post
   // against it automatically. Created here so it exists before the first sale does.
-  await prisma.expenseType.upsert({
-    where: { name: LOYALTY_EXPENSE_TYPE },
-    update: { isSystem: true },
-    create: { name: LOYALTY_EXPENSE_TYPE, isSystem: true },
-  });
+  for (const name of [LOYALTY_EXPENSE_TYPE, STOCK_LOSS_EXPENSE_TYPE]) {
+    await prisma.expenseType.upsert({
+      where: { name },
+      update: { isSystem: true },
+      create: { name, isSystem: true },
+    });
+  }
 
   return { branch, cash };
 }
@@ -249,6 +251,11 @@ async function seedDemo(branchId: number, cashAccountId: number) {
   // No expenses are seeded: the ledgers start at zero. These are just the names.
   for (const name of ["Space Rent", "Electricity", "Internet Bill", "Salary"]) {
     await prisma.expenseType.upsert({ where: { name }, update: {}, create: { name } });
+  }
+
+  // --- Adjustment reasons (§19) — why stock moves without a sale or a purchase.
+  for (const name of ["Damage", "Theft", "Miscount", "Sample"]) {
+    await prisma.adjustmentType.upsert({ where: { name }, update: {}, create: { name } });
   }
 
   // --- Products ---

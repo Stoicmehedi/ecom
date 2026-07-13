@@ -125,6 +125,7 @@ model Branch {
   purchases Purchase[]
   sales     Sale[]
   expenses  Expense[]
+  adjustments StockAdjustment[]
 }
 
 model Role {
@@ -153,6 +154,7 @@ model User {
   salesSold Sale[]     @relation("SoldBy")
   heldSales HeldSale[] @relation("HeldBy")
   expenses  Expense[]  @relation("ExpenseBy")
+  adjustments StockAdjustment[] @relation("AdjustmentBy")
 }
 
 // ---------- Catalog ----------
@@ -294,6 +296,7 @@ model ProductVariant {
   stockMovements      StockMovement[]
   purchaseReturnItems PurchaseReturnItem[]
   saleReturnItems     SaleReturnItem[]
+  adjustmentItems     StockAdjustmentItem[]
 
   @@index([productId])
 }
@@ -614,6 +617,66 @@ model Payment {
   expense          Expense?        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 }
 
+// ---------- Stock adjustments (BLUEPRINT §19) ----------
+
+/// Why stock moved without being bought, sold or returned — Damage, Theft, Miscount.
+/// The shop names its own; we seed none.
+model AdjustmentType {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  adjustments StockAdjustment[]
+}
+
+/// A stock correction: what was counted, against what we thought was there.
+///
+/// Lines carry a **counted** quantity, never a signed delta (§19.7) — so the sign can
+/// never be typed backwards, and a correction up and a write-off down use one field.
+model StockAdjustment {
+  id           Int      @id @default(autoincrement())
+  adjustmentNo String   @unique // ADJ-00001
+  date         DateTime @default(now())
+  remark       String?
+  /// Value of what went missing, at weighted-average cost. Negative = goods found.
+  /// Stored rather than recomputed: the average moves, but what this cost us does not.
+  lossValue    Decimal  @default(0) @db.Decimal(14, 2)
+  createdAt    DateTime @default(now())
+
+  adjustmentTypeId Int
+  adjustmentType   AdjustmentType @relation(fields: [adjustmentTypeId], references: [id])
+
+  branchId    Int?
+  branch      Branch? @relation(fields: [branchId], references: [id])
+  createdById Int?
+  createdBy   User?   @relation("AdjustmentBy", fields: [createdById], references: [id])
+
+  items    StockAdjustmentItem[]
+  expenses Expense[]
+
+  @@index([date])
+}
+
+model StockAdjustmentItem {
+  id Int @id @default(autoincrement())
+  /// What the system thought was there when the count was taken.
+  stockQty   Decimal @db.Decimal(14, 3)
+  /// What was actually on the shelf.
+  countedQty Decimal @db.Decimal(14, 3)
+  /// counted − onHand. Negative = goods lost. Derived, never typed.
+  delta      Decimal @db.Decimal(14, 3)
+  /// The weighted-average cost at the moment of the count — what the loss really cost.
+  cost       Decimal @db.Decimal(14, 2)
+
+  adjustmentId Int
+  adjustment   StockAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  variantId    Int
+  variant      ProductVariant  @relation(fields: [variantId], references: [id])
+
+  @@index([adjustmentId])
+}
+
 // ---------- Expenses (BLUEPRINT §18) ----------
 
 /// What an expense is *for* — Space Rent, Electricity, Salary. Just a name, like a
@@ -658,6 +721,11 @@ model Expense {
   /// points had been taken away from the customer again.
   saleReturnId Int?
   saleReturn   SaleReturn? @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+
+  /// Set on the "Stock loss" expense an adjustment posts (§19.6). Delete the
+  /// adjustment and the loss it booked goes with it.
+  stockAdjustmentId Int?
+  stockAdjustment   StockAdjustment? @relation(fields: [stockAdjustmentId], references: [id], onDelete: Cascade)
 
   branchId    Int?
   branch      Branch? @relation(fields: [branchId], references: [id])
