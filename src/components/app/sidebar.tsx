@@ -3,15 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MposLogo } from "./mpos-logo";
-import { navItems } from "./nav-items";
+import { visibleNavItems } from "./nav-items";
 import { cn } from "@/lib/utils";
 
 export function SidebarContent({
+  permissions,
   onNavigate,
 }: {
+  permissions: string[];
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  // Filtered here, not on the server: a NavItem carries its Lucide icon, which is a
+  // function — and a function cannot cross the server→client boundary.
+  const items = visibleNavItems(permissions);
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
@@ -22,7 +27,7 @@ export function SidebarContent({
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const active =
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));

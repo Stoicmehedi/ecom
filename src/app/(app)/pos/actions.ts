@@ -14,6 +14,7 @@ import {
 } from "@/lib/loyalty";
 import { docStatus, resolveDiscount, round2, round3 } from "@/lib/costing";
 import { priceLine } from "@/lib/pricing";
+import { postLoyaltyExpense } from "@/lib/expenses";
 import {
   creditFor,
   pointsMovementFor,
@@ -506,6 +507,16 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
             type: "REDEEM",
             note: `Spent on ${sale.invoiceNo}`,
           },
+        });
+
+        // What the scheme cost the shop, booked where profit is judged (§18.8).
+        // Carries no account: the bill was settled, but no money was paid out.
+        await postLoyaltyExpense(tx, {
+          saleId: sale.id,
+          invoiceNo: sale.invoiceNo,
+          points: redeemPoints,
+          value: redeemValue,
+          branchId: branch?.id ?? null,
         });
       }
 

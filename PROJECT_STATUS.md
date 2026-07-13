@@ -521,6 +521,54 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
     empty. The sequence is `migrate reset` **then** `npx prisma db seed` (§7). The reset did re-prove
     that all 10 migrations replay into an empty database from scratch.
 
+- **Expenses & accounts — BUILT (`BLUEPRINT.md` §18). The biggest hole in the P&L is closed, and
+  §15.7 with it.** Migrations `expenses` and `expense_return_link`. Studied the reference app's
+  expense module read-only first (list, an *existing* record's edit modal, expense-type master, the
+  account ledger, Cash Flow, and their P&L).
+  - **What the study actually settled.** Their expense record is **five fields** (date, type, payment
+    type, amount, note) with **no account picker** — they get away with it because the shop has exactly
+    one account. **We didn't copy that:** an MPoS expense picks a **real account** and posts a
+    `Payment` (OUT) that **moves the balance**, like every other document. A payment method not tied
+    to an account is a hole in the books waiting to open.
+  - Their live data also showed the shape of the work: 55 expenses, **720,797** all-time, six types,
+    every one **paid in cash and dated the last day of the month**. So the expense list **defaults to
+    this month** (a "today" default would show an empty screen 30 days in 31) and **back-dating is
+    first-class** — the P&L keys off the expense *date*, never its creation time.
+  - **P&L gains its missing block**: Operating expenses (broken down by type) → **Net profit**. The
+    placeholder that read *"expenses are not tracked yet, so gross profit is also the net profit"* is
+    gone, replaced by the real figure.
+  - **Salary is an expense type, not a subsystem** — theirs is split out because an Employees module
+    feeds it; we have none.
+  - **Admin-only** on a new **`expenses.manage`** permission — page *and* every server action.
+  - ⚠️ **The loyalty accounting question (§15.7) is now answered.** A points redemption posts an
+    automatic **"Loyalty points" expense**, so what the scheme costs is finally **visible where profit
+    is judged**. It carries **no account** — no cash crossed the counter — exactly like the `POINTS`
+    payment and the `EXCHANGE` credit. It makes the cost *visible*, not *paid*. A return posts a
+    **negative contra entry** (linked to the return, so undoing the return drops it), and the two net
+    to zero: **a fully-returned sale costs the scheme nothing.** Automatic rows are **owned by their
+    sale** — the UI renders no edit/delete on them and the server refuses both.
+  - 🐛 **Bug found and fixed while wiring the nav:** gating the sidebar meant passing `NavItem`s from
+    the server layout to a client component — and a `NavItem` carries its Lucide **icon, which is a
+    function**, so every page 500'd. The permissions now cross the boundary instead and the client
+    filters. In passing this fixed a wart that had been there since day one: **a cashier could see a
+    Settings link that only bounced them** to the dashboard.
+
+  **Browser-verified end to end, every figure checked against the DB.** Rent 25,000 from Cash →
+  **cash 48,552 → 23,552** with one OUT payment; P&L showed gross profit 0.00, expenses 25,000,
+  **net profit −25,000** (rent and no sales *is* a loss). Then the loyalty round-trip: sold 36 hoodies
+  to Karim (Gold 10%) → 1,263.60, earning **120 points**; a second bill of 43.20 redeeming all 120 →
+  charged **31.20**, with a **`Loyalty points` expense of 12.00 carrying no account and no payment**,
+  and cash up by **only the 31.20 actually taken**. Returning that sale in full gave back **120 points
+  as points**, posted the **−12.00 contra**, left **cash untouched**, and netted the loyalty expense to
+  **0.00** on the by-type breakdown. `check-reports.ts` now asserts net profit = gross − expenses *and*
+  that the loyalty expense equals points spent minus points returned; it reconciles.
+  Deleting an expense reverses it (cash went back up by exactly 10.00).
+
+  **The gate was proven by forging the wire, not by trusting the UI.** The genuine `saveExpense`
+  server-action call was captured from a real admin save and **replayed from a cashier's session with a
+  hostile 9,999 payload** — refused (*"You do not have permission to manage expenses"*), **zero rows
+  written**. The cashier's sidebar has no Expenses link and `/expenses` redirects.
+
 ---
 
 ## 5. Current state
@@ -567,8 +615,15 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ✅ **Settings done** (`BLUEPRINT.md` §17) — `/settings` is a real page at last (it 404'd from the
   sidebar since day one). One typed row; Admin-only; holds the loyalty rule and the default alert
   quantity. Shows a live worked example of what the rule costs before you save it.
-- 🎉 **PHASE 1 IS COMPLETE.** The app runs the whole retail loop end to end: buy stock in → sell it →
-  take it back → and know the profit, the margin, and who owes what in both directions.
+- ✅ **Expenses & accounts done** (`BLUEPRINT.md` §18) — expense types + expenses, each posting a real
+  `Payment` that **moves the account balance**. **Admin-only** (`expenses.manage`). The P&L now carries
+  an **Operating expenses** block and a **Net profit** line: gross profit is no longer mistaken for what
+  the shop made. **The loyalty scheme's cost is visible at last** — a redemption posts an automatic
+  `Loyalty points` expense with **no account** (no cash moved), reversed by a contra entry when the
+  goods come back. Browser-verified; the permission gate proven against a **forged wire payload**.
+- 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 has begun (Expenses is its first module). The app runs the
+  whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
+  margin, and who owes what in both directions.
 - ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS), §10 (Sale returns), §11 (Reports) hold
   their requirements (written before building, per protocol).
 - ⬜ `middleware.ts` not added (protection currently via the `(app)` layout `auth()` guard — fine; add later for edge-level defense-in-depth).
@@ -589,6 +644,10 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 - ✅ **The dev DB is clean** (re-seeded 2026-07-13, replacing six modules' worth of verification
   leftovers). Rebuild it any time with `npx prisma migrate reset --force && npx prisma db seed`, and
   check it with `npx tsx scripts/check-seed.ts`.
+  **Since the re-seed, verifying Expenses added:** a `Space Rent` expense (25,000, from Cash),
+  `INV-00001` (36 hoodies to Karim, 1,263.60), `INV-00002` (43.20, 120 points redeemed) and
+  `SRT-00001` (that sale returned in full → Karim holds **120 points** again and is owed **31.20**).
+  Cash sits at **24,846.80**. Re-seed before the next module if you want a clean slate.
 
 **Dev logins** (both seeded): `admin` / `admin123` (Admin — sees everything) · `cashier` /
 `cashier123` (Cashier — no cost, no profit; use it to check the permission gates).
@@ -618,27 +677,26 @@ progress log.
 ~~1. Wipe and re-seed the dev DB~~ — ✅ **DONE 2026-07-13.** The DB is now a clean, coherent starting
 point (base data + a 5-product catalogue whose stock arrived on a real purchase). See the progress log.
 
+~~2. Expenses + accounts, and the loyalty accounting question (§15.7)~~ — ✅ **DONE 2026-07-13**
+(`BLUEPRINT.md` §18). Both closed — the P&L has a Net profit line at last, and the loyalty scheme's
+cost is visible in it. See the progress log.
+
 **START HERE (next session).**
 
-1. **Expenses + accounts** — the biggest hole in the P&L, and the first Phase-2 module. Gross profit
-   becomes a true *net* profit only once expenses and salaries post against it; the P&L screen already
-   has the slot for it. Build to protocol (study the reference app → write it into `BLUEPRINT.md` →
-   settle the open decisions → build).
-
-   **Settle the loyalty accounting question while building it** (`BLUEPRINT.md` §15.7): a redemption
-   pays a bill with something that is not money, so revenue is booked in full while the drawer is short
-   by the redeemed value. Internally consistent (the exchange credit already behaves this way), but the
-   **cost of the loyalty scheme is not visible anywhere in the P&L**. Its honest home is an expense —
-   which is exactly what this module introduces. Decide it here rather than fudging it earlier.
+1. **Stock adjustments** — damage, loss, corrections. Today stock moves *only* via buy/sell/return, so
+   a torn shirt or a miscount **cannot leave the books at all**. It is the last routine counter event
+   the shop has no way to record. Build to protocol (study the reference app → write it into
+   `BLUEPRINT.md` → settle the open decisions → build).
 
 **Then, in rough order of value:**
 
-2. **Stock adjustments** — damage, loss, corrections. Today stock only moves via buy/sell/return.
-3. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
-4. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
-5. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
-6. Then the rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary, VAT (only if actually needed).
-7. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
+2. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
+3. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
+4. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
+5. Then the rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary (**salary is an expense type
+   today** — it earns its own subsystem when there are employees to attach it to), VAT (only if it is
+   actually needed).
+6. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
    upload** (ours is a pasted URL — needs a storage decision), **per-language product names**, and a
    **Product Groups** master.
 

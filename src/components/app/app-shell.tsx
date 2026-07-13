@@ -17,11 +17,13 @@ export function AppShell({
   storeName,
   userName,
   userRole,
+  permissions,
   children,
 }: {
   storeName: string;
   userName: string;
   userRole?: string | null;
+  permissions: string[];
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -31,7 +33,7 @@ export function AppShell({
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 border-r border-sidebar-border md:block">
         <div className="sticky top-0 h-svh">
-          <SidebarContent />
+          <SidebarContent permissions={permissions} />
         </div>
       </aside>
 
@@ -52,7 +54,7 @@ export function AppShell({
             </SheetTrigger>
             <SheetContent side="left" className="w-64 p-0">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
-              <SidebarContent onNavigate={() => setOpen(false)} />
+              <SidebarContent permissions={permissions} onNavigate={() => setOpen(false)} />
             </SheetContent>
           </Sheet>
 

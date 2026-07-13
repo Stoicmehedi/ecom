@@ -27,16 +27,14 @@ export default async function ProfitLossPage({
       range={range}
       exportKey="profit-loss"
     >
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <Stat label="Net sales" value={money(pl.netSales)} />
+        <Stat label="Gross profit" value={money(pl.grossProfit)} />
+        <Stat label="Expenses" value={money(pl.totalExpenses)} />
         <Stat
-          label="Gross profit"
-          value={money(pl.grossProfit)}
-          tone={pl.grossProfit < 0 ? "bad" : "good"}
-        />
-        <Stat
-          label="Margin on net sales"
-          value={pl.marginPct == null ? "—" : `${pl.marginPct.toFixed(2)}%`}
+          label="Net profit"
+          value={money(pl.netProfit)}
+          tone={pl.netProfit < 0 ? "bad" : "good"}
         />
       </div>
 
@@ -55,26 +53,60 @@ export default async function ProfitLossPage({
         </Block>
       </div>
 
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Block title="Gross profit">
+          <p className="pb-2 text-sm text-muted-foreground">
+            What the goods earned over what they cost. It is not yet what you made.
+          </p>
+          <Line label="Net sales" value={pl.netSales} muted />
+          <Line label="Net cost of goods" value={-pl.netCogs} muted />
+          <Line label="Gross profit" value={pl.grossProfit} strong />
+          {pl.marginPct != null && (
+            <p className="pt-1 text-right text-sm text-muted-foreground">
+              Margin {pl.marginPct.toFixed(2)}%
+            </p>
+          )}
+        </Block>
+
+        <Block title="Operating expenses">
+          {pl.expenses.length === 0 ? (
+            <p className="py-2 text-sm text-muted-foreground">
+              No expenses in this period. Rent, electricity and wages belong here — until
+              they are recorded, the net profit below is flattering.
+            </p>
+          ) : (
+            <>
+              {pl.expenses.map((e) => (
+                <Line key={e.name} label={e.name} value={-e.amount} muted />
+              ))}
+              <Line label="Total expenses" value={-pl.totalExpenses} strong />
+            </>
+          )}
+        </Block>
+      </div>
+
       <div className="report-surface rounded-lg border border-primary/40 bg-primary/5 p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <h2 className="font-medium">Gross profit</h2>
+            <h2 className="font-medium">Net profit</h2>
             <p className="text-sm text-muted-foreground">
-              Net sales {money(pl.netSales)} − net cost of goods {money(pl.netCogs)}
+              Gross profit {money(pl.grossProfit)} − expenses {money(pl.totalExpenses)}
             </p>
           </div>
           <p
             className={cn(
               "text-3xl font-semibold tabular-nums",
-              pl.grossProfit < 0 ? "text-destructive" : "text-primary",
+              pl.netProfit < 0 ? "text-destructive" : "text-primary",
             )}
           >
-            {money(pl.grossProfit)}
+            {money(pl.netProfit)}
           </p>
         </div>
         <p className="mt-3 border-t pt-3 text-sm text-muted-foreground">
-          Expenses and salaries are not tracked yet, so gross profit is also the net
-          profit for this period. Once expenses ship, this figure grows a second line.
+          This is the figure that answers &ldquo;did I make money this month?&rdquo;
+          {pl.netMarginPct != null && (
+            <> Net margin on net sales: {pl.netMarginPct.toFixed(2)}%.</>
+          )}
         </p>
       </div>
 

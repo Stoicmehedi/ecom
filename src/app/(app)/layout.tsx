@@ -19,6 +19,7 @@ export default async function AppLayout({
       storeName={user.branchName ?? "Main Store"}
       userName={user.name ?? user.username ?? "User"}
       userRole={user.role ?? null}
+      permissions={user.permissions ?? []}
     >
       {children}
     </AppShell>

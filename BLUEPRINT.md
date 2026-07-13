@@ -1128,3 +1128,128 @@ A settings page that fills up with switches nobody has asked for is how software
 
 Settings change money rules — an earn rate is a lever on every future sale. Gated on
 **`settings.manage`**, Admin-only, on the **page and the server action** both.
+
+---
+
+## 18. Expenses & accounts *(studied read-only 2026-07-13 — reference app; nothing created, edited or deleted)*
+
+The biggest hole in our P&L. We report **gross** profit — what the goods earned over what they
+cost — and stop. Rent, electricity and wages never post against it, so the screen cannot answer the
+only question the shopkeeper actually has: *did I make money this month?*
+
+### 18.1 What the shop really spends *(from their live data, not their feature list)*
+
+55 expenses, **720,797.00** all-time. Six expense types, and the pattern is unmistakable:
+
+| Type | Cadence | Typical |
+|---|---|---|
+| Space Rent | every month | 25,000.00 |
+| Eid Bonus & Staff | every month | 12,000.00 |
+| Internet Bill | every month | 1,050.00 |
+| Electricity | most months | ~6,364.00 |
+| Others | every month | varies (6,300 – 14,275) |
+| Boost | occasional | (social-media ads) |
+
+Every single one is **paid in Cash** and **dated the last day of the month**. Nobody itemises a rent
+payment on the day it happened; they close the month and book it. Whatever we build must make that
+one-minute month-end routine effortless — it is 100% of the real usage.
+
+### 18.2 Their expense record is tiny — and that is the finding
+
+The whole Add/Update Expense form is **five fields**: `Date`, `Expense Type`, `Payment Type`
+(Cash / Mobile Banking / Card / Bank Account / Bank Cheque), `Amount`, `Note`. That is all.
+
+No attachment, no recurring rule, no approval, no supplier link, no expense number, and **no
+account picker** — `Payment Type` is a bare label, not a reference to an account. They get away
+with it because the shop has exactly **one account** (Cash, 1,560,982.00).
+
+**We will not copy that.** MPoS already has real `Account` rows (Cash + Bank) and a `Payment` table
+that every other module posts through. An expense will pick a **real account**, exactly like a
+purchase payment does — so the money leaves something specific, and the account's balance and ledger
+stay true. A payment method that isn't tied to an account is a hole in the books waiting to open.
+
+**Expense Type master** is likewise just a name (their table: name + branch, nothing else).
+
+### 18.3 An expense moves cash — verified in their ledger
+
+Checked directly, and it corrected a wrong first reading (the account ledger's first page was
+paginated at 25 rows, so the expenses were simply off-screen — the second look proved they are there):
+
+On **2025-12-31**, four expenses (25,000 + 1,050 + 9,730 + 12,000 = **47,780**) appear in the **Cash
+account ledger as credits**, dropping the running balance line by line, and the same **47,780** shows
+on the Cash Flow screen's `Expense` cash-out line. So an expense is a real cash movement, not a memo.
+
+For us this is one `Payment` row (`direction = OUT`, an `accountId`, **no contact**) — the same
+instrument the purchase payment already uses. Nothing new is invented.
+
+### 18.4 Salary is a separate line, not an expense type
+
+Their Cash Flow and P&L both carry **`Salary`** on its own, beside `Expense` (December: Expense
+47,780, Salary 31,000). Salary comes from their Employees module, which we do not have.
+
+Until we build Employees, **salary is just an expense type** in MPoS. It posts to the same place and
+lands in the same P&L block. Splitting it into its own subsystem before there are employees to attach
+it to would be building a feature to make a report look like theirs.
+
+### 18.5 Their P&L, and where ours gains its missing block
+
+Their December figures, and the arithmetic checks out exactly:
+
+```
+Gross Profit (product sales profit)      365,837.00
+  − Business Expenses                    − 47,780.00
+  − Salary Expenses                      − 31,000.00
+  = Net Profit                           287,057.00     ✓ 365,837 − 47,780 − 31,000
+```
+
+Our P&L already computes gross profit correctly and already has the slot. It gains one block:
+
+```
+Operating expenses
+  <by type — Space Rent, Electricity, …>
+  Total expenses
+Net profit  =  Gross profit − Total expenses
+```
+
+Net profit is the number that was missing. It is the point of the whole module.
+
+### 18.6 What we build
+
+- **Expense types** — a small master (name, active), like Brands/Units. Seeded with nothing; the
+  shop names its own.
+- **Expenses** — list (date range, type filter, running total) + a create/edit dialog:
+  **date, type, account, amount, note**. Type, account, amount and date are mandatory; note is not.
+- **It posts.** Saving writes a `Payment` (`OUT`, against the chosen account) and **decrements that
+  account's balance**. Editing reverses and re-posts; deleting reverses. The same discipline as
+  every other document we have — an expense that doesn't move the drawer is a lie on the P&L.
+- **P&L gains its Operating-expenses block and a Net profit line**, broken down by type.
+- **Admin-only.** Expenses are the shop's private cost base — a cashier has no business seeing the
+  rent, let alone editing it. New permission **`expenses.manage`**; profit is already Admin-only
+  (`reports.profit`), and net profit must not become the back door into it.
+
+### 18.7 What we are NOT building — no trace of it in their data
+
+- **Expense against a sale invoice.** Their expense report has `Invoice No` / `Sale Date` columns and
+  a "Sale Date Wise" grouping — and in the shop's real records **every one of them is blank**. Skip it
+  (the same test that killed the line-discount override in §13).
+- **Recurring expenses.** Tempting — rent *is* monthly — but they retype it each month in seconds, and
+  a recurring rule that silently posts money is a liability nobody asked for. Build only on request.
+- Attachments, approval flows, expense numbers, per-payment-method labels.
+
+### 18.8 Decisions — **settled with the user 2026-07-13**
+
+1. **A points redemption posts as an expense — §15.7 is now closed.** When a customer pays 14.00 of a
+   bill in points, revenue books the full bill while the drawer is 14.00 short; the scheme's cost was
+   **invisible in the P&L**. The redeemed value now posts automatically as a **"Loyalty points"**
+   expense, so what the scheme costs over a year is a line the shopkeeper can see and judge.
+   **It carries no account** — no cash crossed the counter, exactly like the `POINTS` payment itself
+   (§15.4) and the `EXCHANGE` credit (§14) — so no balance moves. It makes the cost *visible*, it does
+   not make it *paid*. It reverses with the goods when the sale is returned.
+2. **Salary is an expense type, not a subsystem.** Theirs is split out because an Employees module
+   feeds it; we have none. It posts to the same place and lands in the same P&L block. It earns its own
+   subsystem when there are employees to attach it to.
+3. **Admin-only** — new **`expenses.manage`** permission. Rent and wages are not a cashier's business,
+   and net profit must not become a back door into the Admin-only profit figures (§11.2).
+4. **An expense may be back-dated.** Their entire workflow depends on it — everything is booked at
+   month-end, December's rent entered as 31-Dec. So the P&L keys off the expense **date**, never its
+   creation time.

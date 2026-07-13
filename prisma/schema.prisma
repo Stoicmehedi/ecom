@@ -124,6 +124,7 @@ model Branch {
   products  Product[]
   purchases Purchase[]
   sales     Sale[]
+  expenses  Expense[]
 }
 
 model Role {
@@ -151,6 +152,7 @@ model User {
 
   salesSold Sale[]     @relation("SoldBy")
   heldSales HeldSale[] @relation("HeldBy")
+  expenses  Expense[]  @relation("ExpenseBy")
 }
 
 // ---------- Catalog ----------
@@ -459,6 +461,7 @@ model Sale {
   payments Payment[]
   returns  SaleReturn[]
   points   PointEntry[]
+  expenses Expense[]
 
   exchangedFrom Exchange[] @relation("ExchangeFrom")
   exchangedTo   Exchange?  @relation("ExchangeTo")
@@ -529,6 +532,7 @@ model SaleReturn {
   items    SaleReturnItem[]
   payments Payment[]
   points   PointEntry[]
+  expenses Expense[]
   exchange Exchange?
 }
 
@@ -583,6 +587,7 @@ model Account {
   createdAt      DateTime    @default(now())
 
   payments Payment[]
+  expenses Expense[]
 }
 
 model Payment {
@@ -605,6 +610,64 @@ model Payment {
   purchaseReturn   PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id])
   saleReturnId     Int?
   saleReturn       SaleReturn?     @relation(fields: [saleReturnId], references: [id])
+  expenseId        Int?
+  expense          Expense?        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Expenses (BLUEPRINT §18) ----------
+
+/// What an expense is *for* — Space Rent, Electricity, Salary. Just a name, like a
+/// Brand or a Unit. The shop names its own; we seed none but the system one.
+model ExpenseType {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  /// Posted automatically, never by hand — "Loyalty points" (§18.8). Cannot be
+  /// deleted or renamed, because a sale points at it.
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  expenses Expense[]
+}
+
+/// Money the shop spends. Rent, wages, electricity — the block the P&L was missing,
+/// and the difference between gross profit and knowing whether you made any money.
+model Expense {
+  id        Int      @id @default(autoincrement())
+  date      DateTime @default(now()) // may be back-dated: the shop books at month-end (§18.8)
+  amount    Decimal  @db.Decimal(14, 2) // negative = a contra entry reversing an earlier one
+  note      String?
+  createdAt DateTime @default(now())
+
+  expenseTypeId Int
+  expenseType   ExpenseType @relation(fields: [expenseTypeId], references: [id])
+
+  /// Which account the money left. **Null means no cash moved** — the loyalty-points
+  /// expense (§18.8) makes the scheme's cost visible without pretending it was paid,
+  /// exactly like the POINTS payment (§15.4) and the EXCHANGE credit (§14).
+  accountId Int?
+  account   Account? @relation(fields: [accountId], references: [id])
+
+  /// Set only on an automatic expense: the sale whose points redemption caused it.
+  /// Its presence is what makes an expense read-only by hand — it is owned by the sale.
+  saleId Int?
+  sale   Sale? @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  /// Set on the contra entry a return posts. Undo the return and the contra goes
+  /// with it — otherwise the cost of the scheme would stay clawed back after the
+  /// points had been taken away from the customer again.
+  saleReturnId Int?
+  saleReturn   SaleReturn? @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+
+  branchId    Int?
+  branch      Branch? @relation(fields: [branchId], references: [id])
+  createdById Int?
+  createdBy   User?   @relation("ExpenseBy", fields: [createdById], references: [id])
+
+  payments Payment[]
+
+  @@index([date])
+  @@index([expenseTypeId])
 }
 
 // ---------- Inventory audit trail ----------

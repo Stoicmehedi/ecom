@@ -1,5 +1,6 @@
 import { avgAfterPurchase, paidRatio, round2, round3 } from "@/lib/costing";
 import { pointsToReverse, pointsValue, type LoyaltySettings } from "@/lib/loyalty";
+import { reverseLoyaltyExpense } from "@/lib/expenses";
 import type { Prisma } from "@/generated/prisma/client";
 
 type Tx = Prisma.TransactionClient;
@@ -191,6 +192,18 @@ export async function writeSaleReturn(
           type: "REVERSE",
           note: `Points spent on ${sale.invoiceNo} given back (${ret.returnNo})`,
         },
+      });
+
+      // The points went back to the customer, so the cost of the scheme comes back
+      // to the shop: a contra entry against the loyalty expense the sale booked
+      // (§18.8). Posted as a negative row rather than by editing the original —
+      // the original is what happened, this is what happened next.
+      await reverseLoyaltyExpense(tx, {
+        saleId: sale.id,
+        saleReturnId: ret.id,
+        returnNo: ret.returnNo,
+        points: points.restored,
+        value: points.restoredValue,
       });
     }
     const delta = points.restored - points.reversed;

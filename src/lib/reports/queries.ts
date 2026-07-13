@@ -197,6 +197,11 @@ export type ProfitLoss = {
   marginPct: number | null;
   invoices: number;
   itemsSold: number;
+  // Operating expenses (BLUEPRINT §18) — what turns gross profit into real profit.
+  expenses: { name: string; amount: number }[];
+  totalExpenses: number;
+  netProfit: number;
+  netMarginPct: number | null;
   // Cash context — shown alongside, never folded into profit.
   purchases: number;
   purchaseReturns: number;
@@ -207,8 +212,17 @@ export type ProfitLoss = {
 export async function profitLoss(range: DateRange): Promise<ProfitLoss> {
   const { from, to } = range;
 
-  const [saleAgg, soldRaw, returnedRaw, purchaseAgg, purchaseReturnAgg, payIn, payOut] =
-    await Promise.all([
+  const [
+    saleAgg,
+    soldRaw,
+    returnedRaw,
+    purchaseAgg,
+    purchaseReturnAgg,
+    payIn,
+    payOut,
+    expenseAgg,
+    expenseTypes,
+  ] = await Promise.all([
       prisma.sale.aggregate({
         where: { date: { gte: from, lte: to } },
         _sum: { subtotal: true, discount: true, total: true },
@@ -248,6 +262,15 @@ export async function profitLoss(range: DateRange): Promise<ProfitLoss> {
         where: { date: { gte: from, lte: to }, direction: "OUT" },
         _sum: { amount: true },
       }),
+      // Expenses in the period, grouped by what they were for. Keyed off the expense
+      // *date*, never its creation time — the shop books December's rent on 31-Dec
+      // whenever it gets round to entering it (§18.8).
+      prisma.expense.groupBy({
+        by: ["expenseTypeId"],
+        where: { date: { gte: from, lte: to } },
+        _sum: { amount: true },
+      }),
+      prisma.expenseType.findMany({ select: { id: true, name: true } }),
     ]);
 
   const grossSales = num(saleAgg._sum.subtotal);
@@ -262,6 +285,20 @@ export async function profitLoss(range: DateRange): Promise<ProfitLoss> {
 
   const grossProfit = round2(netSales - netCogs);
 
+  // A contra entry (a returned loyalty redemption) is a negative row, so it nets
+  // itself out here rather than needing a special case.
+  const typeName = new Map(expenseTypes.map((t) => [t.id, t.name]));
+  const expenses = expenseAgg
+    .map((g) => ({
+      name: typeName.get(g.expenseTypeId) ?? "Unknown",
+      amount: round2(num(g._sum.amount)),
+    }))
+    .filter((e) => e.amount !== 0)
+    .sort((a, b) => b.amount - a.amount);
+
+  const totalExpenses = round2(expenses.reduce((s, e) => s + e.amount, 0));
+  const netProfit = round2(grossProfit - totalExpenses);
+
   return {
     grossSales: round2(grossSales),
     discount: round2(discount),
@@ -274,6 +311,10 @@ export async function profitLoss(range: DateRange): Promise<ProfitLoss> {
     marginPct: margin(grossProfit, netSales),
     invoices: saleAgg._count,
     itemsSold: round3(n(soldRaw[0]?.qty)),
+    expenses,
+    totalExpenses,
+    netProfit,
+    netMarginPct: margin(netProfit, netSales),
     purchases: round2(num(purchaseAgg._sum.total)),
     purchaseReturns: round2(num(purchaseReturnAgg._sum.total)),
     cashIn: round2(num(payIn._sum.amount)),
@@ -304,6 +345,11 @@ export function profitLossTable(pl: ProfitLoss, range: DateRange): ReportTable {
       line("Net cost of goods", pl.netCogs),
       line("Gross profit", pl.grossProfit),
       { item: "Margin on net sales", amount: null, pct: pl.marginPct },
+      // Operating expenses — the block that turns gross profit into real profit (§18.5).
+      ...pl.expenses.map((e) => line(`  ${e.name}`, -e.amount)),
+      line("Total expenses", -pl.totalExpenses),
+      line("Net profit", pl.netProfit),
+      { item: "Net margin on net sales", amount: null, pct: pl.netMarginPct },
       line("Purchases (inventory, not an expense)", pl.purchases),
       line("Purchase returns", pl.purchaseReturns),
       line("Cash in", pl.cashIn),

@@ -17,6 +17,7 @@ import bcrypt from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { avgAfterPurchase, docStatus, round2, round3 } from "../src/lib/costing";
 import { makeEan13 } from "../src/lib/barcode";
+import { LOYALTY_EXPENSE_TYPE } from "../src/lib/expenses";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -115,6 +116,14 @@ async function seedBase() {
 
   // --- Settings: one typed row, schema defaults = the shop's real loyalty rule (§15). ---
   await prisma.shopSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+
+  // --- The one expense type nobody types by hand (§18.8): loyalty redemptions post
+  // against it automatically. Created here so it exists before the first sale does.
+  await prisma.expenseType.upsert({
+    where: { name: LOYALTY_EXPENSE_TYPE },
+    update: { isSystem: true },
+    create: { name: LOYALTY_EXPENSE_TYPE, isSystem: true },
+  });
 
   return { branch, cash };
 }
@@ -235,6 +244,12 @@ async function seedDemo(branchId: number, cashAccountId: number) {
       { type: "CUSTOMER", name: "Nadia Rahman", phone: "01811000002" },
     ],
   });
+
+  // --- Expense types (§18) — what the shop's money goes on besides stock.
+  // No expenses are seeded: the ledgers start at zero. These are just the names.
+  for (const name of ["Space Rent", "Electricity", "Internet Bill", "Salary"]) {
+    await prisma.expenseType.upsert({ where: { name }, update: {}, create: { name } });
+  }
 
   // --- Products ---
   // The cross-product a VARIABLE product's variants are generated from, exactly

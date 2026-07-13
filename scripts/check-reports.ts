@@ -76,6 +76,43 @@ async function main() {
   check("margin %", pl.marginPct ?? 0, netSales ? r2((grossProfit / netSales) * 100) : 0);
   check("invoices", pl.invoices, sales.length);
 
+  // ---- Expenses → net profit (BLUEPRINT §18.5). Recomputed from the raw rows, so a
+  // contra entry (a returned loyalty redemption is a negative row) has to net itself
+  // out here exactly as it does in the report.
+  const expenseRows = await prisma.expense.findMany({
+    where: { date: { gte: range.from, lte: range.to } },
+  });
+  const totalExpenses = r2(expenseRows.reduce((a, e) => a + N(e.amount), 0));
+  const netProfit = r2(grossProfit - totalExpenses);
+  console.log(
+    `\n  expenses ${totalExpenses} over ${expenseRows.length} row(s) → ` +
+      `net profit ${netProfit} = ${grossProfit} − ${totalExpenses}`,
+  );
+  check("total expenses", pl.totalExpenses, totalExpenses);
+  check("Σ expense breakdown == total", r2(pl.expenses.reduce((a, e) => a + e.amount, 0)), totalExpenses);
+  check("net profit", pl.netProfit, netProfit);
+
+  // The loyalty scheme's cost must equal what customers actually spent in points
+  // over the period, net of any handed back on a return (§18.8). If these two ever
+  // disagree, either the expense or the points ledger is lying.
+  const pointsPaid = await prisma.payment.aggregate({
+    where: { date: { gte: range.from, lte: range.to }, method: "POINTS" },
+    _sum: { amount: true },
+  });
+  const loyaltyExpense = r2(
+    expenseRows
+      .filter((e) => e.saleId !== null)
+      .reduce((a, e) => a + N(e.amount), 0),
+  );
+  const pointsRefunded = r2(
+    rets.reduce((a, r) => a + (N(r.total) - N(r.moneyCredit)), 0),
+  );
+  check(
+    "loyalty expense == points spent − returned",
+    loyaltyExpense,
+    r2(N(pointsPaid._sum.amount) - pointsRefunded),
+  );
+
   // ---- Product profit must reconcile with the P&L. This is the real test.
   console.log("\nProduct profit — reconciles with P&L?");
   const pp = await productProfit({ range });
