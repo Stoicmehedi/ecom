@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { getSettings } from "@/lib/settings";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge } from "@/components/ui/badge";
 import { money, num, qty } from "@/lib/format";
@@ -15,8 +16,8 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-/** The fallback threshold. A product with its own `alertQty` overrides it. */
-const DEFAULT_ALERT_QTY = 5;
+// The fallback threshold is a shop-wide SETTING now (BLUEPRINT §17.2), not a
+// constant here. A product with its own `alertQty` still overrides it.
 
 export default async function InventoryPage({
   searchParams,
@@ -30,6 +31,8 @@ export default async function InventoryPage({
   // cashier sees what is on the shelf, not what it cost or what it earns.
   const session = await auth();
   const canSeeCost = hasPermission(session, "reports.profit");
+
+  const settings = await getSettings();
 
   const [variants, movements] = await Promise.all([
     prisma.productVariant.findMany({
@@ -63,7 +66,9 @@ export default async function InventoryPage({
       const sell = num(v.sellingPrice);
       // The product's own threshold if it set one, else the shop default.
       const alertAt =
-        v.product.alertQty == null ? DEFAULT_ALERT_QTY : num(v.product.alertQty);
+        v.product.alertQty == null
+          ? settings.defaultAlertQty
+          : num(v.product.alertQty);
       return {
         id: v.id,
         name: v.label ? `${v.product.name} — ${v.label}` : v.product.name,

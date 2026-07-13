@@ -438,6 +438,62 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   (`INV-00011`, 12.00). It was deleted through the app's own reversal path — cash and stock went back
   to where they were. Said here rather than quietly cleaned up.
 
+- **Loyalty points + Settings — BUILT** (`BLUEPRINT.md` §15 and §17). Migrations `loyalty_and_settings`
+  and `return_money_credit`.
+
+  ⚠️ **Studying the reference app first stopped us shipping a 10× giveaway.** We had *agreed* an earn
+  rate of 1 point per 10 taka with each point worth 1 taka — a **10% return**. Their live Point System
+  page says otherwise: **minimum amount 100 → 10 points, repetitive**, and **1 point = 0.10**. So the
+  earn rule is a **repeating threshold, not a rate**: `floor(bill ÷ 100) × 10`. Checked against three
+  real invoices — 640 → **60** pts, 740 → **70**, 660 → **60** — it matches all three, and a linear
+  rate matches **none** (it would give 64, 74, 66). The real scheme returns **1%**. Ours would have
+  returned 10%, on every sale, forever. *Second time the shop's own data has killed a plausible answer.*
+
+  - **Settings ships too, because loyalty forced it** (§17): `/settings` had been a **404 in the
+    sidebar since day one**. Now a real page — **one typed row**, not a key/value bag of strings.
+    Holds the loyalty rule, and the **default alert quantity** (the hardcoded `5` in the low-stock
+    filter moved here). **Admin-only** (`settings.manage`). It shows a **live worked example** —
+    change the rule and it tells you *"a bill of 640 earns 60 points"* and *"an effective return of
+    1.00%"* — so the cost of the scheme is on screen before it is saved, not discovered later.
+  - **Configurable, per the user's instruction:** earn amount, earn points, repeating, point value,
+    minimum balance to redeem (**100**), and the max share of a bill points may cover (**50%**).
+    Defaults are the shop's real rule, so day one behaves exactly as their customers expect.
+  - **A redemption is a payment made in points, not a discount** — a `Payment` row with
+    `method = "POINTS"` and **no account**, exactly like the exchange credit (§14). Nothing crossed the
+    counter, so no account gains a penny. Line pricing, discounts and the **minimum sale price floor
+    are untouched**: the goods sold for what they sold for.
+  - **A points ledger** (`PointEntry`), one row per movement, each pointing at the sale or return that
+    caused it. `Contact.loyaltyPoints` is only a cache of it. Shown as **Points history** on the
+    customer page — a balance nobody can explain is a balance nobody can trust.
+  - **Points reverse with the goods** (settled with the user): earned points are clawed back in
+    proportion to what was credited — the same `paidRatio` rule as §10.1a.
+
+  🔑 **The subtle one, caught while building: points must not be able to launder into cash.** If a
+  customer pays part of a bill in points and then returns the goods, refunding that part in *money*
+  turns points into cash — buy with points, return for a refund, repeat. So **points spent come back
+  as points**, and the money credit shrinks by exactly what they were worth. `SaleReturn.moneyCredit`
+  stores that figure rather than recomputing it, so undoing a return stays exact even if the point
+  value is edited afterwards. The customer is made whole **in the same instruments they paid with**.
+
+  **Browser-verified end to end, every figure checked against the DB.** Sold 40 × 20.00 to Karim
+  (Gold, 10%) → 720.00 → **70 points** (`floor(720/100)×10`); again → balance **140**. Then a 180.00
+  bill redeeming all 140: charged **166.00**, with a `POINTS` payment of 14.00 carrying **no account**
+  — cash rose by exactly the 166.00 charged, so no money was invented. The ledger summed to the cached
+  balance at every step. **Then the round-trip that proves the laundering guard:** returning that sale
+  in full gave back **140 points** (his balance returned to exactly 140) and credited his account
+  **166.00, not 180.00** — cash never moved. *The points came back as points.*
+
+  **Both gates proven by forging the wire, not by trusting the UI.** A redemption breaching the 50%
+  cap is refused server-side (*"At most 90 points (9.00) can go on this bill"*), no sale created. And
+  a **cashier replaying the genuine settings server-action** — captured from a real admin save, with a
+  hostile payload making each point worth **100.00** — is refused: *"You do not have permission to
+  change settings."* The stored point value was still 0.10 afterwards.
+
+  Typecheck + build pass; `check-reports.ts` still reconciles; no new lint findings.
+- ⚠️ **Bug found and fixed during verification:** the return form's summary said *"Credited against
+  due 180.00"* when the server correctly credited **166.00** (it was showing the goods' value, not the
+  money value). Server was right, screen was wrong — fixed.
+
 ---
 
 ## 5. Current state
@@ -476,6 +532,14 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   QC write-off: **Admin-only** (`sales.free_issue`), **remark mandatory**, and the minimum sale price
   still binds every *priced* line. The P&L books it as a loss of what the goods cost. Both gates
   verified against a **forged checkout payload**, not just the UI.
+- ✅ **Loyalty points done** (`BLUEPRINT.md` §15) — earn rule is a **repeating threshold**
+  (`floor(bill ÷ earnAmount) × earnPoints`, defaulting to the shop's real 10-per-100 at 0.10/point,
+  a 1% return). Redemption is a **payment in points**, capped at 50% of a bill and gated on a
+  100-point minimum. Points **reverse with the goods**, and points spent **come back as points** —
+  they can never launder into cash. Full `PointEntry` ledger behind every balance.
+- ✅ **Settings done** (`BLUEPRINT.md` §17) — `/settings` is a real page at last (it 404'd from the
+  sidebar since day one). One typed row; Admin-only; holds the loyalty rule and the default alert
+  quantity. Shows a live worked example of what the rule costs before you save it.
 - 🎉 **PHASE 1 IS COMPLETE.** The app runs the whole retail loop end to end: buy stock in → sell it →
   take it back → and know the profit, the margin, and who owes what in both directions.
 - ✅ `BLUEPRINT.md` §7 (Purchases), §8 (Customers), §9 (POS), §10 (Sale returns), §11 (Reports) hold
@@ -520,25 +584,22 @@ feature list (see the 2026-07-11 log entry — that method already deleted one w
 ~~1. Sale remark + allow a zero-value sale~~ — ✅ **DONE 2026-07-13** (`BLUEPRINT.md` §16). See the
 progress log.
 
-**START HERE (2026-07-13).**
+**START HERE (next session).**
 
-1. **Loyalty points.** ✅ **Settled: balances start at ZERO** — MPoS is a new system, not a migration,
-   so nothing is carried across from the old one. That removes the import/reconciliation problem
-   entirely (see `BLUEPRINT.md` §15).
-   **Three questions must be put to the user before any code is written:**
-   - **Earn rate** — their data shows 60 points earned on a 660 bill, i.e. ≈ 1 point per 10 taka.
-     Confirm that is the rule.
-   - **Redemption value** — what is one point worth when spent?
-   - **Points on returned goods** — the one that bites. Buy → earn points → return the goods → keep
-     the points is free money. **Recommendation: earned points reverse with the goods, in proportion
-     to what was actually credited** — the same `paidRatio` rule as §10.1a, which returns and
-     exchanges already use.
+1. **Wipe and re-seed the dev DB.** It is now a pile of verification leftovers from six modules and
+   is actively misleading — do not reason about business behaviour from these numbers. Do this
+   *before* the next module, not during it.
+
+2. **The loyalty accounting question** (`BLUEPRINT.md` §15.7) — a redemption pays a bill with
+   something that is not money, so revenue is booked in full while the drawer is short by the
+   redeemed value. Internally consistent (the exchange credit already behaves this way), but the
+   **cost of the loyalty scheme is not yet visible anywhere in the P&L**. The honest home for it is
+   an expense — which lands naturally with **Expenses** below. Decide it there rather than fudging
+   it now.
 
 **Then, in rough order of value:**
 
-2. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
-3. **`/settings`** — still 404 though the sidebar links to it. Where the shop-wide toggles belong
-   (§13.4), and where the hardcoded default alert quantity of **5** should move to.
+3. **Receipt polish** — amount in words, PDF export, WhatsApp share. On every invoice they issue.
 4. **POS grid filters** (brand / category) — cheap; only bites once a real catalogue is loaded.
 5. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
 6. **Phase 2, in the order that pays** (see `BLUEPRINT.md` §5). Each built to protocol
@@ -558,8 +619,9 @@ progress log.
 **Deferred, needs HTTPS:** in-POS camera barcode scanning (§13.7). A phone paired as a Bluetooth
 keyboard already types into the search box today and needs no code.
 
-*(Free issue & sale remark done 2026-07-13. Exchange, Products round 2, Reports, Sale returns, POS,
-Customers, Purchases — all done 2026-07-11. Reports were reviewed and hardened by a multi-agent review.)*
+*(Loyalty points, Settings, and Free issue & sale remark — all done 2026-07-13. Exchange, Products
+round 2, Reports, Sale returns, POS, Customers, Purchases — all done 2026-07-11. Reports were
+reviewed and hardened by a multi-agent review.)*
 
 > The reference app's URL/credentials are **not** recorded here on purpose (clean-repo rule) — they
 > live in the private session notes. If they aren't in context, ask the user for them.

@@ -23,7 +23,7 @@ export default async function ReceiptPage({
   const sale = await prisma.sale.findUnique({
     where: { id: saleId },
     include: {
-      customer: { select: { name: true, phone: true } },
+      customer: { select: { name: true, phone: true, loyaltyPoints: true } },
       soldBy: { select: { name: true } },
       items: { include: { variant: { include: { product: true } } } },
       payments: true,
@@ -162,6 +162,20 @@ export default async function ReceiptPage({
         </p>
         {sale.note && (
           <p className="mt-1 text-center">Remark: {sale.note}</p>
+        )}
+
+        {(sale.pointsEarned > 0 || sale.pointsRedeemed > 0) && sale.customer && (
+          <>
+            <Divider />
+            <p className="font-semibold">Points</p>
+            {sale.pointsRedeemed > 0 && (
+              <Line label="Redeemed" value={String(sale.pointsRedeemed)} />
+            )}
+            {sale.pointsEarned > 0 && (
+              <Line label="Earned" value={String(sale.pointsEarned)} />
+            )}
+            <Line label="Balance" value={String(sale.customer.loyaltyPoints)} />
+          </>
         )}
         <p className="mt-2 text-center font-semibold">Thank you!</p>
         <p className="text-center">Goods once sold are exchangeable within 7 days.</p>

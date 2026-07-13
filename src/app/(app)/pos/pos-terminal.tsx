@@ -15,6 +15,8 @@ import {
 import { toast } from "sonner";
 import { priceLine } from "@/lib/pricing";
 import { paidRatio } from "@/lib/costing";
+import { pointsEarned, pointsValue, redeemLimit } from "@/lib/loyalty";
+import type { ShopSettings } from "@/lib/settings";
 import { checkout, holdSale, resumeHeldSale, discardHeldSale } from "./actions";
 import { searchPos, type PosHit, type PosProduct } from "./search";
 import { VariantPicker, needsPicker } from "./variant-picker";
@@ -43,6 +45,7 @@ export type CustomerOption = {
   name: string;
   isWalkIn: boolean;
   groupDiscount: number;
+  points: number;
 };
 export type AccountOption = { id: number; name: string };
 export type HeldSaleOption = {
@@ -85,12 +88,14 @@ export function PosTerminal({
   customers,
   accounts,
   canFreeIssue,
+  settings,
   initialProducts,
   heldSales,
 }: {
   customers: CustomerOption[];
   accounts: AccountOption[];
   canFreeIssue: boolean;
+  settings: ShopSettings;
   initialProducts: PosProduct[];
   heldSales: HeldSaleOption[];
 }) {
@@ -114,6 +119,7 @@ export function PosTerminal({
   // two wins (BLUEPRINT §12.7a). Filling it in here as well would double it.
   function pickCustomer(id: number) {
     setCustomerId(id);
+    setRedeem(0); // points belong to a customer, not to the cart
     const c = customers.find((x) => x.id === id);
     if (c && c.groupDiscount > 0) {
       toast.info(`${c.name} gets ${c.groupDiscount}% off`);
@@ -280,7 +286,21 @@ export function PosTerminal({
   const credit = exchange?.credit ?? 0;
   const creditApplied = r2(Math.min(credit, total));
   const excess = r2(credit - creditApplied);
-  const owed = r2(total - creditApplied);
+  const afterCredit = r2(total - creditApplied);
+
+  // --- loyalty points (BLUEPRINT §15). Priced through the very same functions the
+  // server uses, so the cashier is never shown a number the till then refuses.
+  const [redeem, setRedeem] = useState(0);
+  const balance = selected && !selected.isWalkIn ? selected.points : 0;
+  const limit = redeemLimit(balance, total, settings);
+  // Never burn points on a bill an exchange credit has already covered.
+  const spendable = Math.min(limit.maxPoints, Math.max(0, redeem));
+  const redeemValue = r2(Math.min(pointsValue(spendable, settings), afterCredit));
+  const owed = r2(afterCredit - redeemValue);
+
+  // Earned on what they actually pay — so a free issue earns nothing, no special case.
+  const willEarn =
+    selected && !selected.isWalkIn ? pointsEarned(total, settings) : 0;
 
   // --- payment dialog ---
   const [payOpen, setPayOpen] = useState(false);
@@ -320,6 +340,7 @@ export function PosTerminal({
         discountValue,
         dueDate: due > 0 && dueDate ? dueDate : undefined,
         note: remark.trim() || undefined,
+        redeemPoints: spendable,
         // No price is sent — the server prices every line itself. `free` is a flag,
         // not a price, and the server re-checks the permission behind it.
         items: lines.map((l) => ({
@@ -352,6 +373,7 @@ export function PosTerminal({
       setLines([]);
       setDiscountValue(0);
       setRemark("");
+      setRedeem(0);
       setExchange(null);
       setCustomerId(walkIn?.id);
       toast.success(exchange ? "Exchange complete" : "Sale complete");
@@ -791,6 +813,82 @@ export function PosTerminal({
             </div>
           )}
         </div>
+
+        {/* Loyalty points. A redemption is a payment made in points, not a discount —
+            the goods sold for what they sold for (BLUEPRINT §15.4). */}
+        {settings.loyaltyEnabled && selected && !selected.isWalkIn && (
+          <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm font-medium">Points</span>
+              <span className="text-sm tabular-nums">
+                {balance} available
+                {balance > 0 && (
+                  <span className="text-muted-foreground">
+                    {" "}
+                    ({pointsValue(balance, settings).toFixed(2)})
+                  </span>
+                )}
+              </span>
+            </div>
+
+            {lines.length > 0 && limit.blocked ? (
+              <p className="text-xs text-muted-foreground">{limit.blocked}</p>
+            ) : lines.length > 0 ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    max={limit.maxPoints}
+                    step="1"
+                    className="h-8 w-24 text-right"
+                    value={redeem}
+                    onChange={(e) => setRedeem(Number(e.target.value))}
+                    aria-label="Points to spend"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => setRedeem(limit.maxPoints)}
+                  >
+                    Use max ({limit.maxPoints})
+                  </Button>
+                  {redeem > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8"
+                      onClick={() => setRedeem(0)}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                </div>
+                {redeemValue > 0 && (
+                  <Row
+                    label={`${spendable} points`}
+                    value={`−${redeemValue.toFixed(2)}`}
+                    className="text-primary"
+                  />
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Points can cover up to {settings.maxRedeemPct}% of a bill.
+                </p>
+              </>
+            ) : null}
+
+            {willEarn > 0 && (
+              <p className="border-t pt-2 text-xs text-muted-foreground">
+                This sale earns{" "}
+                <span className="font-medium text-primary">{willEarn} points</span>{" "}
+                ({pointsValue(willEarn, settings).toFixed(2)}).
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-2">
           <Button

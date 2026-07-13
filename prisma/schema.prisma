@@ -33,6 +33,61 @@ enum DocStatus {
   DUE
 }
 
+/// How a customer's point balance moved, and what moved it (BLUEPRINT §15.6).
+/// `Contact.loyaltyPoints` is only a cache — THIS is the truth.
+enum PointEntryType {
+  EARN
+  REDEEM
+  REVERSE
+}
+
+/// Shop-wide settings. Exactly ONE row (id = 1), with typed columns and real
+/// defaults rather than a key/value bag of strings (BLUEPRINT §17.1).
+/// The loyalty defaults are the reference shop's actual live rule, verified against
+/// three of their invoices: floor(bill / 100) × 10 points, each worth 0.10 (§15.1).
+model ShopSetting {
+  id Int @id @default(1)
+
+  loyaltyEnabled Boolean @default(true)
+  /// Earn `earnPoints` for every `earnAmount` on the bill…
+  earnAmount     Decimal @default(100) @db.Decimal(14, 2)
+  earnPoints     Int     @default(10)
+  /// …and if repeating, for EVERY full multiple of it (640 → 6 × 10 = 60 points).
+  earnRepeating  Boolean @default(true)
+  /// What one point is worth when spent. 0.10 → 100 points = 10.00.
+  pointValue     Decimal @default(0.10) @db.Decimal(14, 4)
+  /// A balance below this cannot be spent at all.
+  minRedeemPoints Int    @default(100)
+  /// Points may cover at most this share of a bill, so every sale takes real money.
+  maxRedeemPct    Int    @default(50)
+
+  /// Shop-wide low-stock threshold; a product's own `alertQty` overrides it.
+  defaultAlertQty Int @default(5)
+
+  updatedAt DateTime @updatedAt
+}
+
+/// One row per point movement, each pointing at what caused it. Without this,
+/// "why do I have 340 points?" is unanswerable (BLUEPRINT §15.6).
+model PointEntry {
+  id     Int            @id @default(autoincrement())
+  /// Signed: + earned, − redeemed. A REVERSE can be either way.
+  points Int
+  type   PointEntryType
+  note   String?
+  date   DateTime       @default(now())
+
+  contactId Int
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  saleId       Int?
+  sale         Sale?       @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  saleReturnId Int?
+  saleReturn   SaleReturn? @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+}
+
 enum StockMovementType {
   PURCHASE
   SALE
@@ -277,6 +332,7 @@ model Contact {
   purchaseReturns PurchaseReturn[]
   saleReturns     SaleReturn[]
   exchanges       Exchange[]
+  pointEntries    PointEntry[]
 
   @@index([type])
 }
@@ -386,6 +442,10 @@ model Sale {
   due           Decimal      @default(0) @db.Decimal(14, 2)
   status        DocStatus    @default(PAID)
   note          String?
+  /// Loyalty (BLUEPRINT §15). Earned on what the customer actually paid; redeemed
+  /// points are settled as a `POINTS` payment, not as a discount on the line.
+  pointsEarned   Int         @default(0)
+  pointsRedeemed Int         @default(0)
   createdAt     DateTime     @default(now())
 
   customerId Int?
@@ -398,6 +458,7 @@ model Sale {
   items    SaleItem[]
   payments Payment[]
   returns  SaleReturn[]
+  points   PointEntry[]
 
   exchangedFrom Exchange[] @relation("ExchangeFrom")
   exchangedTo   Exchange?  @relation("ExchangeTo")
@@ -446,9 +507,18 @@ model SaleReturn {
   id        Int      @id @default(autoincrement())
   returnNo  String   @unique // SRT-00001
   date      DateTime @default(now())
+  /// What the returned goods were worth, at what the customer actually paid (§10.1a).
   total     Decimal  @default(0) @db.Decimal(14, 2)
+  /// The part of `total` that must be settled in MONEY — i.e. `total` less the value
+  /// of any points handed back (§15.5). Stored rather than recomputed, so undoing this
+  /// return stays exact even if the point value is edited in Settings afterwards.
+  moneyCredit Decimal @default(0) @db.Decimal(14, 2)
   refunded  Decimal  @default(0) @db.Decimal(14, 2)
   note      String?
+  /// Points clawed back with the goods (BLUEPRINT §15.5). Negative of what was
+  /// earned, in proportion to what was credited. Points the customer *spent* on
+  /// the original sale come back to them and are recorded as their own entry.
+  pointsReversed Int  @default(0)
   createdAt DateTime @default(now())
 
   saleId     Int
@@ -458,6 +528,7 @@ model SaleReturn {
 
   items    SaleReturnItem[]
   payments Payment[]
+  points   PointEntry[]
   exchange Exchange?
 }
 

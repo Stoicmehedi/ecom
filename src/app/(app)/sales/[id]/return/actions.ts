@@ -4,7 +4,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { avgAfterReversal, round2, round3 } from "@/lib/costing";
-import { creditFor, validateReturnLines, writeSaleReturn } from "@/lib/sale-return";
+import {
+  creditFor,
+  pointsMovementFor,
+  validateReturnLines,
+  writeSaleReturn,
+} from "@/lib/sale-return";
+import { getSettings } from "@/lib/settings";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -49,16 +55,27 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
   const invalid = validateReturnLines(sale, lines);
   if (invalid) return { error: invalid };
 
+  const settings = await getSettings();
   const total = creditFor(sale, lines);
 
-  if (r.refunded > total + 0.005) {
-    return { error: "Refund is more than the value of the returned goods." };
+  // Part of the bill may have been paid in points. Those come back as POINTS, not as
+  // money (§15.5) — refunding them in cash would let a customer launder points into
+  // money. So only `payable` is settled across the counter.
+  const points = pointsMovementFor(sale, total, settings);
+  const payable = round2(total - points.restoredValue);
+
+  if (r.refunded > payable + 0.005) {
+    return {
+      error: points.restoredValue > 0
+        ? `At most ${payable.toFixed(2)} can be refunded in money — ${points.restored} points (${points.restoredValue.toFixed(2)}) go back as points.`
+        : "Refund is more than the value of the returned goods.",
+    };
   }
 
   // Crediting a walk-in would leave a balance owed to nobody — the money has to
   // go back across the counter.
   const isWalkIn = !sale.customerId || (sale.customer?.isWalkIn ?? false);
-  if (isWalkIn && r.refunded < total - 0.005) {
+  if (isWalkIn && r.refunded < payable - 0.005) {
     return {
       error: "A walk-in must be refunded in full — there is no account to credit.",
     };
@@ -72,12 +89,14 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
         date: new Date(r.date),
         note: r.note,
         refunded: r.refunded,
+        settings,
       });
 
       // Goods coming back cancel that much of the debt; cash handed over
-      // reinstates it and leaves the drawer.
+      // reinstates it and leaves the drawer. Only the MONEY part touches the ledger —
+      // the points part was never money in it.
       if (sale.customerId) {
-        const netDueChange = round2(r.refunded - total);
+        const netDueChange = round2(r.refunded - ret.payable);
         await tx.contact.update({
           where: { id: sale.customerId },
           data: { dueBalance: { increment: netDueChange } },
@@ -182,11 +201,23 @@ export async function deleteSaleReturn(id: number): Promise<ActionResult> {
       await tx.payment.deleteMany({ where: { saleReturnId: id } });
 
       if (ret.customerId) {
-        const netDueChange = round2(Number(ret.refunded) - Number(ret.total));
+        // `moneyCredit`, not `total` — the points part never touched the ledger.
+        const netDueChange = round2(Number(ret.refunded) - Number(ret.moneyCredit));
         await tx.contact.update({
           where: { id: ret.customerId },
           data: { dueBalance: { decrement: netDueChange } },
         });
+
+        // Undo the points exactly as they moved: the ledger rows ARE what happened,
+        // so summing them cannot drift, even if the point value was edited since.
+        const entries = await tx.pointEntry.findMany({ where: { saleReturnId: id } });
+        const delta = entries.reduce((a, e) => a + e.points, 0);
+        if (delta !== 0) {
+          await tx.contact.update({
+            where: { id: ret.customerId },
+            data: { loyaltyPoints: { decrement: delta } },
+          });
+        }
       }
 
       await tx.saleReturn.delete({ where: { id } });

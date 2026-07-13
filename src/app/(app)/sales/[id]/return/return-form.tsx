@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { pointsToReverse, pointsValue } from "@/lib/loyalty";
+import type { ShopSettings } from "@/lib/settings";
 import { saveSaleReturn } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +51,9 @@ export function SaleReturnForm({
   customerName,
   isWalkIn,
   saleDate,
+  saleTotal,
+  pointsRedeemed,
+  settings,
   accounts,
   lines: initialLines,
 }: {
@@ -57,6 +62,9 @@ export function SaleReturnForm({
   customerName: string;
   isWalkIn: boolean;
   saleDate: string;
+  saleTotal: number;
+  pointsRedeemed: number;
+  settings: ShopSettings;
   accounts: { id: number; name: string }[];
   lines: ReturnLine[];
 }) {
@@ -74,6 +82,14 @@ export function SaleReturnForm({
 
   const total = r2(lines.reduce((s, l) => s + l.qty * l.price, 0));
 
+  // If the customer paid part of this bill with points, that part comes back as
+  // POINTS, not as money — refunding it in cash would turn points into cash
+  // (BLUEPRINT §15.5). Only `payable` can cross the counter. Same functions the
+  // server uses, so the two cannot disagree.
+  const pointsBack = pointsToReverse(pointsRedeemed, saleTotal, total);
+  const pointsBackValue = pointsValue(pointsBack, settings);
+  const payable = r2(total - pointsBackValue);
+
   const maxFor = (l: ReturnLine) => Math.max(0, l.soldQty - l.returnedQty);
 
   function setQty(i: number, value: number) {
@@ -88,12 +104,17 @@ export function SaleReturnForm({
   }
 
   // Keep a walk-in's refund pinned to the full value — there's no account to credit.
-  const effectiveRefund = isWalkIn ? total : refunded;
+  // (A walk-in holds no points, so `payable` is simply the whole value.)
+  const effectiveRefund = isWalkIn ? payable : refunded;
 
   function onSubmit() {
     if (total <= 0) return toast.error("Enter a return quantity for at least one item");
-    if (effectiveRefund > total + 0.005) {
-      return toast.error("Refund is more than the value of the returned goods");
+    if (effectiveRefund > payable + 0.005) {
+      return toast.error(
+        pointsBackValue > 0
+          ? `At most ${payable.toFixed(2)} can go back in money — ${pointsBack} points return as points`
+          : "Refund is more than the value of the returned goods",
+      );
     }
 
     startTransition(async () => {
@@ -209,7 +230,7 @@ export function SaleReturnForm({
           {isWalkIn ? (
             <p className="text-sm text-muted-foreground">
               This was a walk-in sale, so the full{" "}
-              <span className="font-medium text-foreground">{total.toFixed(2)}</span>{" "}
+              <span className="font-medium text-foreground">{payable.toFixed(2)}</span>{" "}
               goes back across the counter — there is no account to credit.
             </p>
           ) : (
@@ -258,7 +279,7 @@ export function SaleReturnForm({
                 type="number"
                 step="0.01"
                 min="0"
-                max={total}
+                max={payable}
                 className="text-right"
                 value={effectiveRefund}
                 disabled={isWalkIn}
@@ -280,6 +301,24 @@ export function SaleReturnForm({
               {total.toFixed(2)}
             </span>
           </div>
+          {pointsBack > 0 && (
+            <div className="space-y-1 rounded-md border border-primary/30 bg-primary/5 p-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-primary">Back as points</span>
+                <span className="tabular-nums text-primary">
+                  {pointsBack} pts (−{pointsBackValue.toFixed(2)})
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                They paid part of this bill with points, so that part goes back as
+                points — not as money.
+              </p>
+              <div className="flex justify-between border-t pt-1 text-sm font-medium">
+                <span>To settle in money</span>
+                <span className="tabular-nums">{payable.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
           <div className="flex justify-between py-1">
             <span className="text-sm text-muted-foreground">Refunded</span>
             <span className="text-sm tabular-nums">
@@ -288,8 +327,10 @@ export function SaleReturnForm({
           </div>
           <div className="flex justify-between py-1">
             <span className="text-sm text-muted-foreground">Credited against due</span>
+            {/* `payable`, not `total` — points handed back are not money, so they
+                never touch the customer's account (BLUEPRINT §15.5). */}
             <span className="text-sm tabular-nums">
-              {r2(total - effectiveRefund).toFixed(2)}
+              {r2(payable - effectiveRefund).toFixed(2)}
             </span>
           </div>
           <Button className="mt-2 w-full" onClick={onSubmit} disabled={pending}>

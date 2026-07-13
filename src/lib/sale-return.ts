@@ -1,4 +1,5 @@
 import { avgAfterPurchase, paidRatio, round2, round3 } from "@/lib/costing";
+import { pointsToReverse, pointsValue, type LoyaltySettings } from "@/lib/loyalty";
 import type { Prisma } from "@/generated/prisma/client";
 
 type Tx = Prisma.TransactionClient;
@@ -12,6 +13,9 @@ export type ReturnableSale = {
   customerId: number | null;
   subtotal: unknown;
   discount: unknown;
+  total: unknown;
+  pointsEarned: number;
+  pointsRedeemed: number;
   items: {
     id: number;
     variantId: number;
@@ -22,6 +26,39 @@ export type ReturnableSale = {
     variant: { sku: string };
   }[];
 };
+
+export type PointsMovement = {
+  /** Earned points clawed back with the goods (§15.5). Positive = this many go away. */
+  reversed: number;
+  /** Points the customer SPENT on this sale, handed back with the goods. */
+  restored: number;
+  /** What those restored points are worth — the money credit shrinks by exactly this. */
+  restoredValue: number;
+};
+
+/**
+ * The points side of a return (BLUEPRINT §15.5), in proportion to what is coming back.
+ *
+ * Two movements, and the second one is the one that is easy to miss:
+ *
+ *  1. **Earned points reverse.** Buy → earn → return → keep the points is free money.
+ *
+ *  2. **Redeemed points come back as POINTS.** If a customer paid part of a bill with
+ *     points and then returns the goods, refunding that part in *cash* would launder
+ *     points into money — buy with points, return for cash, repeat. So they get their
+ *     points back, and the money credit shrinks by exactly what those points were
+ *     worth. The customer is made whole in the same instruments they paid with.
+ */
+export function pointsMovementFor(
+  sale: ReturnableSale,
+  creditedNow: number,
+  settings: LoyaltySettings,
+): PointsMovement {
+  const total = Number(sale.total);
+  const reversed = pointsToReverse(sale.pointsEarned, total, creditedNow);
+  const restored = pointsToReverse(sale.pointsRedeemed, total, creditedNow);
+  return { reversed, restored, restoredValue: pointsValue(restored, settings) };
+}
 
 /**
  * What one unit of a sold line is worth coming back.
@@ -100,11 +137,22 @@ export async function writeSaleReturn(
     note?: string | null;
     /** Recorded on the document; the caller is responsible for actually paying it. */
     refunded?: number;
+    settings: LoyaltySettings;
   },
-): Promise<{ id: number; returnNo: string; total: number }> {
-  const { sale, lines, date } = args;
+): Promise<{
+  id: number;
+  returnNo: string;
+  /** The goods' worth at what the customer paid. */
+  total: number;
+  points: PointsMovement;
+  /** `total` minus the value of the points handed back — what the caller must settle in money. */
+  payable: number;
+}> {
+  const { sale, lines, date, settings } = args;
   const byId = new Map(sale.items.map((i) => [i.id, i]));
   const total = creditFor(sale, lines);
+  const points = pointsMovementFor(sale, total, settings);
+  const payable = round2(total - points.restoredValue);
 
   const ret = await tx.saleReturn.create({
     data: {
@@ -114,9 +162,45 @@ export async function writeSaleReturn(
       date,
       note: args.note?.trim() || null,
       total,
+      moneyCredit: payable,
       refunded: round2(args.refunded ?? 0),
+      pointsReversed: points.reversed,
     },
   });
+
+  // The points side (§15.5). Both movements are recorded as their own ledger rows,
+  // because a balance nobody can explain is a balance nobody can trust.
+  if (sale.customerId) {
+    if (points.reversed > 0) {
+      await tx.pointEntry.create({
+        data: {
+          contactId: sale.customerId,
+          saleReturnId: ret.id,
+          points: -points.reversed,
+          type: "REVERSE",
+          note: `Earned points taken back with the goods (${ret.returnNo})`,
+        },
+      });
+    }
+    if (points.restored > 0) {
+      await tx.pointEntry.create({
+        data: {
+          contactId: sale.customerId,
+          saleReturnId: ret.id,
+          points: points.restored,
+          type: "REVERSE",
+          note: `Points spent on ${sale.invoiceNo} given back (${ret.returnNo})`,
+        },
+      });
+    }
+    const delta = points.restored - points.reversed;
+    if (delta !== 0) {
+      await tx.contact.update({
+        where: { id: sale.customerId },
+        data: { loyaltyPoints: { increment: delta } },
+      });
+    }
+  }
 
   for (const line of lines) {
     const item = byId.get(line.saleItemId)!;
@@ -167,5 +251,5 @@ export async function writeSaleReturn(
     });
   }
 
-  return { id: ret.id, returnNo: ret.returnNo, total };
+  return { id: ret.id, returnNo: ret.returnNo, total, points, payable };
 }

@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
+import { getSettings } from "@/lib/settings";
+import { pointsValue } from "@/lib/loyalty";
 import { Badge } from "@/components/ui/badge";
 import { money, num, shortDate } from "@/lib/format";
 import {
@@ -30,7 +32,7 @@ export default async function CustomerLedgerPage({
   const customerId = Number(id);
   if (!Number.isFinite(customerId)) notFound();
 
-  const [customer, sales, payments, accounts] = await Promise.all([
+  const [customer, sales, payments, accounts, points, settings] = await Promise.all([
     prisma.contact.findUnique({
       where: { id: customerId },
       include: { customerGroup: true },
@@ -53,6 +55,15 @@ export default async function CustomerLedgerPage({
       },
     }),
     prisma.account.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true } }),
+    prisma.pointEntry.findMany({
+      where: { contactId: customerId },
+      orderBy: { id: "desc" },
+      include: {
+        sale: { select: { invoiceNo: true } },
+        saleReturn: { select: { returnNo: true } },
+      },
+    }),
+    getSettings(),
   ]);
 
   if (!customer || customer.type !== "CUSTOMER") notFound();
@@ -172,6 +183,51 @@ export default async function CustomerLedgerPage({
           </TableBody>
         </Table>
       </div>
+
+      {/* The points ledger (BLUEPRINT §15.6). The balance above is a cache of THIS —
+          a balance nobody can explain is a balance nobody can trust. */}
+      {points.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-medium">Points history</h2>
+            <span className="text-sm text-muted-foreground">
+              Balance {customer.loyaltyPoints} pts ·{" "}
+              {money(pointsValue(customer.loyaltyPoints, settings))}
+            </span>
+          </div>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>What happened</TableHead>
+                  <TableHead>Document</TableHead>
+                  <TableHead className="text-right">Points</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {points.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell className="whitespace-nowrap">{shortDate(e.date)}</TableCell>
+                    <TableCell>{e.note ?? e.type}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {e.sale?.invoiceNo ?? e.saleReturn?.returnNo ?? "—"}
+                    </TableCell>
+                    <TableCell
+                      className={`text-right tabular-nums font-medium ${
+                        e.points >= 0 ? "text-primary" : "text-destructive"
+                      }`}
+                    >
+                      {e.points >= 0 ? "+" : ""}
+                      {e.points}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,9 +5,21 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { getSettings } from "@/lib/settings";
+import {
+  pointsEarned,
+  pointsForValue,
+  pointsValue,
+  redeemLimit,
+} from "@/lib/loyalty";
 import { docStatus, resolveDiscount, round2, round3 } from "@/lib/costing";
 import { priceLine } from "@/lib/pricing";
-import { creditFor, validateReturnLines, writeSaleReturn } from "@/lib/sale-return";
+import {
+  creditFor,
+  pointsMovementFor,
+  validateReturnLines,
+  writeSaleReturn,
+} from "@/lib/sale-return";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type CheckoutResult = { ok?: boolean; error?: string; saleId?: number };
@@ -53,6 +65,8 @@ const checkoutSchema = z.object({
   items: z.array(lineSchema).min(1, "The cart is empty"),
   payments: z.array(paymentSchema).default([]),
   exchange: exchangeSchema.optional(),
+  /** Points the customer wants to spend on this bill (BLUEPRINT §15.4). */
+  redeemPoints: z.number().int().min(0).default(0),
 });
 
 export type CheckoutInput = z.input<typeof checkoutSchema>;
@@ -128,10 +142,16 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   const customer = s.customerId
     ? await prisma.contact.findUnique({
         where: { id: s.customerId },
-        select: { isWalkIn: true, customerGroup: { select: { discount: true } } },
+        select: {
+          isWalkIn: true,
+          loyaltyPoints: true,
+          customerGroup: { select: { discount: true } },
+        },
       })
     : null;
   if (s.customerId && !customer) return { error: "That customer no longer exists." };
+
+  const settings = await getSettings();
 
   const groupPct = Number(customer?.customerGroup?.discount ?? 0);
 
@@ -162,7 +182,11 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     const invalid = validateReturnLines(oldSale, exLines);
     if (invalid) return { error: invalid };
 
-    credit = creditFor(oldSale, exLines);
+    // The goods' worth, less any points handed back with them — those return as
+    // points, not as spendable credit (§15.5), or they would become money.
+    const goods = creditFor(oldSale, exLines);
+    const exPoints = pointsMovementFor(oldSale, goods, settings);
+    credit = round2(goods - exPoints.restoredValue);
 
     const itemById = new Map(oldSale.items.map((i) => [i.id, i]));
     for (const l of exLines) {
@@ -257,9 +281,38 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   const creditApplied = round2(Math.min(credit, total));
   const excess = round2(credit - creditApplied);
 
+  const isWalkIn = !s.customerId || (customer?.isWalkIn ?? false);
+
+  // ---- Points spent on this bill (BLUEPRINT §15.4). A redemption is a PAYMENT made
+  // in points, not a discount: the goods sold for what they sold for, and the price
+  // floor stays untouched. The limits are checked HERE, on the server — a cap the
+  // browser could talk around is not a cap.
+  const afterCredit = round2(total - creditApplied);
+  let redeemPoints = 0;
+  let redeemValue = 0;
+
+  if (s.redeemPoints > 0) {
+    if (isWalkIn) {
+      return { error: "A walk-in holds no points — pick a named customer." };
+    }
+    const balance = customer?.loyaltyPoints ?? 0;
+    const limit = redeemLimit(balance, total, settings);
+    if (limit.blocked) return { error: limit.blocked };
+    if (s.redeemPoints > limit.maxPoints) {
+      return {
+        error: `At most ${limit.maxPoints} points (${limit.maxValue.toFixed(2)}) can go on this bill — points may cover ${settings.maxRedeemPct}% of it.`,
+      };
+    }
+    // Never spend more points than there is bill left to pay: an exchange credit may
+    // already have covered it, and points that buy nothing must not be burned.
+    const needed = pointsForValue(afterCredit, settings);
+    redeemPoints = Math.min(s.redeemPoints, needed);
+    redeemValue = round2(Math.min(pointsValue(redeemPoints, settings), afterCredit));
+  }
+
   const payments = s.payments.filter((p) => p.amount > 0);
   const tendered = round2(payments.reduce((a, p) => a + p.amount, 0));
-  const owed = round2(total - creditApplied); // what the customer still has to find
+  const owed = round2(afterCredit - redeemValue); // what the customer still has to find
 
   if (tendered > owed + 0.005) {
     return {
@@ -269,10 +322,12 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     };
   }
 
-  const paid = round2(creditApplied + tendered);
+  const paid = round2(creditApplied + redeemValue + tendered);
   const due = round2(total - paid);
 
-  const isWalkIn = !s.customerId || (customer?.isWalkIn ?? false);
+  // Points are earned on what the customer ACTUALLY PAID — the bill after every
+  // discount. A free issue therefore earns nothing, with no special case (§15.3).
+  const earned = isWalkIn ? 0 : pointsEarned(total, settings);
 
   // A credit sale must be attached to someone we can actually chase. The walk-in
   // customer has an id, so checking for a missing id is not enough — a due parked
@@ -305,6 +360,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
             date: new Date(),
             note: `Exchange against ${oldSale.invoiceNo}`,
             refunded: excess, // the part that actually leaves as money
+            settings,
           })
         : null;
 
@@ -345,6 +401,8 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
           due,
           status: docStatus(total, paid),
           note: s.note?.trim() || null,
+          pointsEarned: earned,
+          pointsRedeemed: redeemPoints,
         },
       });
 
@@ -422,6 +480,54 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
             saleId: sale.id,
             note: `Goods returned on ${oldSale!.invoiceNo} (${ret.returnNo})`,
           },
+        });
+      }
+
+      // Points spent settle part of the bill, but no account gains a penny — the same
+      // shape as the exchange credit above, and for the same reason: nothing crossed
+      // the counter. With an accountId this would invent cash (BLUEPRINT §15.4).
+      if (redeemPoints > 0 && s.customerId) {
+        await tx.payment.create({
+          data: {
+            direction: "IN",
+            amount: redeemValue,
+            method: "POINTS",
+            accountId: null,
+            contactId: s.customerId,
+            saleId: sale.id,
+            note: `${redeemPoints} points redeemed`,
+          },
+        });
+        await tx.pointEntry.create({
+          data: {
+            contactId: s.customerId,
+            saleId: sale.id,
+            points: -redeemPoints,
+            type: "REDEEM",
+            note: `Spent on ${sale.invoiceNo}`,
+          },
+        });
+      }
+
+      // Earned on what they actually paid. The ledger row is the truth; the balance
+      // on the contact is only a cache of it (§15.6).
+      if (earned > 0 && s.customerId) {
+        await tx.pointEntry.create({
+          data: {
+            contactId: s.customerId,
+            saleId: sale.id,
+            points: earned,
+            type: "EARN",
+            note: `Earned on ${sale.invoiceNo}`,
+          },
+        });
+      }
+
+      const pointsDelta = earned - redeemPoints;
+      if (pointsDelta !== 0 && s.customerId) {
+        await tx.contact.update({
+          where: { id: s.customerId },
+          data: { loyaltyPoints: { increment: pointsDelta } },
         });
       }
 

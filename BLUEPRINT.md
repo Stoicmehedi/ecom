@@ -945,7 +945,7 @@ honest without a single special case in the reports.**
 
 ---
 
-## 15. Loyalty points *(decision settled 2026-07-11; not yet built)*
+## 15. Loyalty points *(studied read-only 2026-07-13; decisions settled)*
 
 The reference shop runs points live — invoices show *Earned / Redeemed / Available*, and customers
 hold real balances. We have none of it.
@@ -954,11 +954,93 @@ hold real balances. We have none of it.
 historic point balance is carried across. That removes the only hard part of this module — there is
 no import, no reconciliation, and no cut-over date to agree.
 
-Still to settle when it is built: the earn rate (points per unit of spend), what a point is worth on
-redemption, whether points are earned on a discounted line, and — the one that actually bites —
-**what happens to points when goods come back**. A return or an exchange that leaves the points
-already earned in place is a way to farm points for free, so earned points must reverse with the
-goods, in proportion to what was credited (the same `paidRatio` rule as §10.1a).
+### 15.1 The earn rule is a repeating threshold, not a rate — and the data proved it
+
+This is the finding that mattered, and it killed a plausible-sounding answer for the second time in
+this project. Their Point System page holds **one configuration row** plus a conversion rate:
+
+| Setting | Their value |
+|---|---|
+| Minimum amount | **100** |
+| Reward points | **10** |
+| Is repetitive | **yes** |
+| Conversion rate | **1 point = 0.10** |
+
+So points earned are **`floor(bill ÷ 100) × 10`** — a *repeating threshold*, not points-per-taka.
+Checked against three real invoices, all three match exactly and **none** matches a linear rate:
+
+| Bill | Points earned | `floor(bill/100) × 10` | A "1 pt per 10" rate would give |
+|---|---|---|---|
+| 640 | **60** | 60 ✅ | 64 ❌ |
+| 740 | **70** | 70 ✅ | 74 ❌ |
+| 660 | **60** | 60 ✅ | 66 ❌ |
+
+**The effective return is 1%**: 10 points per 100 spent, each worth 0.10 → 1.00 back per 100.
+The rate we had guessed at (1 point per 10 taka, 1 point = 1 taka) would have been a **10% giveaway —
+ten times the intended reward, on every sale.** Build what the shop does, not what sounds reasonable.
+
+### 15.2 Everything is configurable — that is the requirement
+
+The user's instruction: the earn rule and the point value must be **editable in the app**, not
+constants in the source. So loyalty forces **Settings** (§17) to exist — there is nowhere to put a
+configurable value today. The shipped **defaults are the shop's real rule** above, so the scheme
+behaves on day one exactly as their customers already expect.
+
+Settings: `loyaltyEnabled`, `earnAmount` (100), `earnPoints` (10), `earnRepeating` (true),
+`pointValue` (0.10), `minRedeemPoints` (100), `maxRedeemPct` (50).
+
+### 15.3 Earning
+
+- Points are earned on **what the customer actually paid** — the bill total, *after* every discount.
+  It follows that a **free issue (§16) earns nothing**, because it adds nothing to the total. No
+  special case needed.
+- Points are earned by a **named customer only**. The walk-in customer cannot hold a balance, for the
+  same reason it cannot hold a due (§9): a balance owed to nobody is not a balance.
+- Points are whole numbers. `floor`, never round — the shop should never owe a fraction of a point.
+
+### 15.4 Redemption is a payment made in points
+
+A redemption is **not a discount on the line**. It is a payment, exactly like the exchange credit
+(§14): a `Payment` row with `method = "POINTS"` and **no `accountId`**, because no cash crossed the
+counter. This is deliberate and it is the whole reason the design stays simple:
+
+- Line pricing, the discount rule and the **minimum sale price floor are untouched** — the goods sold
+  for what they sold for; the customer merely settled part of the bill with something other than cash.
+- The sale's `total` is unchanged, so the profit on the *goods* is still the truth about the goods.
+
+Two limits, both configurable, both settled with the user:
+- **A minimum balance to redeem** (default 100 points = 10.00) — stops fiddly one-point redemptions.
+- **A cap on the share of a bill points may cover** (default 50%) — every sale still takes real money.
+
+Both are enforced **on the server**. A cap the browser could talk around is not a cap — the same rule
+as the price floor (§12.7a) and the free issue (§16.2).
+
+### 15.5 Points reverse with the goods
+
+The hole: buy → earn points → return the goods → keep the points is **free money, repeatable
+indefinitely**. So earned points are clawed back **in proportion to what was actually credited** —
+the same `paidRatio` rule that returns (§10.1a) and exchanges (§14) already use. Settled with the
+user, in full knowledge that it can drive a balance **negative** if the customer has already spent
+the points: that is correct, and the alternative ("never below zero") just moves the hole to *spend
+the points first, then return the goods*.
+
+Points redeemed **on** a returned sale come back to the customer's balance — they paid with them and
+the goods went back, so the points are theirs again.
+
+### 15.6 A points ledger, not just a balance
+
+`Contact.pointsBalance` is a cache. The truth is a **`PointEntry` ledger** — one row per movement
+(`EARN`, `REDEEM`, `REVERSE`), each pointing at the sale or return that caused it. Without it,
+"why do I have 340 points?" is unanswerable, and a wrong balance can never be reconstructed. Every
+other balance in this system (stock, cash, dues) is backed by its movements; points are no different.
+
+### 15.7 Open — the accounting of a redemption
+
+A redemption pays a bill with something that is not money, so revenue is booked in full while the
+cash drawer is short by the redeemed value. That is **internally consistent** (it is exactly how the
+exchange credit already behaves), but it means the loyalty scheme's cost is not yet visible anywhere
+in the P&L. The honest place for it is an **expense**, once the Expenses module exists (Phase 2) —
+the P&L screen already has the slot. Flagged rather than fudged.
 
 ---
 
@@ -1013,3 +1095,36 @@ exists on the model and was never surfaced; it becomes the remark. No new column
 Not a per-line price override, and not a per-line discount box (§13.1 — the shop's own data killed
 that: `PRODUCT_WISE_DISCOUNT=0`, and not one of their invoices carries a line discount). A line is
 sold at the catalogue rule, or it is given away. There is no third thing.
+
+---
+
+## 17. Settings *(forced into existence by loyalty — §15.2)*
+
+`/settings` has been in the sidebar since the app shell was built and has always been a **404**.
+Loyalty is what finally requires it: the user's instruction is that the earn rule and the point value
+must be **editable in the app**, and there is nowhere to put a configurable value today.
+
+### 17.1 One row, not a key–value bag
+
+A `Setting(key, value)` table is tempting and wrong: every read becomes a string parse, every typo is
+a silent `undefined`, and nothing is type-checked. Settings here are a **single row** on a
+`ShopSetting` table with real, typed columns and real defaults — so a missing value is impossible and
+the compiler knows what exists.
+
+`getSettings()` returns that row, creating it from the defaults on first call. There is exactly one.
+
+### 17.2 What moves in
+
+- **Loyalty** (§15.2) — enabled, earn amount, earn points, repeating, point value, minimum redeem,
+  max redeem % of a bill.
+- **Default alert quantity** — the per-product low-stock threshold **is hardcoded to 5** in the
+  inventory low-stock filter. It becomes the shop-wide default that a product's own `alertQty`
+  overrides.
+
+Anything else (VAT, negative sale, POS toggles — §13.4) stays out until something actually needs it.
+A settings page that fills up with switches nobody has asked for is how software rots.
+
+### 17.3 Admin-only
+
+Settings change money rules — an earn rate is a lever on every future sale. Gated on
+**`settings.manage`**, Admin-only, on the **page and the server action** both.

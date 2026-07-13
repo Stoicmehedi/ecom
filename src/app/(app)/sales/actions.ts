@@ -41,6 +41,20 @@ export async function deleteSale(id: number): Promise<ActionState> {
       }
       await tx.payment.deleteMany({ where: { saleId: id } });
 
+      // Undo the points this sale moved — earned points go away, and any the customer
+      // spent on it come back (BLUEPRINT §15.6). The ledger rows ARE what happened, so
+      // summing them cannot drift; deleting them is a cascade on the sale.
+      if (sale.customerId) {
+        const entries = await tx.pointEntry.findMany({ where: { saleId: id } });
+        const delta = entries.reduce((a, e) => a + e.points, 0);
+        if (delta !== 0) {
+          await tx.contact.update({
+            where: { id: sale.customerId },
+            data: { loyaltyPoints: { decrement: delta } },
+          });
+        }
+      }
+
       if (sale.customerId && Number(sale.due) > 0) {
         await tx.contact.update({
           where: { id: sale.customerId },

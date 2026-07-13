@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { num, shortDate } from "@/lib/format";
 import { paidRatio, round2 } from "@/lib/costing";
+import { getSettings } from "@/lib/settings";
 import { SaleReturnForm } from "./return-form";
 
 export default async function SaleReturnPage({
@@ -14,7 +15,7 @@ export default async function SaleReturnPage({
   const saleId = Number(id);
   if (!Number.isFinite(saleId)) notFound();
 
-  const [sale, accounts] = await Promise.all([
+  const [sale, accounts, settings] = await Promise.all([
     prisma.sale.findUnique({
       where: { id: saleId },
       include: {
@@ -23,6 +24,7 @@ export default async function SaleReturnPage({
       },
     }),
     prisma.account.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true } }),
+    getSettings(),
   ]);
 
   if (!sale) notFound();
@@ -52,6 +54,9 @@ export default async function SaleReturnPage({
         customerName={sale.customer?.name ?? "Walk-in"}
         isWalkIn={isWalkIn}
         saleDate={shortDate(sale.date)}
+        saleTotal={num(sale.total)}
+        pointsRedeemed={sale.pointsRedeemed}
+        settings={settings}
         accounts={accounts}
         lines={sale.items.map((i) => ({
           saleItemId: i.id,
