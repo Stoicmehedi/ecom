@@ -1096,6 +1096,50 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 
   Typecheck + production build pass; `check-reports.ts` reconciles; **no new lint findings**.
 
+- **Swept every module in the reference app (read-only) and checked each against their live data.**
+  Nothing built — this was the "go and look, per item" §6 asked for, and it settles the Phase-2 leftovers.
+
+  **Only two things they have that we lack are actually *used*:**
+  1. ⭐ **Activity log** — their audit trail, and the **only busy module we do not have**: every sale and
+     return, stamped with user · module · action · timestamp, right up to the day I looked
+     (`IN-10006550`, 19:04:56). MPoS already stamps `soldBy` / `paidBy` / `createdBy` but has **nowhere to
+     read it**, and **no record at all of a delete**. It is what makes handing out a second login safe —
+     today a cashier who deletes a sale leaves no trace anyone can look at. (§25.7 deferred it rather than
+     dismissing it; the data says that was right.)
+  2. **Bad-debt write-off ("due dismiss")** — 2 real rows (May 2025: 100 and 2,197 against unpaid
+     invoices). **MPoS has no way for an uncollectable due to leave the books** — it sits in the Dues
+     report forever, chasing someone who will never pay. Fits §22's settlement rule (an allocation that
+     closes the invoice) and should post the loss as an expense so the P&L sees it. ⚠️ Their **supplier**
+     side is empty — build the customer side only.
+
+  **Everything else they have and we lack is DEAD in their own data — do not build:**
+
+  | Module | Their data |
+  |---|---|
+  | Areas (customer areas) | 0 areas; 0 of **500 sampled** customers (of 1,792) carry one |
+  | Purchase orders | 0 ever |
+  | Quotations | 0 ever |
+  | Assets & asset types | 0 |
+  | Cheque payment / cheque receive | 0 / 0 |
+  | SMS (send, buy, templates, groups) | **0 sent, ever** |
+  | Delivery companies & courier | 0 |
+  | Online orders / COD | 0 |
+  | Customer advance payments | 0 |
+  | Supplier due dismiss | 0 |
+  | **Product groups** | 0 |
+  | Commissions | 0 earned, 0 paid (§24) |
+  | VAT | business VAT 0, BIN/Mushak blank |
+  | Multi-branch | one branch |
+
+  That **kills quotations, SMS and courier** (the three §6 leftovers), **kills customer areas**, and
+  **kills the Product Groups master** that was still sitting on the housekeeping list. All four were
+  software features, not shop behaviour. *Seventh time their data has answered a design question.*
+
+  ⚠️ **Coverage, honestly:** a **report** cannot be judged this way — nobody records who reads one — so
+  their extra reports (discounts, category, payment schedule, stock forecast, employee sales) are
+  unjudged, and would have to be assessed on merit. **Not opened at all:** notices, banks, packaging
+  settings, preorder/expiry reports.
+
 ---
 
 ## 5. Current state
@@ -1332,14 +1376,39 @@ could delete sales and bulk-import the catalogue. Fixed wholesale, plus a role e
    (local disk, outside `public/`), logo on every document, photos on the POS tile. It also uncovered
    §12.11: **no product could be edited at all**. See the progress log.
 
-**START HERE (next session).** Nothing is committed ahead. Suggested, in order:
+**START HERE — agreed with the user 2026-07-14, to build next session.**
 
-1. **A product-image sweeper, or nothing.** Abandoning a half-edited product page still leaves one
-   orphan file (§28.4). It is bounded and harmless; a tiny script that deletes unreferenced keys would
-   close it. Do it only if it is worth the code.
-2. **From the Phase-2 remainder — but check the shop's data first, per item** (quotations, SMS, courier,
-   customer areas). See the note below: "no evidence of use" was written about employees once, and it
-   was false.
+1. **Nested sidebar navigation.** The sidebar is **18 flat links**, and **7 pages have no link at all**
+   (categories, brands, units, attributes, labels, customer-groups) — they are reachable only through
+   tabs inside other pages. Nesting is what finally gives them a home. Agreed grouping:
+
+   | Parent | Children |
+   |---|---|
+   | **Catalogue** | Products · Categories · Brands · Units · Attributes & colours · Labels |
+   | **Buying** | Purchases · Purchase returns · **Suppliers** |
+   | **Selling** | Sales · Sale returns · Exchanges |
+   | **Stock** | Inventory · Adjustments |
+   | **Customers** | Customers · Customer groups |
+   | **Money** | Accounts · Expenses · **Employees & salary** |
+   | **Reports** | Overview · Sales · Profit & loss · Product profit · Dues |
+   | **Admin** | Users & roles · Settings |
+
+   - **POS stays flat and pinned** — it is the till, the screen a cashier opens all day and needs
+     mid-transaction. Burying it one click deeper to tidy the sidebar is a bad trade. **Dashboard** stays
+     flat too.
+   - **Suppliers → Buying** and **Employees → Money** (the two open calls; the user said to proceed —
+     confirm if they want Contacts/Admin instead).
+   - 🔑 **The rule this must obey:** a parent whose children are **all** hidden by permissions must not
+     render. A cashier sees 8 pages, so naive grouping would give them a "Money" and an "Admin" menu that
+     open onto nothing — the exact "door that only bounces you" problem §25 fixed. **The parent is
+     derived from its visible children, never declared beside them.**
+
+2. **Activity log** (from the sweep above) — the only busy module the reference shop has that we lack,
+   and the thing that makes a second login auditable rather than merely gated.
+
+3. **Bad-debt write-off** — an afternoon; closes the "a due can never leave the books" hole in §22.
+
+*(Also still open, trivial: a sweeper for the one orphan upload an abandoned product edit can leave, §28.4.)*
 
 **Then, from the Phase-2 remainder — but check the shop's data first.** Nothing is now a known defect.
 Of what is left (quotations, SMS, courier, customer areas), **none shows evidence of use** in the
