@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
@@ -22,6 +25,10 @@ const statusStyles: Record<string, string> = {
 };
 
 export default async function PurchasesPage() {
+  const session = await auth();
+  if (!hasPermission(session, "purchases.view")) redirect("/dashboard");
+  const canManage = hasPermission(session, "purchases.manage");
+  const canReturn = hasPermission(session, "purchases.return");
   const purchases = await prisma.purchase.findMany({
     orderBy: { id: "desc" },
     include: {
@@ -36,12 +43,14 @@ export default async function PurchasesPage() {
         title="Purchases"
         description="Stock received from suppliers."
       >
-        <Button asChild>
-          <Link href="/purchases/new">
-            <Plus className="size-4" />
-            New Purchase
-          </Link>
-        </Button>
+        {canManage && (
+          <Button asChild>
+            <Link href="/purchases/new">
+              <Plus className="size-4" />
+              New Purchase
+            </Link>
+          </Button>
+        )}
       </PageHeader>
 
       <div className="rounded-lg border">
@@ -118,7 +127,12 @@ export default async function PurchasesPage() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <PurchaseRowActions id={p.id} purchaseNo={p.purchaseNo} />
+                  <PurchaseRowActions
+                    id={p.id}
+                    purchaseNo={p.purchaseNo}
+                    canManage={canManage}
+                    canReturn={canReturn}
+                  />
                 </TableCell>
               </TableRow>
             ))}

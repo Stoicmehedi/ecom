@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { notFound } from "next/navigation";
 import { Pencil, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -27,6 +30,8 @@ export default async function PurchaseDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "purchases.view")) redirect("/dashboard");
   const { id } = await params;
   const purchaseId = Number(id);
   if (!Number.isFinite(purchaseId)) notFound();

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { requirePermission } from "@/lib/guard";
 import { round2 } from "@/lib/costing";
 import { monthLabel } from "@/lib/months";
 import { postSalaryExpense } from "@/lib/expenses";
@@ -17,12 +17,7 @@ export type ActionResult = { ok?: boolean; error?: string; id?: number };
  * so it holds no matter what the browser sends.
  */
 async function requireManage(): Promise<string | null> {
-  const session = await auth();
-  if (!session?.user) return "You are not signed in.";
-  if (!hasPermission(session, "employees.manage")) {
-    return "You do not have permission to manage employees.";
-  }
-  return null;
+  return requirePermission("employees.manage");
 }
 
 // ---------- The employees themselves ----------

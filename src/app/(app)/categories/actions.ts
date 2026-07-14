@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isFkError } from "@/lib/db-error";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -17,6 +18,9 @@ export async function saveCategory(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const parsed = schema.safeParse({
     name: formData.get("name"),
     parentId: formData.get("parentId"),
@@ -65,6 +69,9 @@ export async function createCategoryPath(
   subName?: string,
   childName?: string,
 ): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const cat = catName.trim();
   const sub = (subName ?? "").trim();
   const child = (childName ?? "").trim();
@@ -115,6 +122,9 @@ export async function createCategoryPath(
 export async function updateCategoryNames(
   items: { id: number; name: string }[],
 ): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   for (const it of items) {
     if (!it.name.trim()) return { error: "Names cannot be empty." };
   }
@@ -146,6 +156,9 @@ export async function quickCreateCategory(
   name: string,
   parentId: number | null,
 ): Promise<{ ok: boolean; error?: string; category?: QuickCategory }> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { ok: false, error: denied };
+
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "Name is required" };
 
@@ -172,6 +185,9 @@ export async function quickCreateCategory(
 }
 
 export async function deleteCategory(id: number): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const childCount = await prisma.category.count({ where: { parentId: id } });
   if (childCount > 0) {
     return { error: "Cannot delete: this category has sub-categories." };

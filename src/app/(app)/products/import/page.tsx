@@ -1,10 +1,16 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { ImportForm } from "./import-form";
 
-export default function ImportProductsPage() {
+export default async function ImportProductsPage() {
+  const session = await auth();
+  if (!hasPermission(session, "products.manage")) redirect("/dashboard");
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
       <PageHeader

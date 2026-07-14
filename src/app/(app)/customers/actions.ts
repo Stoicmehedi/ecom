@@ -6,6 +6,7 @@ import { settleAgainstInvoices } from "@/lib/settle";
 import { revalidatePath } from "next/cache";
 import { round2 } from "@/lib/costing";
 import { isUniqueError, isFkError } from "@/lib/db-error";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -26,6 +27,9 @@ export async function saveCustomer(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("contacts.manage");
+  if (denied) return { error: denied };
+
   const groupRaw = formData.get("customerGroupId");
   const parsed = schema.safeParse({
     phone: formData.get("phone"),
@@ -87,6 +91,9 @@ export async function saveCustomer(
 }
 
 export async function deleteCustomer(id: number): Promise<ActionState> {
+  const denied = await requirePermission("contacts.delete");
+  if (denied) return { error: denied };
+
   const customer = await prisma.contact.findUnique({
     where: { id },
     select: { isWalkIn: true },
@@ -115,6 +122,9 @@ export async function quickAddCustomer(
   phone: string,
   name: string,
 ): Promise<{ id?: number; error?: string }> {
+  const denied = await requirePermission("contacts.manage");
+  if (denied) return { error: denied };
+
   const p = phone.trim();
   if (!p) return { error: "Phone is required" };
   try {
@@ -145,6 +155,9 @@ export async function receiveCustomerDue(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("contacts.due");
+  if (denied) return { error: denied };
+
   const parsed = receiveSchema.safeParse({
     amount: formData.get("amount"),
     method: formData.get("method"),
@@ -226,6 +239,9 @@ export async function saveCustomerGroup(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("contacts.manage");
+  if (denied) return { error: denied };
+
   const parsed = groupSchema.safeParse({
     name: formData.get("name"),
     discount: formData.get("discount") || 0,
@@ -248,6 +264,9 @@ export async function saveCustomerGroup(
 }
 
 export async function deleteCustomerGroup(id: number): Promise<ActionState> {
+  const denied = await requirePermission("contacts.manage");
+  if (denied) return { error: denied };
+
   // The FK is ON DELETE SET NULL, so deleting would silently un-group these
   // customers rather than fail. Refuse instead of quietly changing their data.
   const inUse = await prisma.contact.count({ where: { customerGroupId: id } });

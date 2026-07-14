@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
 import { CatalogTabs } from "@/components/app/catalog-tabs";
 import { num } from "@/lib/format";
@@ -9,6 +12,8 @@ export default async function LabelsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "products.view")) redirect("/dashboard");
   const params = await searchParams;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const productId = Number(one(params.productId)) || undefined;

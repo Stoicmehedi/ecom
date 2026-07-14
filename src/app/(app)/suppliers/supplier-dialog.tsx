@@ -146,7 +146,14 @@ export function AddSupplierButton() {
   );
 }
 
-export function SupplierRowActions({ supplier }: { supplier: Supplier }) {
+export function SupplierRowActions({
+  supplier,
+  canDelete = true,
+}: {
+  supplier: Supplier;
+  /** Editing and deleting are separate permissions (§25.2). */
+  canDelete?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -173,9 +180,11 @@ export function SupplierRowActions({ supplier }: { supplier: Supplier }) {
           <SupplierForm supplier={supplier} onDone={() => setOpen(false)} />
         </DialogContent>
       </Dialog>
-      <Button variant="ghost" size="icon" aria-label="Delete" onClick={onDelete}>
-        <Trash2 className="size-4 text-destructive" />
-      </Button>
+      {canDelete && (
+        <Button variant="ghost" size="icon" aria-label="Delete" onClick={onDelete}>
+          <Trash2 className="size-4 text-destructive" />
+        </Button>
+      )}
     </div>
   );
 }

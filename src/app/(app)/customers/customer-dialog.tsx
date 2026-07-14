@@ -175,9 +175,12 @@ export function AddCustomerButton({ groups }: { groups: CustomerGroupOption[] })
 export function CustomerRowActions({
   customer,
   groups,
+  canDelete = true,
 }: {
   customer: Customer;
   groups: CustomerGroupOption[];
+  /** Editing and deleting are separate permissions (§25.2) — a cashier may do one, not the other. */
+  canDelete?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
@@ -205,15 +208,17 @@ export function CustomerRowActions({
           <CustomerForm customer={customer} groups={groups} onDone={() => setOpen(false)} />
         </DialogContent>
       </Dialog>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Delete"
-        disabled={customer.isWalkIn}
-        onClick={onDelete}
-      >
-        <Trash2 className="size-4 text-destructive" />
-      </Button>
+      {canDelete && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Delete"
+          disabled={customer.isWalkIn}
+          onClick={onDelete}
+        >
+          <Trash2 className="size-4 text-destructive" />
+        </Button>
+      )}
     </div>
   );
 }

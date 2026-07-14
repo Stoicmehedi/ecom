@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isFkError } from "@/lib/db-error";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -20,6 +21,9 @@ export async function saveUnit(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const parsed = schema.safeParse({
     name: formData.get("name"),
     shortName: formData.get("shortName"),
@@ -47,6 +51,9 @@ export async function saveUnit(
 }
 
 export async function deleteUnit(id: number): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   try {
     await prisma.unit.delete({ where: { id } });
   } catch (e) {

@@ -7,7 +7,18 @@ import { toast } from "sonner";
 import { deleteSale } from "./actions";
 import { Button } from "@/components/ui/button";
 
-export function SaleRowActions({ id, invoiceNo }: { id: number; invoiceNo: string }) {
+export function SaleRowActions({
+  id,
+  invoiceNo,
+  canReturn = true,
+  canDelete = true,
+}: {
+  id: number;
+  invoiceNo: string;
+  /** Returning and deleting are distinct permissions (§25.2); a cashier returns but never deletes. */
+  canReturn?: boolean;
+  canDelete?: boolean;
+}) {
   const router = useRouter();
 
   async function onDelete() {
@@ -30,19 +41,23 @@ export function SaleRowActions({ id, invoiceNo }: { id: number; invoiceNo: strin
           <Eye className="size-4" />
         </Link>
       </Button>
-      <Button variant="ghost" size="icon" aria-label="Return" asChild>
-        <Link href={`/sales/${id}/return`}>
-          <Undo2 className="size-4" />
-        </Link>
-      </Button>
+      {canReturn && (
+        <Button variant="ghost" size="icon" aria-label="Return" asChild>
+          <Link href={`/sales/${id}/return`}>
+            <Undo2 className="size-4" />
+          </Link>
+        </Button>
+      )}
       <Button variant="ghost" size="icon" aria-label="Receipt" asChild>
         <Link href={`/sales/${id}/receipt`}>
           <Printer className="size-4" />
         </Link>
       </Button>
-      <Button variant="ghost" size="icon" aria-label="Delete" onClick={onDelete}>
-        <Trash2 className="size-4 text-destructive" />
-      </Button>
+      {canDelete && (
+        <Button variant="ghost" size="icon" aria-label="Delete" onClick={onDelete}>
+          <Trash2 className="size-4 text-destructive" />
+        </Button>
+      )}
     </div>
   );
 }

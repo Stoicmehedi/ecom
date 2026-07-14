@@ -1,4 +1,7 @@
 import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { num, shortDate } from "@/lib/format";
@@ -11,6 +14,8 @@ export default async function SaleReturnPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "sales.return")) redirect("/dashboard");
   const { id } = await params;
   const saleId = Number(id);
   if (!Number.isFinite(saleId)) notFound();

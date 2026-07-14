@@ -1,4 +1,7 @@
 import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { loadInvoice, shareText } from "@/lib/invoice";
 import { A4Invoice } from "@/components/invoice/invoice-doc";
 import { InvoiceActions } from "./invoice-actions";
@@ -13,6 +16,8 @@ export default async function InvoicePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "sales.view")) redirect("/dashboard");
   const { id } = await params;
   const saleId = Number(id);
   if (!Number.isFinite(saleId)) notFound();

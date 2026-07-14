@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isUniqueError, isFkError } from "@/lib/db-error";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -16,6 +17,9 @@ export async function saveBrand(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const parsed = schema.safeParse({ name: formData.get("name") });
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message };
@@ -35,6 +39,9 @@ export async function saveBrand(
 }
 
 export async function deleteBrand(id: number): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   try {
     await prisma.brand.delete({ where: { id } });
   } catch (e) {

@@ -1,4 +1,7 @@
 import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { num } from "@/lib/format";
@@ -9,6 +12,8 @@ export default async function EditPurchasePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "purchases.manage")) redirect("/dashboard");
   const { id } = await params;
   const purchaseId = Number(id);
   if (!Number.isFinite(purchaseId)) notFound();

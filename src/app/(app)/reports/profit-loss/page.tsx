@@ -1,4 +1,7 @@
 import { money } from "@/lib/format";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { parseRange } from "@/lib/reports/range";
 import { reportAccess } from "@/lib/reports/access";
 import { profitLoss } from "@/lib/reports/queries";
@@ -11,6 +14,8 @@ export default async function ProfitLossPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "reports.view")) redirect("/dashboard");
   const { canView, canSeeProfit } = await reportAccess();
   if (!canView) return <Forbidden kind="reports" />;
   if (!canSeeProfit) return <Forbidden />;

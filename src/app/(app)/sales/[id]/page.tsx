@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { notFound } from "next/navigation";
 import { FileText, Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -27,6 +30,8 @@ export default async function SaleDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "sales.view")) redirect("/dashboard");
   const { id } = await params;
   const saleId = Number(id);
   if (!Number.isFinite(saleId)) notFound();

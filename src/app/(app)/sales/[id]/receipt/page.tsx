@@ -1,4 +1,7 @@
 import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { money, num, qty } from "@/lib/format";
 import { loadInvoice, lineName } from "@/lib/invoice";
 import { ShopHeader, methodLabel } from "@/components/invoice/invoice-doc";
@@ -9,6 +12,8 @@ export default async function ReceiptPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "sales.view")) redirect("/dashboard");
   const { id } = await params;
   const saleId = Number(id);
   if (!Number.isFinite(saleId)) notFound();

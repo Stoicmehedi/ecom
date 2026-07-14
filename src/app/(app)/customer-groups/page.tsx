@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
@@ -14,6 +17,8 @@ import {
 import { AddGroupButton, GroupRowActions } from "./group-dialog";
 
 export default async function CustomerGroupsPage() {
+  const session = await auth();
+  if (!hasPermission(session, "contacts.manage")) redirect("/dashboard");
   const groups = await prisma.customerGroup.findMany({
     orderBy: { name: "asc" },
     include: { _count: { select: { customers: true } } },

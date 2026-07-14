@@ -1,8 +1,13 @@
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
 import { PurchaseForm } from "../purchase-form";
 
 export default async function NewPurchasePage() {
+  const session = await auth();
+  if (!hasPermission(session, "purchases.manage")) redirect("/dashboard");
   const [suppliers, accounts] = await Promise.all([
     prisma.contact.findMany({
       where: { type: "SUPPLIER" },

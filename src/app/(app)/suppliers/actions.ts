@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { round2 } from "@/lib/costing";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -34,6 +35,9 @@ export async function saveSupplier(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("contacts.manage");
+  if (denied) return { error: denied };
+
   const parsed = parse(formData);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const s = parsed.data;
@@ -81,6 +85,9 @@ export async function saveSupplier(
 }
 
 export async function deleteSupplier(id: number): Promise<ActionState> {
+  const denied = await requirePermission("contacts.delete");
+  if (denied) return { error: denied };
+
   const purchases = await prisma.purchase.count({ where: { supplierId: id } });
   if (purchases > 0) {
     return { error: "Cannot delete: this supplier has purchase history." };
@@ -99,6 +106,9 @@ export async function quickAddSupplier(
   name: string,
   phone: string,
 ): Promise<{ id?: number; error?: string }> {
+  const denied = await requirePermission("contacts.manage");
+  if (denied) return { error: denied };
+
   const n = name.trim();
   const p = phone.trim();
   if (!n) return { error: "Name is required" };
@@ -127,6 +137,9 @@ export async function paySupplierDue(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("contacts.due");
+  if (denied) return { error: denied };
+
   const parsed = paySchema.safeParse({
     amount: formData.get("amount"),
     method: formData.get("method"),

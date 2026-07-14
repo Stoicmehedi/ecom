@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { isUniqueError } from "@/lib/db-error";
 import { makeEan13, isValidEan13 } from "@/lib/barcode";
 import type { Prisma } from "@/generated/prisma/client";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -92,6 +93,9 @@ async function ensureBarcode(tx: Prisma.TransactionClient, variantId: number) {
 }
 
 export async function saveProduct(input: ProductInput): Promise<ActionResult> {
+  const denied = await requirePermission("products.manage");
+  if (denied) return { error: denied };
+
   const parsed = productSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const p = parsed.data;
@@ -260,6 +264,9 @@ class VariantInUse extends Error {
 }
 
 export async function deleteProduct(id: number): Promise<ActionResult> {
+  const denied = await requirePermission("products.manage");
+  if (denied) return { error: denied };
+
   const inUse =
     (await prisma.saleItem.count({ where: { variant: { productId: id } } })) +
     (await prisma.purchaseItem.count({ where: { variant: { productId: id } } }));
@@ -290,6 +297,9 @@ export async function setProductActive(
   id: number,
   isActive: boolean,
 ): Promise<ActionResult> {
+  const denied = await requirePermission("products.manage");
+  if (denied) return { error: denied };
+
   try {
     await prisma.product.update({ where: { id }, data: { isActive } });
   } catch {
@@ -301,6 +311,9 @@ export async function setProductActive(
 
 /** Copy a product and its variants — the fastest way to add the next near-identical one. */
 export async function duplicateProduct(id: number): Promise<ActionResult> {
+  const denied = await requirePermission("products.manage");
+  if (denied) return { error: denied };
+
   const src = await prisma.product.findUnique({
     where: { id },
     include: {

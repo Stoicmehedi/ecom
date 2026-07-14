@@ -13,6 +13,7 @@ import {
   round3,
 } from "@/lib/costing";
 import type { Prisma } from "@/generated/prisma/client";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -172,6 +173,9 @@ async function reversePurchase(tx: Tx, purchaseId: number) {
 }
 
 export async function savePurchase(input: PurchaseInput): Promise<ActionResult> {
+  const denied = await requirePermission("purchases.manage");
+  if (denied) return { error: denied };
+
   const parsed = purchaseSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const p = parsed.data;
@@ -298,6 +302,9 @@ export async function savePurchase(input: PurchaseInput): Promise<ActionResult> 
 }
 
 export async function deletePurchase(id: number): Promise<ActionResult> {
+  const denied = await requirePermission("purchases.manage");
+  if (denied) return { error: denied };
+
   const locked = await lockReason(id);
   if (locked) return { error: locked };
 

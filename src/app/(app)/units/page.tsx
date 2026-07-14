@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
 import { CatalogTabs } from "@/components/app/catalog-tabs";
 import {
@@ -13,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { AddUnitButton, UnitRowActions } from "./unit-dialog";
 
 export default async function UnitsPage() {
+  const session = await auth();
+  if (!hasPermission(session, "products.masters")) redirect("/dashboard");
   const units = await prisma.unit.findMany({
     orderBy: { name: "asc" },
     include: { _count: { select: { products: true } } },

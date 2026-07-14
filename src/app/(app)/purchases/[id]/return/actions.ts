@@ -6,6 +6,7 @@ import { checkVariantQtys } from "@/lib/qty-server";
 import { revalidatePath } from "next/cache";
 import { avgAfterReversal, round2, round3 } from "@/lib/costing";
 import type { Prisma } from "@/generated/prisma/client";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -41,6 +42,9 @@ async function nextReturnNo(tx: Tx): Promise<string> {
 }
 
 export async function savePurchaseReturn(input: ReturnInput): Promise<ActionResult> {
+  const denied = await requirePermission("purchases.return");
+  if (denied) return { error: denied };
+
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const r = parsed.data;
@@ -205,6 +209,9 @@ export async function savePurchaseReturn(input: ReturnInput): Promise<ActionResu
 }
 
 export async function deletePurchaseReturn(id: number): Promise<ActionResult> {
+  const denied = await requirePermission("purchases.return");
+  if (denied) return { error: denied };
+
   const ret = await prisma.purchaseReturn.findUnique({
     where: { id },
     include: { items: true, payments: true },

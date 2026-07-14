@@ -1,4 +1,7 @@
 import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { getSettings } from "@/lib/settings";
@@ -28,6 +31,8 @@ export default async function CustomerLedgerPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "contacts.view")) redirect("/dashboard");
   const { id } = await params;
   const customerId = Number(id);
   if (!Number.isFinite(customerId)) notFound();

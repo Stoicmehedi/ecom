@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +18,9 @@ import {
 import { AddCustomerButton, CustomerRowActions } from "./customer-dialog";
 
 export default async function CustomersPage() {
+  const session = await auth();
+  if (!hasPermission(session, "contacts.view")) redirect("/dashboard");
+  const canDelete = hasPermission(session, "contacts.delete");
   const [customers, groups] = await Promise.all([
     prisma.contact.findMany({
       where: { type: "CUSTOMER" },
@@ -120,6 +126,7 @@ export default async function CustomersPage() {
                   </TableCell>
                   <TableCell>
                     <CustomerRowActions
+                      canDelete={canDelete}
                       groups={groupOptions}
                       customer={{
                         id: c.id,

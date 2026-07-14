@@ -1,4 +1,7 @@
 import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { getCatalogOptions } from "../../_data";
@@ -9,6 +12,8 @@ export default async function EditProductPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "products.manage")) redirect("/dashboard");
   const { id } = await params;
   const productId = Number(id);
   if (!Number.isFinite(productId)) notFound();

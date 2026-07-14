@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
@@ -24,12 +25,13 @@ export default async function InventoryPage({
 }: {
   searchParams: Promise<{ low?: string }>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "stock.view")) redirect("/dashboard");
   const { low } = await searchParams;
   const lowOnly = low === "1";
 
   // Cost and stock-at-cost value are profit figures (BLUEPRINT §11.2) — a
   // cashier sees what is on the shelf, not what it cost or what it earns.
-  const session = await auth();
   const canSeeCost = hasPermission(session, "reports.profit");
 
   const settings = await getSettings();

@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
 import { CatalogTabs } from "@/components/app/catalog-tabs";
 import {
@@ -12,6 +15,8 @@ import {
 import { AddBrandButton, BrandRowActions } from "./brand-dialog";
 
 export default async function BrandsPage() {
+  const session = await auth();
+  if (!hasPermission(session, "products.masters")) redirect("/dashboard");
   const brands = await prisma.brand.findMany({
     orderBy: { name: "asc" },
     include: { _count: { select: { products: true } } },

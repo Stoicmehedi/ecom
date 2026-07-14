@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { round2, round3 } from "@/lib/costing";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -14,6 +15,9 @@ export type ActionState = { ok?: boolean; error?: string };
  * outright or corrected with a sale return.
  */
 export async function deleteSale(id: number): Promise<ActionState> {
+  const denied = await requirePermission("sales.delete");
+  if (denied) return { error: denied };
+
   const sale = await prisma.sale.findUnique({
     where: { id },
     include: { items: true, payments: true },

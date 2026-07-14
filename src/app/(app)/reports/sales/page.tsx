@@ -1,4 +1,7 @@
 import { parseRange } from "@/lib/reports/range";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { reportAccess } from "@/lib/reports/access";
 import { parseGroupBy, parseStatus, salesReport } from "@/lib/reports/queries";
 import { ReportShell, reportTabs } from "@/components/reports/report-shell";
@@ -11,6 +14,8 @@ export default async function SalesReportPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "reports.view")) redirect("/dashboard");
   const { canView, canSeeProfit } = await reportAccess();
   if (!canView) return <Forbidden kind="reports" />;
 

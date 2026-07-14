@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { money } from "@/lib/format";
 
 export default async function ExchangesPage() {
+  const session = await auth();
+  if (!hasPermission(session, "sales.view")) redirect("/dashboard");
   const exchanges = await prisma.exchange.findMany({
     orderBy: { id: "desc" },
     include: {

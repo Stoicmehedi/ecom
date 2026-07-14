@@ -652,6 +652,54 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 
 ### 2026-07-14
 
+- **Users, roles & permissions — BUILT (`BLUEPRINT.md` §25).** The user asked me to study Users and
+  Settings in the reference app. Users turned out to be dormant there (a second "Sale person" login
+  that has *never* done one logged thing), but looking for it uncovered something far worse **at home**.
+
+  ⚠️ **The permission system was a facade over two-thirds of the app.** MPoS enforced permissions on
+  **6 of its 18 server-action files**. The other twelve checked nothing. A **cashier** could delete a
+  sale, create or delete a purchase, add/delete/**bulk-import** the whole catalogue, take a due
+  payment, and delete customers and suppliers. No forged payload was needed — `/products` simply
+  *offered* a cashier Add Product, Import, Edit and a **Delete** menu. **Demonstrated:** a cashier
+  session clicked Disable on Classic Tee, the write landed, and it was restored. And the seeded
+  Cashier role held three keys (`pos.access`, `products.view`, `contacts.view`) that **nothing
+  anywhere checked** — decorative.
+
+  **The fix, in order.** (1) **One catalogue that IS the enforcement list** (`src/lib/permissions.ts`,
+  24 keys, grouped) plus a single gate helper (`src/lib/guard.ts`). (2) **38 action gates** added
+  across the twelve orphan files, and the six existing hand-rolled gates re-pointed at the one helper —
+  so there is exactly one way to write a gate. Selling itself (`checkout`) was gated too: it guarded
+  the free-issue *exception* while the rule stood open. (3) **Every page gated** as well as every
+  action (page guard is a courtesy, action guard is the one that holds) — 15 pages that were open now
+  redirect a cashier. (4) The write controls a cashier can no longer use are **hidden** (Add/Import/
+  Edit/Delete on products; Delete on customers & suppliers), because a door that only bounces you is
+  worse than no door. (5) **Users & roles UI**: add/edit/deactivate users, reset a password (blank =
+  unchanged), and a **role editor with the permission matrix** — every checkbox a real gate.
+
+  **The Cashier, decided with the user:** *sell, and nothing that rewrites history.* Ten permissions —
+  the reference shop's Sale person almost key-for-key, arrived at independently.
+
+  **Guards against locking the shop out of itself:** you cannot delete/deactivate/demote your own
+  admin account; the last active admin cannot be removed; a user with documents to their name is
+  deactivated, not deleted; the **Admin role** (`["*"]`) cannot be edited or deleted; a role with
+  users on it cannot be deleted.
+
+  **Browser-verified, exhaustively.** As a cashier: 8 allowed pages open, 15 forbidden ones redirect;
+  the products page is now filters-only; a genuine `setProductActive` disable is refused on the wire.
+  Against a **production build** (so the action IDs were authoritative), **seven forged server-action
+  calls** — `deleteSale`, `deletePurchase`, `deleteProduct`, `setProductActive`, `deleteCustomer`,
+  `runImport` (with an injected `HACK-1,Stolen Goods,0.01` row), and a `receiveCustomerDue` — every
+  destructive one **REFUSED with zero rows written** (the DB was checked before and after: products all
+  active, no `HACK-1`, sales 4, purchases 2). `receiveCustomerDue` was **not** refused, correctly — a
+  cashier holds `contacts.due`. **Selling still works:** a cashier rang up a real Canvas Cap sale end
+  to end (later deleted to keep the DB clean). A hand-built **Manager** role was then created, a user
+  put on it, and the role *proven to take effect* — that user saw Purchases and cost figures (it holds
+  `reports.profit`) but was denied Users and Settings. Both self-lockout guards fired in the UI
+  (*"cannot move yourself to a role that cannot manage users"*, *"cannot deactivate your own
+  account"*). The Manager role and test user were then removed, returning the DB to the seeded
+  admin+cashier / Admin+Cashier. `check-reports.ts` gained two invariants (salary paid = Salary
+  expensed; opening + movements = balance, per account) — all green.
+
 - **POS grid filters — BUILT.** The POS grid gets a **category** and a **brand** filter beside the
   search box. Cheap, as expected — but the study of the data turned it into a bug fix.
 
@@ -977,6 +1025,15 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   one row touching two accounts. **Admin-only** (`accounts.manage`), proven against a **forged wire
   payload**. ⚠️ Worth knowing: the reference shop has **one cash account and has never banked a taka** —
   no transfers, no withdrawals, and one deposit ever (to type in their starting cash).
+- ✅ **Users, roles & permissions done** (`BLUEPRINT.md` §25) — and this was a **security fix**, not a
+  new screen. The permission system was enforced on only **6 of 18 action files**; a cashier could
+  delete sales, delete purchases and bulk-import the catalogue. Now there is **one catalogue that is
+  the enforcement list** (`src/lib/permissions.ts`, 24 keys) and **one gate helper** (`src/lib/guard.ts`),
+  every action **and** every page is gated, unusable write controls are hidden, and a **role editor**
+  ticks boxes that are all real gates. The Cashier is *sell, nothing that rewrites history*. Proven by
+  **seven forged server-action replays** from a cashier session against a production build — every
+  destructive one refused, zero rows written — and a hand-built Manager role proven to take effect.
+  Self-lockout is impossible (last admin, own account, Admin role all protected).
 - ✅ **Employees & salary done** (`BLUEPRINT.md` §24) — the staff, and a **monthly salary sheet**
   (wage bill · paid · still owed) that derives each month's due from `monthlySalary − Σ paid for that
   month` rather than storing it. **A wage payment is an ordinary `Expense` of system type "Salary"**
@@ -1029,6 +1086,9 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   Verifying Employees (§24) then added **Rahim Uddin** (Manager, 15,000) and **Nahid Hasan** (Sales
   Executive, 8,000), both paid in full for **July 2026** on the 31st out of Cash — so there are two
   **Salary** expenses totalling **23,000**, and Cash sits at **1,000.80**.
+  Verifying Users (§25) created and then **removed** a Manager role and a `rahim` login, and a test
+  Canvas Cap sale (also removed) — so the DB is **back to the seeded two users / two roles**, and Cash
+  is unchanged at **1,000.80**. Nothing from the §25 verification was left behind.
   Re-seed before the next module if you want a clean slate.
 
 **Dev logins** (both seeded): `admin` / `admin123` (Admin — sees everything) · `cashier` /
@@ -1084,26 +1144,39 @@ full on the user's instruction anyway.
 ~~9. Employees & salary~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §24). The one Phase-2 item the shop
 **does** use, every month. See the progress log.
 
+~~10. Users, roles & permissions~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §25). Studying the reference
+app's Users/Settings uncovered that MPoS enforced permissions on only 6 of 18 action files — a cashier
+could delete sales and bulk-import the catalogue. Fixed wholesale, plus a role editor. See the log.
+
 **START HERE (next session).**
 
-1. **Pick from the Phase-2 remainder below — but check the shop's data first.** Nothing is now a known
-   defect. Of what is left (quotations, VAT, SMS, courier, customer areas), **none shows evidence of
-   use** in the reference shop — but note that this claim was written once about **employees too, and
-   it was false**: the shop had been paying four people for fourteen straight months. The lesson is not
-   "the remainder is dead", it is **go and look, per item, before deciding either way**. Ask the user
-   what the shop actually needs next rather than working down the roadmap.
+The user chose three **Settings** additions alongside Users (Users is now done). These are the
+committed next work, in order:
 
-**Then, in rough order of value:**
+1. **Invoice numbering prefix.** Make the invoice prefix and starting number configurable (the shop
+   uses `IN-` / `10000001`; MPoS hard-codes `INV-00001` in `nextInvoiceNo`). Small, self-contained —
+   a settings field read by the POS. ⚠️ Don't let a changed prefix break `nextInvoiceNo`'s
+   digit-parsing (it does `replace(/\D/g, "")` on the last invoice; confirm that still yields the next
+   number when the prefix changes).
+2. **Receipt / invoice toggles.** Show/hide on the printed receipt: barcode, signature lines
+   ("Received By" / "Authorised By"), size & colour, time, payment details. Today these are hard-coded.
+   Read from the reference app's Print Settings (studied 2026-07-14 — the list is in that day's notes:
+   ~18 toggles, but only take the ones our receipt actually has a place for).
+3. **The storage decision + shop logo.** ⚠️ **Needs one call from the user first:** *where do uploaded
+   files live?* (local `public/` dir, or object storage). It has been parked in §12 since the receipt
+   work. Settle it, put the logo on the receipt (§20), and it **also unblocks product image upload**
+   (ours is a pasted URL today).
 
-2. The rest of Phase 2 (see `BLUEPRINT.md` §5): VAT (only if it is actually needed), quotations.
-   ⚠️ **Check the shop's own data before building any of them** — that method has now killed or
-   corrected seven assumptions, and caught itself getting one wrong.
-3. Still open from §20: a **shop logo** on the receipt — deliberately deferred, because an image needs
-   the **storage decision** §12 has been parking (where do uploaded files live?). Settle that once and
-   it unblocks product images too.
-4. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
-   upload** (ours is a pasted URL — needs a storage decision), **per-language product names**, and a
-   **Product Groups** master.
+**Then, from the Phase-2 remainder — but check the shop's data first.** Nothing is now a known defect.
+Of what is left (quotations, SMS, courier, customer areas), **none shows evidence of use** in the
+reference shop — but that exact claim was written once about **employees**, and it was false (fourteen
+months of salary). **VAT is now confirmed dead**, not merely unseen: studied 2026-07-14, the business
+VAT is **0** and the VAT-settings BIN/Mushak are blank. Don't build it. For the others, **go and look,
+per item**, before deciding either way.
+
+Housekeeping still open: `middleware.ts` for edge-level route protection (the §25 gates are on the
+page and the action, which is enough, but edge defence-in-depth is cheap); **per-language product
+names**; a **Product Groups** master.
 
 **Build only on request — no trace of these in the shop's actual sales** (§13): wholesale cart mode
 (ask: do they sell to resellers?), delivery charge, cheque details, back-dated sale date.

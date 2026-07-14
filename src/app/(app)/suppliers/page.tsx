@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { money, num } from "@/lib/format";
@@ -13,6 +16,9 @@ import {
 import { AddSupplierButton, SupplierRowActions } from "./supplier-dialog";
 
 export default async function SuppliersPage() {
+  const session = await auth();
+  if (!hasPermission(session, "contacts.view")) redirect("/dashboard");
+  const canDelete = hasPermission(session, "contacts.delete");
   const suppliers = await prisma.contact.findMany({
     where: { type: "SUPPLIER" },
     orderBy: { name: "asc" },
@@ -92,6 +98,7 @@ export default async function SuppliersPage() {
                   </TableCell>
                   <TableCell>
                     <SupplierRowActions
+                      canDelete={canDelete}
                       supplier={{
                         id: s.id,
                         name: s.name,

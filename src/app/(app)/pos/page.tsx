@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 import { num } from "@/lib/format";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
@@ -9,6 +10,7 @@ import { PosTerminal } from "./pos-terminal";
 
 export default async function PosPage() {
   const session = await auth();
+  if (!hasPermission(session, "pos.access")) redirect("/dashboard");
   // Only an Admin may give goods away (BLUEPRINT §16.2). Hiding the control is a
   // courtesy; the server refuses a free line regardless of what the browser sends.
   const canFreeIssue = hasPermission(session, "sales.free_issue");

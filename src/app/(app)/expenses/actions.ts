@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { requirePermission } from "@/lib/guard";
 import { round2 } from "@/lib/costing";
 import { LOYALTY_EXPENSE_TYPE } from "@/lib/expenses";
 import type { Prisma } from "@/generated/prisma/client";
@@ -20,12 +20,7 @@ type Tx = Prisma.TransactionClient;
  * what the browser sends.
  */
 async function requireManage(): Promise<string | null> {
-  const session = await auth();
-  if (!session?.user) return "You are not signed in.";
-  if (!hasPermission(session, "expenses.manage")) {
-    return "You do not have permission to manage expenses.";
-  }
-  return null;
+  return requirePermission("expenses.manage");
 }
 
 async function currentUserId(): Promise<number | null> {

@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
@@ -22,6 +25,10 @@ const statusStyles: Record<string, string> = {
 };
 
 export default async function SalesPage() {
+  const session = await auth();
+  if (!hasPermission(session, "sales.view")) redirect("/dashboard");
+  const canReturn = hasPermission(session, "sales.return");
+  const canDelete = hasPermission(session, "sales.delete");
   const sales = await prisma.sale.findMany({
     orderBy: { id: "desc" },
     include: {
@@ -126,7 +133,12 @@ export default async function SalesPage() {
                   {s.soldBy?.name ?? "—"}
                 </TableCell>
                 <TableCell>
-                  <SaleRowActions id={s.id} invoiceNo={s.invoiceNo} />
+                  <SaleRowActions
+                    id={s.id}
+                    invoiceNo={s.invoiceNo}
+                    canReturn={canReturn}
+                    canDelete={canDelete}
+                  />
                 </TableCell>
               </TableRow>
             ))}

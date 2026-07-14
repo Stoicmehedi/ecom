@@ -10,9 +10,14 @@ import { Button } from "@/components/ui/button";
 export function PurchaseRowActions({
   id,
   purchaseNo,
+  canManage = true,
+  canReturn = true,
 }: {
   id: number;
   purchaseNo: string;
+  /** Viewing, editing/deleting, and returning are three permissions (§25.2). */
+  canManage?: boolean;
+  canReturn?: boolean;
 }) {
   const router = useRouter();
 
@@ -36,19 +41,25 @@ export function PurchaseRowActions({
           <Eye className="size-4" />
         </Link>
       </Button>
-      <Button variant="ghost" size="icon" aria-label="Return" asChild>
-        <Link href={`/purchases/${id}/return`}>
-          <Undo2 className="size-4" />
-        </Link>
-      </Button>
-      <Button variant="ghost" size="icon" aria-label="Edit" asChild>
-        <Link href={`/purchases/${id}/edit`}>
-          <Pencil className="size-4" />
-        </Link>
-      </Button>
-      <Button variant="ghost" size="icon" aria-label="Delete" onClick={onDelete}>
-        <Trash2 className="size-4 text-destructive" />
-      </Button>
+      {canReturn && (
+        <Button variant="ghost" size="icon" aria-label="Return" asChild>
+          <Link href={`/purchases/${id}/return`}>
+            <Undo2 className="size-4" />
+          </Link>
+        </Button>
+      )}
+      {canManage && (
+        <>
+          <Button variant="ghost" size="icon" aria-label="Edit" asChild>
+            <Link href={`/purchases/${id}/edit`}>
+              <Pencil className="size-4" />
+            </Link>
+          </Button>
+          <Button variant="ghost" size="icon" aria-label="Delete" onClick={onDelete}>
+            <Trash2 className="size-4 text-destructive" />
+          </Button>
+        </>
+      )}
     </div>
   );
 }

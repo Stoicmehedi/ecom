@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
 import { CatalogTabs } from "@/components/app/catalog-tabs";
 import {
@@ -16,6 +19,8 @@ import {
 } from "./category-dialog";
 
 export default async function CategoriesPage() {
+  const session = await auth();
+  if (!hasPermission(session, "products.masters")) redirect("/dashboard");
   const all = await prisma.category.findMany({
     orderBy: { name: "asc" },
     include: { _count: { select: { products: true } } },

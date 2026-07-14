@@ -18,22 +18,36 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { avgAfterPurchase, docStatus, round2, round3 } from "../src/lib/costing";
 import { makeEan13 } from "../src/lib/barcode";
 import { LOYALTY_EXPENSE_TYPE, STOCK_LOSS_EXPENSE_TYPE } from "../src/lib/expenses";
+import type { PermissionKey } from "../src/lib/permissions";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
-// Small, sensible permission set for a cashier (module.action keys).
-// Note "reports.view" without "reports.profit": a cashier sees sales, dues and
-// stock, but never cost or margin (BLUEPRINT §11.2).
-// Note also NO "sales.free_issue": only an Admin may hand goods over at 0.00
-// (BLUEPRINT §16.2). Nor "settings.manage" — an earn rate is a lever on every future
-// sale (§17.3). Admin holds ["*"], so neither needs an entry there.
-const CASHIER_PERMISSIONS = [
+/**
+ * The Cashier: **sell, and nothing that rewrites history** (BLUEPRINT §25.4).
+ *
+ * Every key here is one the app actually enforces — see `src/lib/permissions.ts`,
+ * which is the catalogue *and* the enforcement list. This list once held
+ * `products.view` and `contacts.view` while nothing checked them, and meanwhile a
+ * cashier could delete a sale, delete a purchase and bulk-import the catalogue. It is
+ * typed now, so a key that guards nothing will not compile.
+ *
+ * What is deliberately absent: `sales.delete` (rewrites stock and money),
+ * `products.manage` / `products.masters` (the catalogue and its masters),
+ * `purchases.*` (cost, and what we owe), `contacts.delete`, `sales.free_issue`
+ * (goods out at 0.00, §16.2), `reports.profit` (cost and margin, §11.2), and the
+ * money and admin blocks. Admin holds `["*"]`, so it needs no list at all.
+ */
+const CASHIER_PERMISSIONS: PermissionKey[] = [
   "pos.access",
   "sales.create",
   "sales.view",
+  "sales.return",
   "products.view",
+  "stock.view",
   "contacts.view",
+  "contacts.manage",
+  "contacts.due",
   "reports.view",
 ];
 

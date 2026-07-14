@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { money, num } from "@/lib/format";
 import { reportAccess } from "@/lib/reports/access";
 import { duesReport, type DueSide } from "@/lib/reports/queries";
@@ -12,6 +15,8 @@ export default async function DuesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "reports.view")) redirect("/dashboard");
   const { canView, canSeeProfit } = await reportAccess();
   if (!canView) return <Forbidden kind="reports" />;
 

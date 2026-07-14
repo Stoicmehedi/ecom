@@ -1721,3 +1721,130 @@ month, made early. So MPoS has **one** document:
 - **Commission** — zero usage (§24.1). Build only on request.
 - **A separate advance document** — subsumed by §24.3.
 - **Attendance, leave, payroll tax** — no trace of any of it, and none is a clothing shop's problem.
+
+---
+
+## 25. Users, roles & permissions
+
+### 25.1 What the study found — and what it exposed at home
+
+The reference shop runs **two users** (`hansum` = Admin, `mahfuz` = "Sale person") against **two
+roles**, over a permission matrix of **176 keys grouped by module**. The Sale person is granted
+**25** of them: the sale block (18/20), customers (6/8) and stock-view (1/8), and **zero** on
+products, purchases, expenses, accounts, reports, employees, users and settings. Their user record is
+name (which *is* the login), phone, email, branch, role, password — plus an Active/Inactive toggle
+and a self-service Change Password page.
+
+**But the second login has never been used.** Filtering their activity log by user returns *nothing*
+for the Sale person, against hundreds of entries for the owner. The role is configured and dormant.
+So this module is **not** justified by "the shop leans on it". It is justified by what looking for it
+uncovered at home:
+
+> **MPoS enforced permissions on 6 of its 18 server-action files.** The other twelve checked nothing.
+> A cashier could delete a sale, create or delete a purchase, add/delete/**bulk-import** products,
+> take a due payment, and delete customers and suppliers. No forged payload was needed — as a
+> cashier, `/products` simply *offered* Add Product, Import, Edit, and a menu containing **Delete**.
+> It was demonstrated: a cashier session disabled a product, the write landed, and it was restored.
+>
+> Worse, the seeded Cashier role held three keys — `pos.access`, `products.view`, `contacts.view` —
+> that **nothing anywhere checked**. They were decorative.
+
+That is the real subject of this module. A role editor built on those wires would be a control panel
+connected to nothing: untick "manage products" and the cashier would carry on deleting products. The
+screen would *lie*. So the catalogue comes first, the gates come second, and the UI comes last.
+
+### 25.2 The rule: the catalogue IS the enforcement list
+
+**One list, in `src/lib/permissions.ts`.** Every key in it is a key some page or action actually
+checks; every check uses a key from it. Nothing else is a permission. This is what makes the role
+editor honest — each checkbox on it maps to a gate that has been proven to refuse a forged call.
+
+A key earns its place only if it guards something a shopkeeper would *say out loud* ("can they delete
+a sale?"). We do **not** copy their 176 — most of that is per-screen chaff for features we don't have.
+Ours is **24**, grouped the way the shop thinks:
+
+| Group | Key | Guards |
+|---|---|---|
+| Till | `pos.access` | Use the POS |
+| | `sales.create` | Ring up a sale |
+| | `sales.free_issue` | Give an item away free |
+| Sales | `sales.view` | The sales list and invoices |
+| | `sales.return` | Sale returns and exchanges |
+| | `sales.delete` | **Delete a sale** |
+| Products | `products.view` | See the catalogue (no cost) |
+| | `products.manage` | Add, edit, delete, duplicate, **import** |
+| | `products.masters` | Categories, brands, units, colours, attributes |
+| Purchases | `purchases.view` | See purchases |
+| | `purchases.manage` | Create and **delete** a purchase |
+| | `purchases.return` | Return goods to a supplier |
+| Inventory | `stock.view` | The stock list |
+| | `stock.adjust` | Write-offs and recounts |
+| People | `contacts.view` | See customers and suppliers |
+| | `contacts.manage` | Add and edit them |
+| | `contacts.delete` | **Delete** one |
+| | `contacts.due` | Take or make a due payment |
+| Money | `expenses.manage` | Expenses |
+| | `accounts.manage` | Accounts, deposits, transfers |
+| | `employees.manage` | Staff and salary |
+| Insight | `reports.view` | Reports |
+| | `reports.profit` | **Cost and profit figures** |
+| Admin | `settings.manage` | Shop settings |
+| | `users.manage` | **Users and roles** |
+
+`Role.permissions = ["*"]` still means all-access, and is what Admin holds. It is not a key and never
+appears in the matrix — it is the absence of a limit.
+
+### 25.3 Every gate, twice
+
+A permission is checked **on the page** (so a typed URL bounces) **and in every server action** (so a
+forged wire fails). Neither alone is a gate: the page guard is a courtesy to the honest, the action
+guard is the one that holds. This is the standard the accounts, employees and expenses modules already
+meet; §25 brings the other twelve files up to it.
+
+The nav already hides what a role cannot reach, and that stays — a link that only bounces you to the
+dashboard advertises a door you cannot open.
+
+### 25.4 The Cashier, decided
+
+Settled with the user 2026-07-14: **sell, and nothing that rewrites history.**
+
+- **Can:** `pos.access`, `sales.create`, `sales.view`, `sales.return`, `products.view`, `stock.view`,
+  `contacts.view`, `contacts.manage`, `contacts.due`, `reports.view`.
+- **Cannot:** delete a sale, touch purchases, add/edit/delete/import products, edit the masters,
+  delete a customer or supplier, give stock away free, or see cost, profit, expenses, accounts,
+  employees, settings and users.
+
+That is the reference shop's Sale person almost key for key — arrived at independently, which is some
+evidence it is the right shape for a shop this size.
+
+### 25.5 Users
+
+Fields: **name**, **username** (the login — ours is a real username, not their "name-as-login"),
+optional email, **role**, **active**, and a password. Editing a user leaves the password alone unless
+a new one is typed — a blank box means "unchanged", never "blank the password".
+
+Rules that keep an admin from locking the shop out of itself:
+- **You cannot delete or deactivate yourself**, and you cannot take your own `users.manage` away.
+- **The last active admin cannot be removed** (deleted, deactivated, or demoted). Refuse, don't cascade.
+- A user who has **sold, paid, or adjusted anything cannot be deleted** — their name is on documents.
+  Deactivate instead. (Same reasoning as an employee who has been paid, §24.)
+- Passwords are hashed with the same bcrypt path the seed uses. A reset is a re-hash, never a read.
+
+### 25.6 Roles
+
+Add, rename, and re-tick a role. Two guards:
+- The **Admin** role (`["*"]`) cannot be edited or deleted — it is the way back in.
+- A role **with users on it cannot be deleted** (refuse, name the count).
+
+Changing a role's permissions takes effect for its users **on their next request**, not their next
+login — the session carries the role, and the check reads it fresh. (If that proves false in testing,
+it is a bug, not a design.)
+
+### 25.7 Not built
+
+- **Their 176-key matrix** — most of it guards screens we do not have. Ours is 24 and every one is real.
+- **Activity log** — they have one and it is genuinely used (every sale stamped with a user). It is the
+  thing that makes handing out a second login *safe*, and MPoS already stamps `soldBy`, `paidBy`,
+  `createdBy` on most documents. Deferred, not dismissed: worth its own module.
+- **Per-branch users** — single store (their branch list has exactly one row).
+- **Self-service change-password page** — worth having; folded into the user's own edit for now.

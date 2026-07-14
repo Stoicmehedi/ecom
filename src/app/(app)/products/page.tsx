@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { Plus, Download, Upload } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
@@ -26,6 +29,13 @@ export default async function ProductsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const session = await auth();
+  if (!hasPermission(session, "products.view")) redirect("/dashboard");
+
+  // Seeing the catalogue and changing it are two different permissions (§25.2).
+  const canManage = hasPermission(session, "products.manage");
+  const canMasters = hasPermission(session, "products.masters");
+
   const params = await searchParams;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const int = (v: string | undefined) => {
@@ -92,27 +102,34 @@ export default async function ProductsPage({
     <div className="mx-auto w-full max-w-7xl space-y-6">
       <PageHeader title="Products" description="Your catalog of products and variants.">
         <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <a href={exportHref} download>
-              <Download className="size-4" />
-              Export
-            </a>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/products/import">
-              <Upload className="size-4" />
-              Import
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/products/new">
-              <Plus className="size-4" />
-              Add Product
-            </Link>
-          </Button>
+          {/* A control that only bounces you is worse than no control — it advertises a
+              door you cannot open. The server refuses these regardless (§25.3); hiding
+              them is the courtesy that stops a cashier from finding out the hard way. */}
+          {canManage && (
+            <>
+              <Button variant="outline" asChild>
+                <a href={exportHref} download>
+                  <Download className="size-4" />
+                  Export
+                </a>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/products/import">
+                  <Upload className="size-4" />
+                  Import
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link href="/products/new">
+                  <Plus className="size-4" />
+                  Add Product
+                </Link>
+              </Button>
+            </>
+          )}
         </div>
       </PageHeader>
-      <CatalogTabs />
+      {canMasters && <CatalogTabs />}
 
       <ProductFilters
         categories={tree.map((c) => ({ id: c.id, name: c.path }))}
@@ -206,7 +223,9 @@ export default async function ProductsPage({
                     )}
                   </TableCell>
                   <TableCell>
-                    <ProductRowActions id={p.id} name={p.name} isActive={p.isActive} />
+                    {canManage && (
+                      <ProductRowActions id={p.id} name={p.name} isActive={p.isActive} />
+                    )}
                   </TableCell>
                 </TableRow>
               );

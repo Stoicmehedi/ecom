@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { checkVariantQtys } from "@/lib/qty-server";
 import { auth } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { requirePermission } from "@/lib/guard";
 import { round2, round3 } from "@/lib/costing";
 import { postStockLossExpense } from "@/lib/expenses";
 import type { Prisma } from "@/generated/prisma/client";
@@ -20,12 +20,7 @@ type Tx = Prisma.TransactionClient;
  * place in the app to hide theft, so the gate is on the server, not the browser.
  */
 async function requireAdjust(): Promise<string | null> {
-  const session = await auth();
-  if (!session?.user) return "You are not signed in.";
-  if (!hasPermission(session, "stock.adjust")) {
-    return "You do not have permission to adjust stock.";
-  }
-  return null;
+  return requirePermission("stock.adjust");
 }
 
 const lineSchema = z.object({

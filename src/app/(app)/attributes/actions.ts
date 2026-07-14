@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isUniqueError, isFkError } from "@/lib/db-error";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -16,6 +17,9 @@ export async function saveAttributeCategory(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const parsed = nameSchema.safeParse(formData.get("name"));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -37,6 +41,9 @@ export async function saveAttributeCategory(
 }
 
 export async function deleteAttributeCategory(id: number): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   // Values cascade with the axis, so check the products first — silently
   // un-picking an axis from a product would strand its variants.
   const used = await prisma.product.count({ where: { attributeCategoryId: id } });
@@ -67,6 +74,9 @@ export async function saveAttribute(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const parsed = attrSchema.safeParse({
     name: formData.get("name"),
     attributeCategoryId: formData.get("attributeCategoryId"),
@@ -88,6 +98,9 @@ export async function saveAttribute(
 }
 
 export async function deleteAttribute(id: number): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const used = await prisma.productVariant.count({ where: { attributeId: id } });
   if (used > 0) {
     return { error: `Cannot delete: ${used} variant(s) are this value.` };
@@ -119,6 +132,9 @@ export async function saveColor(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const parsed = colorSchema.safeParse({
     name: formData.get("name"),
     hex: formData.get("hex"),
@@ -141,6 +157,9 @@ export async function saveColor(
 }
 
 export async function deleteColor(id: number): Promise<ActionState> {
+  const denied = await requirePermission("products.masters");
+  if (denied) return { error: denied };
+
   const used = await prisma.productVariant.count({ where: { colorId: id } });
   if (used > 0) {
     return { error: `Cannot delete: ${used} variant(s) are this colour.` };

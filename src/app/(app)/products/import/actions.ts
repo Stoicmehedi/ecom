@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { makeEan13 } from "@/lib/barcode";
 import type { Prisma } from "@/generated/prisma/client";
+import { requirePermission } from "@/lib/guard";
 
 export type ImportRow = {
   line: number;
@@ -95,6 +96,9 @@ const numOrNull = (s: string | undefined): number | null => {
 
 /** Read the CSV and say exactly what would happen — writing nothing. */
 export async function previewImport(csv: string): Promise<ImportPreview | { error: string }> {
+  const denied = await requirePermission("products.manage");
+  if (denied) return { error: denied };
+
   const table = parseCsv(csv);
   if (table.length < 2) return { error: "That file has no rows." };
 
@@ -220,6 +224,9 @@ export async function previewImport(csv: string): Promise<ImportPreview | { erro
  * set it would put stock on the shelf that nothing ever paid for.
  */
 export async function runImport(csv: string): Promise<ImportResult> {
+  const denied = await requirePermission("products.manage");
+  if (denied) return { error: denied };
+
   const preview = await previewImport(csv);
   if ("error" in preview) return { error: preview.error };
 

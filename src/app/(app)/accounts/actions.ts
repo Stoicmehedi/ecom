@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { hasPermission } from "@/lib/permissions";
+import { requirePermission } from "@/lib/guard";
 import { round2 } from "@/lib/costing";
 import { writeCashMove, reverseCashMove } from "@/lib/accounts";
 
@@ -17,12 +17,7 @@ export type ActionResult = { ok?: boolean; error?: string; id?: number };
  * the server, not the browser.
  */
 async function requireManage(): Promise<string | null> {
-  const session = await auth();
-  if (!session?.user) return "You are not signed in.";
-  if (!hasPermission(session, "accounts.manage")) {
-    return "You do not have permission to manage accounts.";
-  }
-  return null;
+  return requirePermission("accounts.manage");
 }
 
 // ---------- The accounts themselves ----------

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { requirePermission } from "@/lib/guard";
 import { getSettings } from "@/lib/settings";
 import {
   pointsEarned,
@@ -117,6 +118,12 @@ function loadExchangeSale(saleId: number) {
 }
 
 export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
+  // Selling itself is a permission (§25.2). Without this, a role with no `sales.create`
+  // could still ring up a sale by reaching the action directly — the free-issue gate
+  // below guarded the *exception* while the rule itself stood open.
+  const denied = await requirePermission("sales.create");
+  if (denied) return { error: denied };
+
   const parsed = checkoutSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const s = parsed.data;
@@ -686,6 +693,9 @@ export type HoldInput = z.input<typeof holdSchema>;
 
 /** Park a cart. Deliberately touches no stock and no ledger. */
 export async function holdSale(input: HoldInput): Promise<{ ok?: boolean; error?: string }> {
+  const denied = await requirePermission("pos.access");
+  if (denied) return { error: denied };
+
   const parsed = holdSchema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   if (parsed.data.cart.length === 0) return { error: "The cart is empty." };
@@ -708,6 +718,9 @@ export async function holdSale(input: HoldInput): Promise<{ ok?: boolean; error?
 }
 
 export async function resumeHeldSale(id: number) {
+  const denied = await requirePermission("pos.access");
+  if (denied) return null;
+
   const held = await prisma.heldSale.findUnique({ where: { id } });
   if (!held) return null;
   await prisma.heldSale.delete({ where: { id } });
@@ -716,6 +729,9 @@ export async function resumeHeldSale(id: number) {
 }
 
 export async function discardHeldSale(id: number): Promise<{ ok?: boolean; error?: string }> {
+  const denied = await requirePermission("pos.access");
+  if (denied) return { error: denied };
+
   try {
     await prisma.heldSale.delete({ where: { id } });
   } catch {

@@ -7,6 +7,7 @@ import { avgAfterReversal, round2, round3 } from "@/lib/costing";
 import { validateReturnLines, writeSaleReturn } from "@/lib/sale-return";
 import { getSettings } from "@/lib/settings";
 import { settleAgainstInvoices, unsettle } from "@/lib/settle";
+import { requirePermission } from "@/lib/guard";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -30,6 +31,9 @@ const schema = z.object({
 export type SaleReturnInput = z.input<typeof schema>;
 
 export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResult> {
+  const denied = await requirePermission("sales.return");
+  if (denied) return { error: denied };
+
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const r = parsed.data;
@@ -136,6 +140,9 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
 }
 
 export async function deleteSaleReturn(id: number): Promise<ActionResult> {
+  const denied = await requirePermission("sales.return");
+  if (denied) return { error: denied };
+
   const ret = await prisma.saleReturn.findUnique({
     where: { id },
     include: { items: true, payments: true, exchange: true },

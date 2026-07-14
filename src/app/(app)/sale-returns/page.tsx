@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { money, num, shortDate } from "@/lib/format";
@@ -13,6 +16,8 @@ import {
 import { SaleReturnRowActions } from "./return-row-actions";
 
 export default async function SaleReturnsPage() {
+  const session = await auth();
+  if (!hasPermission(session, "sales.view")) redirect("/dashboard");
   const returns = await prisma.saleReturn.findMany({
     orderBy: { id: "desc" },
     include: {
