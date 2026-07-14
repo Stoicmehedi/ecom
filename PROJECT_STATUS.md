@@ -806,6 +806,51 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   **"Advance on account"** row, and the invariant was tightened from an inequality to an **exact
   equality** — which is what caught it.
 
+- **Accounts — BUILT (`BLUEPRINT.md` §23).** Migration `accounts`. The shop's money finally has a
+  screen, a statement, and a way to be moved by hand.
+
+  ⚠️ **The shop's own data killed my justification for this module.** I told the user "a shop banks its
+  cash takings, and today that can't be recorded". Their live account module says otherwise: **one
+  account, Cash, 1,553,087.00** — the bank, mobile-banking and card tables are **entirely empty**;
+  **balance transfers: zero rows ever; withdrawals: zero rows ever**; and **deposits: exactly one**,
+  dated 01/10/2024, noted *"adjustment for current balance"* — them **typing in the cash they already
+  had**. They have never banked a taka. *Sixth time their data has corrected an assumption.*
+  **Built in full anyway on the user's explicit instruction** — deposit, withdraw and transfer ship too.
+
+  What the study *did* prove is that the **opening balance** is the one account feature a shop cannot
+  start without. The real holes it exposed in MPoS:
+  - **There was no accounts screen at all** — Cash and Bank existed only because the seed made them.
+    You could not add an account, rename one, or open a bank account.
+  - **No way to set an opening balance.** MPoS hard-coded a 50,000 float *in the seed*. A shop moving
+    onto MPoS must be able to say "there is 1,553,087 in my till". Editing it now **shifts the running
+    balance by the same delta** (as a customer's does, §8) — otherwise fixing a typo in the float would
+    silently create money.
+  - **No account statement.** We had ledgers for customers and suppliers but **none for the money
+    itself**. Now: one row per movement, oldest first, each **naming the document behind it**, with a
+    **running balance** — and if the movements don't add up to the stored balance, the page **says so
+    in red** rather than showing a tidy figure that hides it.
+  - **A transfer is two payment rows, not one row touching two accounts** — one row would have to be
+    read twice, with opposite signs, by every screen that totals a column, and the first one that
+    forgot would lose the money. Two legs tied to an `AccountTransfer`, so undoing is exact.
+  - **Admin-only** on a new **`accounts.manage`** permission. Hand-moving money is, with the stock
+    adjustment (§19.7), the easiest place in the app to hide theft.
+  - An account **cannot be deleted once money has moved through it** (refuse, don't cascade — its
+    payments are attached to real sales and expenses).
+
+  **Browser-verified, every figure read back from the DB.** The Cash statement walks **50,000 → rent
+  −25,000 → purchase −1,448 → three sales → due received +24 = 24,900.80**, which is *exactly* the
+  stored balance, with no drift warning — that till figure is explainable for the first time.
+  Transferred 5,000 Cash → Bank: **Cash 24,900.80 → 19,900.80, Bank 0 → 5,000, total unchanged**, two
+  legs written, and **profit untouched** (a transfer moves money, it does not make any). Withdrawing
+  999,999 was refused (*"Cash holds 19900.80 — you cannot take out more than that"*); a real 900
+  withdrawal took the total down by exactly 900. **Undoing the transfer put both accounts back exactly**
+  and left **no orphan legs**.
+
+  **The gate was proven by forging the wire.** The genuine `Withdraw` server-action call was captured
+  from a real admin save and **replayed from a cashier's session with a hostile 9,999 payload** —
+  refused (*"You do not have permission to manage accounts"*), **zero rows written**. The cashier's
+  sidebar has no Accounts link and `/accounts` redirects.
+
 ---
 
 ## 5. Current state
@@ -880,6 +925,12 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   fraction of a thing is a real thing. **Half a shirt can no longer be bought, returned, counted or
   sold**: one rule (`src/lib/qty.ts`), enforced by every stock-moving write on the server and by every
   qty box in the UI. Metres and kilos still take 2.5. Proven against a **forged wire payload**.
+- ✅ **Accounts done** (`BLUEPRINT.md` §23) — an accounts master (Cash / Bank / Mobile, with a settable
+  **opening balance**), a per-account **statement** with a running balance where every row names the
+  document behind it, and **deposit / withdraw / transfer**. A transfer is **two payment legs**, never
+  one row touching two accounts. **Admin-only** (`accounts.manage`), proven against a **forged wire
+  payload**. ⚠️ Worth knowing: the reference shop has **one cash account and has never banked a taka** —
+  no transfers, no withdrawals, and one deposit ever (to type in their starting cash).
 - 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses → Stock adjustments → Receipt & invoice). The app runs the
   whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
   margin, and who owes what in both directions.
@@ -919,6 +970,8 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   a return of 2 that was later deleted, a **return of 1** left standing (`SRT-00003`), and a **24.00
   payment** — so Nadia ends holding a 24.00 invoice and a 12.00 advance, netting **12.00 owed**, and
   Cash sits at **24,900.80**. Kept: it is the only data that exercises the allocation ledger.
+  Verifying Accounts (§23) then left a **900.00 withdrawal** from Cash ("owner took cash"); the 5,000
+  Cash→Bank transfer was undone, so Bank is back at **0.00** and Cash sits at **24,000.80**.
   Re-seed before the next module if you want a clean slate.
 
 **Dev logins** (both seeded): `admin` / `admin123` (Admin — sees everything) · `cashier` /
@@ -967,13 +1020,17 @@ half a shirt could be bought, returned and counted, though not sold. See the pro
 modelling choice in the end: **paying off a credit sale never closed its invoice**, so the Dues report
 chased customers who had already paid. See the progress log.
 
+~~8. Manual account movements~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §23). Accounts master,
+statement, deposit/withdraw/transfer. ⚠️ The study found the shop has **never banked a taka** — built in
+full on the user's instruction anyway.
+
 **START HERE (next session).**
 
-1. **Manual account movements — deposit / withdraw / transfer.** The clearest remaining hole. Accounts
-   (Cash, Bank) exist and their balances move correctly whenever a sale, purchase, expense or payment
-   touches them — but **there is no accounts screen and no way to move money by hand.** A shop banks
-   its cash takings; today that cannot be recorded at all. Study the reference app's account module
-   read-only first (`/accounts`, their deposit/withdraw screens).
+1. **Pick from the Phase-2 remainder below — but check the shop's data first.** Nothing is now a known
+   defect. The honest position: Phase 2's outstanding items (employees/salary, quotations, VAT, SMS,
+   courier, customer areas) all have **no evidence of use** in the reference shop, and that check has
+   corrected six assumptions so far. Ask the user what the shop actually needs next rather than
+   working down the roadmap.
 
 **Then, in rough order of value:**
 

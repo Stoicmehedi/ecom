@@ -1578,3 +1578,70 @@ the reports honest.
 - **Exchange** (§14) — the credit is spent on goods on the spot, so it never touches the account and
   therefore never touches an invoice's due.
 - **A sale's own payments at the till** — the POS already writes `paid`/`due` correctly at checkout.
+
+---
+
+## 23. Accounts — the money's own ledger *(studied read-only 2026-07-14; nothing created, edited or deleted)*
+
+### 23.1 What the reference shop actually does
+
+Their module is Account List · Deposit/Withdraw · Balance Transfer · Account Statement · Banks ·
+Cash Flow. Their **live data**, though, is emphatic:
+
+- **One account: Cash, 1,553,087.00.** The bank, mobile-banking and card tables are **entirely empty** —
+  the shop has no bank account at all.
+- **Balance transfers: zero rows, ever.**
+- **Withdrawals: zero rows, ever.**
+- **Deposits: exactly one**, dated 01/10/2024, noted *"adjustment for current balance 11 nov"*. That is
+  not a banking deposit — it is them **typing in the cash they already had** when they started.
+
+⚠️ **So the shop has never banked a taka.** *Sixth time their own data has corrected an assumption* —
+the justification for this module ("a shop banks its takings") was wrong. What the data *does* prove is
+that the **opening balance** is the one account feature a real shop cannot start without.
+
+**Built in full anyway, on the user's explicit instruction** (2026-07-14): deposit, withdraw and
+transfer ship too. They are nearly free once the statement exists, and they are ready the day the shop
+opens a bank account.
+
+### 23.2 The holes in MPoS this closes
+
+1. **There is no accounts screen at all.** Cash and Bank exist only because the seed made them. You
+   cannot add an account, rename one, or open a bank account.
+2. **No way to set an opening balance.** MPoS hard-codes a 50,000 cash float *in the seed*. A shop
+   moving onto MPoS must be able to say "there is 1,553,087 in my till".
+3. **No account statement.** We have ledgers for customers and suppliers but none for the money
+   itself — you cannot see what went in and out of the till. Theirs has Date · Type · Note · Debit ·
+   Credit · **running Balance**, filtered by account and date. Ours will too.
+
+### 23.3 Requirements
+
+1. **Accounts master** — name, type (Cash / Bank / Mobile), bank name + account number for the ones
+   that have them, and an **opening balance**. Editing the opening balance shifts the running balance
+   by the delta, exactly as a customer's does (§8) — it is part of what the account holds, not a
+   separate fact.
+2. **The statement is the point.** One row per movement, oldest first, with a **running balance** that
+   starts at the opening balance. Every row names the document behind it — a sale, a purchase, an
+   expense, a due received — because *a balance nobody can explain is a balance nobody can trust*
+   (§15.6). It reads `Payment` rows, which is where every movement in MPoS already lands.
+3. **Deposit / withdraw** — money in or out that belongs to no document. A `Payment` with an account,
+   a direction, and **no contact and no document**. Exactly the shape the loyalty credit and the
+   exchange credit already use in reverse (§14, §18.8): the model is not new.
+4. **Transfer** — one movement, two legs. Money **out** of one account and **in** to another, written
+   as two `Payment` rows tied together by an `AccountTransfer` so that undoing it is exact and
+   neither leg can be orphaned. **Never a single row that touches two accounts** — that is how a
+   balance goes missing.
+5. **Admin-only** (`accounts.manage`), page *and* every server action. Hand-moving money is, with the
+   stock adjustment (§19.7), the easiest place in the app to hide theft.
+6. **An account cannot be deleted once money has moved through it.** Refuse, don't cascade — deleting
+   an account whose payments are still on sales would strand every one of them.
+7. **A deposit/withdraw/transfer is reversible**, and reversing it puts the balances back exactly.
+   A withdrawal that would drive an account negative is refused: the till cannot hold less than nothing.
+
+### 23.4 Not built
+
+- **Charges on a transfer** (theirs has a "Charge" column, for bank fees). No trace of it in their
+  data — every account is empty. If the shop opens a bank account and pays fees, it is an **expense**
+  (§18), which already exists.
+- **Cash Flow** as a separate screen. The P&L already carries a cash-movement block (§11), and the
+  statement now carries the detail. A third view of the same money would be a fourth place for it to
+  disagree.

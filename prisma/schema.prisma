@@ -109,6 +109,7 @@ enum StockMovementType {
 enum AccountType {
   CASH
   BANK
+  MOBILE
 }
 
 enum PaymentDirection {
@@ -627,6 +628,9 @@ model Account {
 
   payments Payment[]
   expenses Expense[]
+
+  transfersOut AccountTransfer[] @relation("TransferFrom")
+  transfersIn  AccountTransfer[] @relation("TransferTo")
 }
 
 model Payment {
@@ -651,6 +655,9 @@ model Payment {
   saleReturn       SaleReturn?     @relation(fields: [saleReturnId], references: [id])
   expenseId        Int?
   expense          Expense?        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  /// The two legs of a transfer point at it, so neither can be orphaned (§23.3).
+  transferId       Int?
+  transfer         AccountTransfer? @relation(fields: [transferId], references: [id], onDelete: Cascade)
 
   /// Which invoices this payment settled (BLUEPRINT §22.4).
   allocations DueAllocation[]
@@ -831,4 +838,26 @@ enum AllocationKind {
   PAYMENT
   /// Goods the customer handed back. No money moved.
   CREDIT
+}
+
+/// Money moved between two of the shop's own accounts (BLUEPRINT §23.3).
+///
+/// Written as TWO `Payment` rows — out of one account, in to the other — tied
+/// together here. Never one row touching two accounts: that is how a balance goes
+/// missing, and it makes an exact reversal impossible.
+model AccountTransfer {
+  id     Int      @id @default(autoincrement())
+  amount Decimal  @db.Decimal(14, 2)
+  date   DateTime @default(now())
+  note   String?
+
+  fromAccountId Int
+  fromAccount   Account @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccountId   Int
+  toAccount     Account @relation("TransferTo", fields: [toAccountId], references: [id])
+
+  /// The two legs. They cascade away with the transfer.
+  payments Payment[]
+
+  createdAt DateTime @default(now())
 }

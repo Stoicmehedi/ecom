@@ -15,6 +15,7 @@ import {
   ClipboardCheck,
   Settings,
   type LucideIcon,
+  Landmark,
 } from "lucide-react";
 
 export type NavItem = {
@@ -44,6 +45,7 @@ export const navItems: NavItem[] = [
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Suppliers", href: "/suppliers", icon: Truck },
   { label: "Expenses", href: "/expenses", icon: Wallet, permission: "expenses.manage" },
+  { label: "Accounts", href: "/accounts", icon: Landmark, permission: "accounts.manage" },
   { label: "Reports", href: "/reports", icon: BarChart3 },
   { label: "Settings", href: "/settings", icon: Settings, permission: "settings.manage" },
 ];
