@@ -46,7 +46,14 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
   const sale = await prisma.sale.findUnique({
     where: { id: r.saleId },
     include: {
-      items: { include: { variant: true } },
+      items: {
+        include: {
+          // The unit comes along so the whole-unit rule can be applied (§21).
+          variant: {
+            include: { product: { select: { unit: { select: { name: true, allowDecimal: true } } } } },
+          },
+        },
+      },
       customer: { select: { id: true, isWalkIn: true } },
     },
   });

@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { qtyStep } from "@/lib/qty";
 import {
   Table,
   TableBody,
@@ -34,6 +35,8 @@ type ReturnLine = {
   soldQty: number;
   returnedQty: number;
   qty: number;
+  /** Whether half of this can come back — a shirt's cannot (BLUEPRINT §21). */
+  allowDecimal: boolean;
 };
 
 const METHODS = [
@@ -96,7 +99,11 @@ export function SaleReturnForm({
     setLines((prev) =>
       prev.map((l, idx) => {
         if (idx !== i) return l;
-        const capped = Math.max(0, Math.min(value, maxFor(l)));
+        // The `step` stops the spinner producing a fraction; this stops one being
+        // typed. Half a shirt cannot come back, because half a shirt never went
+        // out (§21). The server refuses it too — this just says so sooner.
+        const whole = l.allowDecimal ? value : Math.round(value);
+        const capped = Math.max(0, Math.min(whole, maxFor(l)));
         // A walk-in gets cash back, so the refund tracks the return value.
         return { ...l, qty: capped };
       }),
@@ -205,7 +212,7 @@ export function SaleReturnForm({
                   <TableCell>
                     <Input
                       type="number"
-                      step="0.001"
+                      step={qtyStep({ allowDecimal: l.allowDecimal })}
                       min="0"
                       max={max}
                       className="text-right"

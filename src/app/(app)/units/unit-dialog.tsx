@@ -17,7 +17,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-type Unit = { id: number; name: string; shortName: string | null };
+type Unit = {
+  id: number;
+  name: string;
+  shortName: string | null;
+  allowDecimal: boolean;
+};
 
 function UnitForm({ unit, onDone }: { unit?: Unit; onDone: () => void }) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
@@ -53,6 +58,28 @@ function UnitForm({ unit, onDone }: { unit?: Unit; onDone: () => void }) {
           placeholder="e.g. pc"
         />
       </div>
+
+      {/* The whole point of the unit master (BLUEPRINT §21). A piece cannot be cut
+          in half; 2.5 metres of fabric is ordinary. */}
+      <div className="rounded-lg border p-3">
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            name="allowDecimal"
+            defaultChecked={unit?.allowDecimal ?? false}
+            className="mt-0.5 size-4 accent-primary"
+          />
+          <span className="space-y-1">
+            <span className="block text-sm font-medium">Allow fractional quantities</span>
+            <span className="block text-xs text-muted-foreground">
+              Tick this for units that can be split — metres, litres, kilograms. Leave it
+              off for anything counted one at a time: half a shirt cannot be sold,
+              returned or counted.
+            </span>
+          </span>
+        </label>
+      </div>
+
       {state.error && <p className="text-sm text-destructive">{state.error}</p>}
       <DialogFooter>
         <Button type="submit" disabled={pending}>

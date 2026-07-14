@@ -1431,3 +1431,65 @@ handed back. A receipt that disagrees with the one the customer is holding is wo
 3. **Amount in words: which currency word?** Their invoice says *"… TK Only"*. Ours is single-currency
    and unnamed. Recommend making the currency word a **Settings field** (default "TK"), so the receipt
    speaks the shop's language rather than ours.
+
+---
+
+## 21. Whole vs decimal units *(defect — half a shirt can exist on the books)*
+
+### 21.1 The bug
+
+Every quantity column in the schema is `Decimal(14,3)`, and `Unit` carries **only a name** — no rule.
+So the unit "Piece" and the unit "Metre" are treated identically, and nothing anywhere knows that a
+shirt cannot be cut in half.
+
+The guard therefore has to live in the screens, and it mostly does not:
+
+| Screen | Qty input | Whole units enforced? |
+|---|---|---|
+| POS cart | `step="1"` | ✅ yes — the only one |
+| Sale return | `step="0.001"` | ❌ **no** |
+| Purchase entry | `step="0.001"` | ❌ **no** |
+| Stock adjustment | `step="0.001"` | ❌ **no** |
+
+The server does not save us either: `validateReturnLines` checks only that the returned qty does not
+exceed what was sold. It never asks whether the number is whole.
+
+**So MPoS today refuses to *sell* half a cap, while letting you *buy*, *return* and *count* one.**
+
+Sell 1 cap (stock 18 → 17), then return **0.5** of it: the form accepts it, the server accepts it, and
+stock becomes **17.5**. Half a cap now sits in stock, in the stock valuation, and in every report that
+reads them — and it can never be cleared, because the till will only sell whole ones.
+
+### 21.2 What the reference app does *(studied read-only 2026-07-14; nothing created, edited or deleted)*
+
+Their unit master is **Name + a "Decimal Unit" checkbox**, and the list carries a **Decimal Unit**
+column reading Yes/No. The concept exists there, exactly where it belongs — on the unit.
+
+⚠️ **And their live data settles the default:** the shop has **exactly one unit, `PCS`, with Decimal
+Unit = No.** A clothing shop counts in whole pieces and nothing else. *Fifth time the shop's own data
+has answered a design question.*
+
+### 21.3 Requirements
+
+1. **The rule lives on the unit, not on the screen.** `Unit.allowDecimal` (default **false** — a piece
+   is the common case, and the safe one). The decimal *columns* stay: a shop selling fabric by the
+   metre or rice by the kilo genuinely needs `2.5`, and this schema is meant to outlive one clothing
+   shop.
+2. **The server is the authority.** Every write that moves stock — purchase, purchase return, sale,
+   sale return, exchange, stock adjustment — rejects a fractional qty on a whole-unit product,
+   *regardless of what the browser sends*. A floor the browser can talk around is not a floor
+   (§12.7a).
+3. **The screens follow the unit**: `step` and validation come from the product's unit, so a
+   whole-unit product's qty box will not even let a `.5` be typed.
+4. **One rule in one file** (`src/lib/qty.ts`), called by the client and the server both — the same
+   shape as `pricing.ts`.
+5. **A product with no unit is treated as whole.** The safe default: an unset unit must not be a
+   licence to create fractional stock.
+6. **The unit master gets the toggle** (`/units`), showing a "Decimal" column like theirs.
+7. **Existing fractional stock is not silently rounded away.** Rounding it would be inventing or
+   destroying goods. It is left alone; only *new* writes are guarded. (The dev DB has none — checked.)
+
+### 21.4 Decisions this forces
+
+1. **Whole-unit products already carrying fractional stock** — none exist today. If one ever did, it
+   is a stock adjustment (a counted correction with a reason), never an automatic round.

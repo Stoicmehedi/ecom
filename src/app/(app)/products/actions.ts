@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { checkQtyLines } from "@/lib/qty";
 import { revalidatePath } from "next/cache";
 import { isUniqueError } from "@/lib/db-error";
 import { makeEan13, isValidEan13 } from "@/lib/barcode";
@@ -106,6 +107,26 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
       };
     }
   }
+
+  // Opening stock is stock, so the whole-unit rule binds it too (§21). Checked
+  // against the unit picked on THIS form, not the variants' — a new variant has
+  // no row to read a unit from yet.
+  const unit = p.unitId
+    ? await prisma.unit.findUnique({
+        where: { id: p.unitId },
+        select: { name: true, allowDecimal: true },
+      })
+    : null;
+  const badOpening = checkQtyLines(
+    variants
+      .filter((v) => (v.openingStock ?? 0) > 0)
+      .map((v) => ({
+        qty: v.openingStock ?? 0,
+        unit,
+        label: v.sku?.trim() || v.label || p.name,
+      })),
+  );
+  if (badOpening) return { error: badOpening };
 
   const productData = {
     name: p.name,

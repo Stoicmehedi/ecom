@@ -14,6 +14,7 @@ import {
 } from "@/lib/loyalty";
 import { docStatus, resolveDiscount, round2, round3 } from "@/lib/costing";
 import { priceLine } from "@/lib/pricing";
+import { checkQtyLines } from "@/lib/qty";
 import { postLoyaltyExpense } from "@/lib/expenses";
 import {
   creditFor,
@@ -98,7 +99,20 @@ async function nextExchangeNo(tx: Tx): Promise<string> {
 function loadExchangeSale(saleId: number) {
   return prisma.sale.findUnique({
     where: { id: saleId },
-    include: { items: { include: { variant: { select: { sku: true } } } } },
+    include: {
+      items: {
+        include: {
+          // The unit rides along so `validateReturnLines` refuses half a shirt
+          // coming back on an exchange, exactly as the return screen does (§21).
+          variant: {
+            select: {
+              sku: true,
+              product: { select: { unit: { select: { name: true, allowDecimal: true } } } },
+            },
+          },
+        },
+      },
+    },
   });
 }
 
@@ -136,10 +150,31 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
   const variants = await prisma.productVariant.findMany({
     where: { id: { in: lines.map((i) => i.variantId) } },
     include: {
-      product: { select: { name: true, minSalePrice: true, isActive: true } },
+      product: {
+        select: {
+          name: true,
+          minSalePrice: true,
+          isActive: true,
+          unit: { select: { name: true, allowDecimal: true } },
+        },
+      },
     },
   });
   const byId = new Map(variants.map((v) => [v.id, v]));
+
+  // The cart's qty box is `step="1"`, but a cart is only a suggestion until the
+  // server agrees with it (§21.2, §12.7a).
+  const badQty = checkQtyLines(
+    lines.map((l) => {
+      const v = byId.get(l.variantId);
+      return {
+        qty: l.qty,
+        unit: v?.product.unit ?? null,
+        label: v ? (v.label ? `${v.product.name} — ${v.label}` : v.product.name) : `#${l.variantId}`,
+      };
+    }),
+  );
+  if (badQty) return { error: badQty };
 
   // The customer's group rate is one of the two candidate discounts per line.
   const customer = s.customerId
@@ -373,7 +408,14 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
         const fresh = await tx.productVariant.findMany({
           where: { id: { in: items.map((i) => i.variantId) } },
           include: {
-            product: { select: { name: true, minSalePrice: true, isActive: true } },
+            product: {
+              select: {
+                name: true,
+                minSalePrice: true,
+                isActive: true,
+                unit: { select: { name: true, allowDecimal: true } },
+              },
+            },
           },
         });
         for (const v of fresh) byId.set(v.id, v);

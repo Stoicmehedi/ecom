@@ -17,7 +17,11 @@ export default async function EditPurchasePage({
     prisma.purchase.findUnique({
       where: { id: purchaseId },
       include: {
-        items: { include: { variant: { include: { product: true } } } },
+        items: {
+          include: {
+            variant: { include: { product: { include: { unit: true } } } },
+          },
+        },
         payments: true,
       },
     }),
@@ -56,6 +60,7 @@ export default async function EditPurchasePage({
               ? `${i.variant.product.name} — ${i.variant.label}`
               : i.variant.product.name,
             sku: i.variant.sku,
+            allowDecimal: i.variant.product.unit?.allowDecimal ?? false,
             qty: num(i.qty),
             purchasePrice: num(i.purchasePrice),
           })),

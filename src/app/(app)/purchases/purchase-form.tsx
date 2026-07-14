@@ -6,6 +6,7 @@ import { Plus, Trash2, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { savePurchase, type PurchaseInput } from "./actions";
 import { searchVariants, type VariantHit } from "./search";
+import { qtyStep } from "@/lib/qty";
 import { quickAddSupplier } from "../suppliers/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,8 @@ type Line = {
   sku: string;
   qty: number;
   purchasePrice: number;
+  /** Whether a fraction of this can be bought — a shirt's cannot (§21). */
+  allowDecimal: boolean;
 };
 
 type PayLine = { method: string; accountId: number | null; amount: number };
@@ -154,6 +157,7 @@ export function PurchaseForm({
           sku: hit.sku,
           qty: 1,
           purchasePrice: hit.purchasePrice,
+          allowDecimal: hit.allowDecimal,
         },
       ];
     });
@@ -401,11 +405,18 @@ export function PurchaseForm({
                 <TableCell>
                   <Input
                     type="number"
-                    step="0.001"
+                    step={qtyStep({ allowDecimal: l.allowDecimal })}
                     min="0"
                     className="text-right"
                     value={l.qty}
-                    onChange={(e) => updateLine(i, { qty: Number(e.target.value) })}
+                    onChange={(e) =>
+                      updateLine(i, {
+                        // A shirt cannot be bought in halves either (§21).
+                        qty: l.allowDecimal
+                          ? Number(e.target.value)
+                          : Math.round(Number(e.target.value)),
+                      })
+                    }
                   />
                 </TableCell>
                 <TableCell>

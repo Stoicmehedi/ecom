@@ -179,11 +179,32 @@ async function seedDemo(branchId: number, cashAccountId: number) {
     create: { name: "Northbound" },
   });
 
+  // A clothing shop counts in whole things: a shirt cannot be cut in half, so
+  // neither of these allows a fraction (BLUEPRINT §21). `allowDecimal` is set
+  // explicitly rather than left to the column default, because it is the whole
+  // point of the unit and a reader should not have to look up what the default is.
   let piece = await prisma.unit.findFirst({ where: { name: "Piece" } });
-  if (!piece) piece = await prisma.unit.create({ data: { name: "Piece", shortName: "pc" } });
+  if (!piece) {
+    piece = await prisma.unit.create({
+      data: { name: "Piece", shortName: "pc", allowDecimal: false },
+    });
+  }
 
   let pair = await prisma.unit.findFirst({ where: { name: "Pair" } });
-  if (!pair) pair = await prisma.unit.create({ data: { name: "Pair", shortName: "pr" } });
+  if (!pair) {
+    pair = await prisma.unit.create({
+      data: { name: "Pair", shortName: "pr", allowDecimal: false },
+    });
+  }
+
+  // A decimal unit, so a fresh database can prove the rule cuts both ways: metres
+  // of fabric genuinely do come in 2.5s, and MPoS must let them.
+  const metre = await prisma.unit.findFirst({ where: { name: "Metre" } });
+  if (!metre) {
+    await prisma.unit.create({
+      data: { name: "Metre", shortName: "m", allowDecimal: true },
+    });
+  }
 
   // The Size axis and its values, in wearing order — sortIndex is why the grid
   // reads S, M, L, XL and not alphabetically L, M, S, XL.

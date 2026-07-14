@@ -9,6 +9,8 @@ export type VariantHit = {
   sku: string;
   stockQty: number;
   purchasePrice: number;
+  /** Whether a fraction of this can be bought — a shirt's cannot (BLUEPRINT §21). */
+  allowDecimal: boolean;
 };
 
 /** Find variants by product name, SKU, or barcode — for the purchase line picker. */
@@ -27,7 +29,9 @@ export async function searchVariants(q: string): Promise<VariantHit[]> {
     },
     take: 20,
     orderBy: { id: "asc" },
-    include: { product: { select: { name: true } } },
+    include: {
+      product: { select: { name: true, unit: { select: { allowDecimal: true } } } },
+    },
   });
 
   return variants.map((v) => ({
@@ -36,5 +40,6 @@ export async function searchVariants(q: string): Promise<VariantHit[]> {
     sku: v.sku,
     stockQty: num(v.stockQty),
     purchasePrice: num(v.lastPurchasePrice ?? v.purchasePrice),
+    allowDecimal: v.product.unit?.allowDecimal ?? false,
   }));
 }

@@ -686,6 +686,55 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   variants** rather than an empty file. Typecheck + production build pass; `check-reports.ts` still
   reconciles; **no new lint findings** (the 9 existing ones pre-date this).
 
+- **Whole vs decimal units — BUILT (`BLUEPRINT.md` §21). A data-integrity bug, found by the user
+  asking a question I had answered too glibly.** Migration `whole_units`.
+
+  ⚠️ **Half a shirt could exist on the books.** Every qty column is `Decimal(14,3)` and `Unit` carried
+  **only a name** — no rule — so "Piece" and "Metre" were the same thing to the app. The guard was
+  left to the screens, and only **one** of them had it: the POS cart (`step="1"`). The **sale return**,
+  **purchase entry** and **stock adjustment** forms were all `step="0.001"`, and no server check
+  existed anywhere — `validateReturnLines` only asked whether the qty exceeded what was sold, never
+  whether it was a whole number.
+
+  **So MPoS refused to *sell* half a cap while letting you *buy*, *return* and *count* one.** Sell one
+  (18 → 17), return `0.5`, and stock becomes **17.5** — half a cap in stock, in the stock valuation and
+  in every report that reads them, and **impossible to clear**, because the till only sells whole ones.
+
+  - **The rule lives on the unit, not the screen** (`Unit.allowDecimal`, default **false** — whole is
+    both the common case and the safe one). The decimal *columns* stay: 2.5 metres of fabric is real,
+    and this schema should outlive one clothing shop.
+  - **One rule in one file** (`src/lib/qty.ts`), imported by the forms *and* the server, the same shape
+    as `pricing.ts`. Its server companion (`qty-server.ts`) does the unit lookup, so `qty.ts` stays
+    Prisma-free and safe to import from client components.
+  - **Every write that moves stock is guarded**: purchase, purchase return, POS sale, sale return,
+    exchange, stock adjustment, and opening stock. The sale-return and exchange checks sit *inside*
+    `validateReturnLines`, so the two paths cannot drift apart.
+  - **A product with no unit is treated as whole.** An unset field must never be a licence to create
+    fractional stock.
+  - **The forms take their `step` from the unit** and round a typed fraction away as it is typed — the
+    adjustment screen most strictly of all, because a count is not derived from anything: whatever is
+    typed *becomes* the truth.
+  - The unit master gets the toggle and a **Whole only / Fractional** column.
+  - **Existing fractional stock is never silently rounded** — that would invent or destroy goods. Only
+    new writes are guarded. (There was none; checked.)
+
+  **What the reference app settled** (studied read-only 2026-07-14; nothing created, edited or
+  deleted): their unit master is **Name + a "Decimal Unit" checkbox**, with a Decimal Unit column on
+  the list. ⚠️ **And their live data chose the default:** the shop has **exactly one unit, `PCS`, with
+  Decimal Unit = No.** *Fifth time the shop's own data has answered a design question.*
+
+  **Proven by forging the wire, not by trusting the UI.** The return form's qty box now rounds a typed
+  `0.5` to `1`, so I rewrote the request body in flight with Playwright and sent the server
+  `{"saleItemId":8,"qty":0.5}` anyway. It refused — *"CC-001" is sold in whole pieces — 0.5 is not a
+  whole number."* — and **wrote nothing**: cap stock still **18** (not 18.5), no return row, cash
+  unchanged at 24,876.80, and **no fractional stock anywhere in the database**.
+
+  **And the rule cuts both ways, which is the point.** Added *Cotton Fabric* (unit **Metre**,
+  `allowDecimal`), bought **2.5 m** through the ordinary purchase form → accepted, stock **2.5**, while
+  the Canvas Cap's qty box stays `step="1"` and its stock stays whole. The only fractional stock row in
+  the DB is the one that is *supposed* to be fractional. Typecheck + build pass; `check-reports.ts`
+  reconciles; no new lint findings.
+
 ---
 
 ## 5. Current state
@@ -756,6 +805,10 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   would return an empty screen); the rule lives once in `src/lib/categories.ts` and is shared by the
   POS, the products list and the CSV export — **the latter two had the exact-match bug live.** A scan
   ignores the filters by design; a typed search respects them.
+- ✅ **Whole vs decimal units done** (`BLUEPRINT.md` §21) — `Unit.allowDecimal` decides whether a
+  fraction of a thing is a real thing. **Half a shirt can no longer be bought, returned, counted or
+  sold**: one rule (`src/lib/qty.ts`), enforced by every stock-moving write on the server and by every
+  qty box in the UI. Metres and kilos still take 2.5. Proven against a **forged wire payload**.
 - 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses → Stock adjustments → Receipt & invoice). The app runs the
   whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
   margin, and who owes what in both directions.
@@ -786,6 +839,10 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   **`ADJ-00001`** (Field Tee M/Navy counted 4 of 10 → **−6**, a **36.00** stock loss).
   Receipt work then set the shop to **Zephyr & Co.** in Settings and added `INV-00003`
   (2 tees + a cap = 30.00, tendered 50.00 → change 20.00).
+  Verifying the whole-unit rule (§21) then added a **Metre** unit (`allowDecimal`), the product
+  **Cotton Fabric** (`FAB-001`) and **`PUR-00002`** (2.5 m @ 3.00 from Rahim Traders) — kept on purpose:
+  it is the only thing in the DB that exercises the *decimal* half of the rule, the way Field Tee
+  exercises the price floor. It is the sole fractional stock row, and it is meant to be.
   Re-seed before the next module if you want a clean slate.
 
 **Dev logins** (both seeded): `admin` / `admin123` (Admin — sees everything) · `cashier` /
@@ -826,6 +883,9 @@ polish: the receipt had no shop identity on it at all, and change was never stor
 
 ~~5. POS grid filters~~ — ✅ **DONE 2026-07-14.** It also uncovered and fixed a live exact-match
 category bug in the products list *and* the CSV export. See the progress log.
+
+~~6. Whole vs decimal units~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §21). A live data-integrity bug:
+half a shirt could be bought, returned and counted, though not sold. See the progress log.
 
 **START HERE (next session).**
 

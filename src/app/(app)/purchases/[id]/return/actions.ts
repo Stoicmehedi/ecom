@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { checkVariantQtys } from "@/lib/qty-server";
 import { revalidatePath } from "next/cache";
 import { avgAfterReversal, round2, round3 } from "@/lib/costing";
 import type { Prisma } from "@/generated/prisma/client";
@@ -74,6 +75,13 @@ export async function savePurchaseReturn(input: ReturnInput): Promise<ActionResu
       };
     }
   }
+
+  // Goods go back to the supplier in whole units, if that is how they come (§21).
+  const badQty = await checkVariantQtys(
+    prisma,
+    lines.map((l) => ({ variantId: byId.get(l.purchaseItemId)!.variantId, qty: l.qty })),
+  );
+  if (badQty) return { error: badQty };
 
   const total = round2(
     lines.reduce((s, l) => {

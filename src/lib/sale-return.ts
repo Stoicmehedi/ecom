@@ -1,4 +1,5 @@
 import { avgAfterPurchase, paidRatio, round2, round3 } from "@/lib/costing";
+import { checkQty, type UnitRule } from "@/lib/qty";
 import { pointsToReverse, pointsValue, type LoyaltySettings } from "@/lib/loyalty";
 import { reverseLoyaltyExpense } from "@/lib/expenses";
 import type { Prisma } from "@/generated/prisma/client";
@@ -24,7 +25,8 @@ export type ReturnableSale = {
     returnedQty: unknown;
     price: unknown;
     costAtSale: unknown;
-    variant: { sku: string };
+    /** The unit rides along so `validateReturnLines` can refuse half a shirt (§21). */
+    variant: { sku: string; product?: { unit?: UnitRule } };
   }[];
 };
 
@@ -100,6 +102,12 @@ export function validateReturnLines(
     if (line.qty > available + 0.0005) {
       return `You can return at most ${available} of "${item.variant.sku}" — the rest is already returned.`;
     }
+
+    // Half a shirt cannot come back, because half a shirt never went out (§21).
+    // Checked here rather than in each caller so the return screen and the POS
+    // exchange refuse it for the same reason, and cannot drift apart.
+    const badQty = checkQty(line.qty, item.variant.product?.unit ?? null, item.variant.sku);
+    if (badQty) return badQty;
   }
   return null;
 }

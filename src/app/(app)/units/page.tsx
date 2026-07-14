@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { AddUnitButton, UnitRowActions } from "./unit-dialog";
 
 export default async function UnitsPage() {
@@ -30,6 +31,7 @@ export default async function UnitsPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead className="w-32">Short</TableHead>
+              <TableHead className="w-36">Quantities</TableHead>
               <TableHead className="w-28">Products</TableHead>
               <TableHead className="w-24 text-right">Actions</TableHead>
             </TableRow>
@@ -38,7 +40,7 @@ export default async function UnitsPage() {
             {units.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={5}
                   className="py-10 text-center text-sm text-muted-foreground"
                 >
                   No units yet. Add your first one.
@@ -50,6 +52,11 @@ export default async function UnitsPage() {
                 <TableCell className="font-medium">{u.name}</TableCell>
                 <TableCell className="text-muted-foreground">
                   {u.shortName ?? "—"}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={u.allowDecimal ? "secondary" : "outline"}>
+                    {u.allowDecimal ? "Fractional" : "Whole only"}
+                  </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground tabular-nums">
                   {u._count.products}

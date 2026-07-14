@@ -229,10 +229,19 @@ model Color {
 }
 
 model Unit {
-  id        Int       @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   name      String
   shortName String?
-  products  Product[]
+  /// Whether a fraction of this unit is a real thing (BLUEPRINT §21).
+  ///
+  /// A piece cannot be cut in half; 2.5 metres of fabric is ordinary. Without
+  /// this, "Piece" and "Metre" are the same to the app, and half a shirt can
+  /// land on the books and never leave — the till will only sell whole ones.
+  ///
+  /// Defaults to FALSE: whole is both the common case and the safe one.
+  allowDecimal Boolean @default(false)
+
+  products Product[]
 }
 
 model Product {

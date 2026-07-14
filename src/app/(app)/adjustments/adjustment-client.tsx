@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { qtyStep } from "@/lib/qty";
 
 export type TypeOption = { id: number; name: string; _count: { adjustments: number } };
 
@@ -73,9 +74,20 @@ function AdjustmentForm({ types, onDone }: { types: TypeOption[]; onDone: () => 
     setLines((ls) => [...ls, { ...hit, countedQty: String(hit.stockQty) }]);
   }
 
+  /**
+   * You cannot count 4.5 shirts on a shelf (§21), so a fraction is refused as it
+   * is typed. This screen deserves the strictest guard in the app: a count is not
+   * derived from anything — whatever is typed *becomes* the truth.
+   */
   function setCount(variantId: number, value: string) {
     setLines((ls) =>
-      ls.map((l) => (l.variantId === variantId ? { ...l, countedQty: value } : l)),
+      ls.map((l) => {
+        if (l.variantId !== variantId) return l;
+        if (l.allowDecimal || value === "") return { ...l, countedQty: value };
+        const parsed = Number(value);
+        const whole = Number.isNaN(parsed) ? value : String(Math.round(parsed));
+        return { ...l, countedQty: whole };
+      }),
     );
   }
 
@@ -197,7 +209,7 @@ function AdjustmentForm({ types, onDone }: { types: TypeOption[]; onDone: () => 
                   <td className="p-2 text-right">
                     <Input
                       type="number"
-                      step="0.001"
+                      step={qtyStep({ allowDecimal: l.allowDecimal })}
                       min="0"
                       className="ml-auto w-24 text-right"
                       value={l.countedQty}

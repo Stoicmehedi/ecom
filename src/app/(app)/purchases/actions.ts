@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { checkVariantQtys } from "@/lib/qty-server";
 import { revalidatePath } from "next/cache";
 import {
   avgAfterPurchase,
@@ -187,6 +188,10 @@ export async function savePurchase(input: PurchaseInput): Promise<ActionResult> 
     }
   }
   const items = [...merged.values()];
+
+  // Half a shirt cannot be bought any more than it can be sold (§21).
+  const badQty = await checkVariantQtys(prisma, items);
+  if (badQty) return { error: badQty };
 
   const subtotal = round2(items.reduce((s, i) => s + i.qty * i.purchasePrice, 0));
   const discount = resolveDiscount(subtotal, p.discountType, p.discountValue);

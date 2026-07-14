@@ -10,6 +10,9 @@ export type ActionState = { ok?: boolean; error?: string };
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   shortName: z.string().trim().max(20).optional().or(z.literal("")),
+  // Whether a fraction of this unit is a real thing (BLUEPRINT §21). An unticked
+  // box posts nothing at all, so absence means false — which is the safe default.
+  allowDecimal: z.boolean().default(false),
 });
 
 export async function saveUnit(
@@ -20,6 +23,7 @@ export async function saveUnit(
   const parsed = schema.safeParse({
     name: formData.get("name"),
     shortName: formData.get("shortName"),
+    allowDecimal: formData.get("allowDecimal") === "on",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message };
@@ -27,6 +31,7 @@ export async function saveUnit(
   const data = {
     name: parsed.data.name,
     shortName: parsed.data.shortName || null,
+    allowDecimal: parsed.data.allowDecimal,
   };
   try {
     if (id) {

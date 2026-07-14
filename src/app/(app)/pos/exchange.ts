@@ -15,6 +15,8 @@ export type ExchangeLine = {
   returnable: number;
   /** What one unit is worth back, at what the customer actually paid for it. */
   unitPrice: number;
+  /** Whether half of this can come back — a shirt's cannot (BLUEPRINT §21). */
+  allowDecimal: boolean;
 };
 
 export type ExchangeSale = {
@@ -51,7 +53,19 @@ export async function findSaleForExchange(
       customer: { select: { id: true, name: true } },
       items: {
         include: {
-          variant: { select: { sku: true, label: true, product: { select: { name: true } } } },
+          variant: {
+            select: {
+              sku: true,
+              label: true,
+              product: {
+                select: {
+                  name: true,
+                  // The exchange panel takes its qty `step` from the unit (§21).
+                  unit: { select: { name: true, allowDecimal: true } },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -70,6 +84,7 @@ export async function findSaleForExchange(
       soldQty: Number(i.qty),
       returnable: returnableQty(i),
       unitPrice: round2(unitCredit(sale, i)),
+      allowDecimal: i.variant.product.unit?.allowDecimal ?? false,
     }))
     .filter((l) => l.returnable > 0);
 

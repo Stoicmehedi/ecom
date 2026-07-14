@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { findSaleForExchange, type ExchangeSale } from "./exchange";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { qtyStep } from "@/lib/qty";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -148,13 +149,15 @@ export function ExchangeDialog({
                           type="number"
                           min="0"
                           max={l.returnable}
-                          step="0.001"
+                          step={qtyStep({ allowDecimal: l.allowDecimal })}
                           className="h-8 text-right"
                           value={qtys[l.saleItemId] ?? ""}
                           placeholder="0"
                           onChange={(e) => {
+                            // Half a shirt cannot come back on an exchange either (§21).
+                            const typed = Number(e.target.value) || 0;
                             const n = Math.min(
-                              Math.max(Number(e.target.value) || 0, 0),
+                              Math.max(l.allowDecimal ? typed : Math.round(typed), 0),
                               l.returnable,
                             );
                             setQtys((prev) => {

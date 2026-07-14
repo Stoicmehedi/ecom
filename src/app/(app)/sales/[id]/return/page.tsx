@@ -20,7 +20,11 @@ export default async function SaleReturnPage({
       where: { id: saleId },
       include: {
         customer: { select: { name: true, isWalkIn: true } },
-        items: { include: { variant: { include: { product: true } } } },
+        items: {
+          include: {
+            variant: { include: { product: { include: { unit: true } } } },
+          },
+        },
       },
     }),
     prisma.account.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true } }),
@@ -68,6 +72,7 @@ export default async function SaleReturnPage({
           soldQty: num(i.qty),
           returnedQty: num(i.returnedQty),
           qty: 0,
+          allowDecimal: i.variant.product.unit?.allowDecimal ?? false,
         }))}
       />
     </div>

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { checkVariantQtys } from "@/lib/qty-server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { round2, round3 } from "@/lib/costing";
@@ -63,6 +64,15 @@ export async function saveAdjustment(input: AdjustmentInput): Promise<ActionResu
   // Same variant counted twice would fight itself — the last count wins.
   const merged = new Map<number, number>();
   for (const it of a.items) merged.set(it.variantId, it.countedQty);
+
+  // You cannot count 4.5 shirts on a shelf (§21) — and an adjustment is the one
+  // screen where a fraction would be *believed*, because a count is not derived
+  // from anything: whatever is typed becomes the truth.
+  const badQty = await checkVariantQtys(
+    prisma,
+    [...merged].map(([variantId, qty]) => ({ variantId, qty })),
+  );
+  if (badQty) return { error: badQty };
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -281,6 +291,8 @@ export type VariantHit = {
   sku: string;
   stockQty: number;
   cost: number;
+  /** Whether a fraction of this can sit on a shelf — a shirt's cannot (§21). */
+  allowDecimal: boolean;
 };
 
 /** Find variants to count. Same search the POS uses: name, SKU or barcode. */
@@ -299,7 +311,9 @@ export async function searchVariants(term: string): Promise<VariantHit[]> {
         { product: { name: { contains: q, mode: "insensitive" } } },
       ],
     },
-    include: { product: { select: { name: true } } },
+    include: {
+      product: { select: { name: true, unit: { select: { allowDecimal: true } } } },
+    },
     orderBy: [{ productId: "asc" }, { sortIndex: "asc" }],
     take: 20,
   });
@@ -310,5 +324,6 @@ export async function searchVariants(term: string): Promise<VariantHit[]> {
     sku: v.sku,
     stockQty: Number(v.stockQty),
     cost: Number(v.purchasePrice),
+    allowDecimal: v.product.unit?.allowDecimal ?? false,
   }));
 }
