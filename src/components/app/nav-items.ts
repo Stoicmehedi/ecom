@@ -16,6 +16,7 @@ import {
   Settings,
   type LucideIcon,
   Landmark,
+  IdCard,
 } from "lucide-react";
 
 export type NavItem = {
@@ -46,6 +47,12 @@ export const navItems: NavItem[] = [
   { label: "Suppliers", href: "/suppliers", icon: Truck },
   { label: "Expenses", href: "/expenses", icon: Wallet, permission: "expenses.manage" },
   { label: "Accounts", href: "/accounts", icon: Landmark, permission: "accounts.manage" },
+  {
+    label: "Employees",
+    href: "/employees",
+    icon: IdCard,
+    permission: "employees.manage",
+  },
   { label: "Reports", href: "/reports", icon: BarChart3 },
   { label: "Settings", href: "/settings", icon: Settings, permission: "settings.manage" },
 ];

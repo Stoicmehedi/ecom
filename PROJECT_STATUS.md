@@ -851,6 +851,52 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   refused (*"You do not have permission to manage accounts"*), **zero rows written**. The cashier's
   sidebar has no Accounts link and `/accounts` redirects.
 
+- **Employees & salary** (`BLUEPRINT.md` §24) — the staff, and what each is owed this month.
+
+  **The claim that got corrected.** The previous entry in §6 said Phase-2's remainder had "no evidence
+  of use in the reference shop", employees included. The user said to look again, and the data said
+  otherwise: **four employees, fourteen consecutive months of salary through Dec 2025**, every sampled
+  month identical — full salary, due 0, dated the **last day of the month**, paid in **cash**. It is the
+  most regularly used thing in that account after selling. I was wrong, and the note in §6 has been
+  rewritten to say so rather than quietly deleted — a "no evidence" finding is a claim about how hard
+  you looked.
+
+  **What the reference app settled** (studied read-only 2026-07-14; nothing created, edited or
+  submitted): employee fields (name, designation, mobile, address, joining date, monthly salary all
+  **mandatory**; email/NID/photo optional), read off an **existing record's edit page**. **Commission is
+  dead** — 0 earned, 0 paid, 0 due, for all four, and the manager's rate is blank; **not built**. No sign
+  of advances or partial payments in any sampled month. Their salary is a **silo**: it is *not* in the
+  expense list (720,797 of expenses, no Salary type), and it gets its own line in the P&L beside
+  "Expense". **We deliberately did not copy that.**
+
+  **What we built instead.** A wage payment posts an ordinary **`Expense` of system type "Salary"**
+  against a real account. That single decision is why wages reach Operating expenses → Net profit
+  **with no reporting code written for them**, why they appear by name on the account statement, and why
+  no second code path can forget them. And **one document, not two**: their separate "Pay Salary" and
+  "Pay Advance" forms collapse into one `SalaryPayment` (employee · month · year · amount · date ·
+  account) — an *advance* is a payment stamped with a month that hasn't arrived, a *partial* is just a
+  smaller amount. **The month's due is derived** (`monthlySalary − Σ paid for that month`), never stored,
+  so it cannot drift from the payments.
+
+  **Browser-verified, every figure read back from the DB.** Paid Rahim 15,000 in full and Nahid 5,000 of
+  8,000: the sheet showed **23,000 wage bill / 20,000 paid / 3,000 owed**, Cash fell **24,000.80 →
+  4,000.80**, and the P&L for 1–31 July grew a **Salary (20,000.00)** line, taking expenses to exactly the
+  45,036 the DB holds. The statement names each row *"Expense · Salary · Rahim Uddin — July 2026 salary"*
+  with **no drift**. **Undo is exact**: reversing Nahid's 5,000 put Cash back to 9,000.80 and cascaded the
+  Salary expense *and* its payment leg away, with no orphans. Deleting a paid employee was **refused**.
+  August correctly shows the same 23,000 owed afresh — the due is per-month.
+
+  **The guards were proven by forging the wire.** A genuine `paySalary` call was captured and replayed
+  with hostile payloads: paying Rahim **twice** for July → *"already been paid in full"*; paying Nahid
+  **4,000** when 3,000 was left → *"Only 3000.00 is left"*; paying out of the **empty Bank** → *"Bank holds
+  0.00"*. Then the same call, with a payload that would have **succeeded for an admin**, was replayed
+  **from a cashier's session** → *"You do not have permission to manage employees"*. **Zero rows written by
+  any of them.** The cashier's sidebar has no Employees link and `/employees` redirects.
+
+  `check-reports.ts` now also asserts **Σ salary paid = Σ Salary expense** (a wage the profit never saw
+  would be money out of the till and out of the books) and, for every account, **opening + movements =
+  balance**.
+
 ---
 
 ## 5. Current state
@@ -931,6 +977,14 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   one row touching two accounts. **Admin-only** (`accounts.manage`), proven against a **forged wire
   payload**. ⚠️ Worth knowing: the reference shop has **one cash account and has never banked a taka** —
   no transfers, no withdrawals, and one deposit ever (to type in their starting cash).
+- ✅ **Employees & salary done** (`BLUEPRINT.md` §24) — the staff, and a **monthly salary sheet**
+  (wage bill · paid · still owed) that derives each month's due from `monthlySalary − Σ paid for that
+  month` rather than storing it. **A wage payment is an ordinary `Expense` of system type "Salary"**
+  against a real account, which is the only reason it reaches the P&L — no reporting code was touched
+  to make Salary appear there. **One document, not two:** an *advance* is a payment stamped with a
+  month that hasn't arrived, a *partial* is a smaller amount. Refuses to overpay a month, to overdraw
+  the account, or to delete someone who has been paid. **Admin-only** (`employees.manage`), proven
+  against a **forged wire payload**. Commission is **not** built — the reference shop has never used it.
 - 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses → Stock adjustments → Receipt & invoice). The app runs the
   whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
   margin, and who owes what in both directions.
@@ -972,6 +1026,9 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   Cash sits at **24,900.80**. Kept: it is the only data that exercises the allocation ledger.
   Verifying Accounts (§23) then left a **900.00 withdrawal** from Cash ("owner took cash"); the 5,000
   Cash→Bank transfer was undone, so Bank is back at **0.00** and Cash sits at **24,000.80**.
+  Verifying Employees (§24) then added **Rahim Uddin** (Manager, 15,000) and **Nahid Hasan** (Sales
+  Executive, 8,000), both paid in full for **July 2026** on the 31st out of Cash — so there are two
+  **Salary** expenses totalling **23,000**, and Cash sits at **1,000.80**.
   Re-seed before the next module if you want a clean slate.
 
 **Dev logins** (both seeded): `admin` / `admin123` (Admin — sees everything) · `cashier` /
@@ -1024,20 +1081,23 @@ chased customers who had already paid. See the progress log.
 statement, deposit/withdraw/transfer. ⚠️ The study found the shop has **never banked a taka** — built in
 full on the user's instruction anyway.
 
+~~9. Employees & salary~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §24). The one Phase-2 item the shop
+**does** use, every month. See the progress log.
+
 **START HERE (next session).**
 
 1. **Pick from the Phase-2 remainder below — but check the shop's data first.** Nothing is now a known
-   defect. The honest position: Phase 2's outstanding items (employees/salary, quotations, VAT, SMS,
-   courier, customer areas) all have **no evidence of use** in the reference shop, and that check has
-   corrected six assumptions so far. Ask the user what the shop actually needs next rather than
-   working down the roadmap.
+   defect. Of what is left (quotations, VAT, SMS, courier, customer areas), **none shows evidence of
+   use** in the reference shop — but note that this claim was written once about **employees too, and
+   it was false**: the shop had been paying four people for fourteen straight months. The lesson is not
+   "the remainder is dead", it is **go and look, per item, before deciding either way**. Ask the user
+   what the shop actually needs next rather than working down the roadmap.
 
 **Then, in rough order of value:**
 
-2. The rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary (**salary is an expense type
-   today** — it earns its own subsystem when there are employees to attach it to), VAT (only if it is
-   actually needed), quotations. ⚠️ **Check the shop's own data before building any of them** — that
-   method has now killed or corrected six assumptions.
+2. The rest of Phase 2 (see `BLUEPRINT.md` §5): VAT (only if it is actually needed), quotations.
+   ⚠️ **Check the shop's own data before building any of them** — that method has now killed or
+   corrected seven assumptions, and caught itself getting one wrong.
 3. Still open from §20: a **shop logo** on the receipt — deliberately deferred, because an image needs
    the **storage decision** §12 has been parking (where do uploaded files live?). Settle that once and
    it unblocks product images too.

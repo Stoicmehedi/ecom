@@ -226,6 +226,39 @@ async function main() {
     );
   }
 
+  // Wages are an ordinary expense, and that is the only reason they reach the P&L.
+  // If a wage payment ever existed without its expense, the shop would have paid
+  // money the profit never saw — so the two are checked against each other.
+  console.log("\nWages are in the books, not beside them:");
+  const salaryPaid = await prisma.salaryPayment.aggregate({ _sum: { amount: true } });
+  const salaryExpensed = await prisma.expense.aggregate({
+    where: { expenseType: { name: "Salary" } },
+    _sum: { amount: true },
+  });
+  check(
+    "Σ salary paid == Σ Salary expense",
+    r2(N(salaryExpensed._sum.amount)),
+    r2(N(salaryPaid._sum.amount)),
+  );
+
+  // And every account holds exactly what has moved through it.
+  console.log("\nEvery account holds what moved through it:");
+  const accounts = await prisma.account.findMany({
+    select: {
+      name: true,
+      openingBalance: true,
+      balance: true,
+      payments: { select: { direction: true, amount: true } },
+    },
+  });
+  for (const a of accounts) {
+    const moved = a.payments.reduce(
+      (sum, p) => sum + (p.direction === "IN" ? N(p.amount) : -N(p.amount)),
+      N(a.openingBalance),
+    );
+    check(`${a.name}: opening + movements = balance`, r2(moved), r2(N(a.balance)));
+  }
+
   console.log(
     failures === 0
       ? "\nAll report figures agree with the underlying rows."

@@ -137,6 +137,7 @@ model Branch {
   sales     Sale[]
   expenses  Expense[]
   adjustments StockAdjustment[]
+  employees   Employee[]
 }
 
 model Role {
@@ -163,6 +164,7 @@ model User {
   branch   Branch? @relation(fields: [branchId], references: [id])
 
   salesSold Sale[]     @relation("SoldBy")
+  salariesPaid SalaryPayment[] @relation("SalaryBy")
   heldSales HeldSale[] @relation("HeldBy")
   expenses  Expense[]  @relation("ExpenseBy")
   adjustments StockAdjustment[] @relation("AdjustmentBy")
@@ -628,6 +630,7 @@ model Account {
 
   payments Payment[]
   expenses Expense[]
+  salaries SalaryPayment[]
 
   transfersOut AccountTransfer[] @relation("TransferFrom")
   transfersIn  AccountTransfer[] @relation("TransferTo")
@@ -773,6 +776,11 @@ model Expense {
   stockAdjustmentId Int?
   stockAdjustment   StockAdjustment? @relation(fields: [stockAdjustmentId], references: [id], onDelete: Cascade)
 
+  /// Set on the "Salary" expense a wage payment posts (§24.2). Wages are an ordinary
+  /// expense — that is what puts them in the P&L without a second code path.
+  salaryPaymentId Int?
+  salaryPayment   SalaryPayment? @relation(fields: [salaryPaymentId], references: [id], onDelete: Cascade)
+
   branchId    Int?
   branch      Branch? @relation(fields: [branchId], references: [id])
   createdById Int?
@@ -860,4 +868,64 @@ model AccountTransfer {
   payments Payment[]
 
   createdAt DateTime @default(now())
+}
+
+// ---------- Employees & salary (BLUEPRINT §24) ----------
+
+model Employee {
+  id            Int      @id @default(autoincrement())
+  name          String
+  designation   String
+  phone         String
+  address       String?
+  email         String?
+  /// National ID. Optional in their form too.
+  nid           String?
+  joiningDate   DateTime
+  /// What they are owed each month. A payment may be more or less than it.
+  monthlySalary Decimal  @db.Decimal(14, 2)
+  /// Staff are retired, not deleted — one of the reference shop's four is inactive.
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  branchId Int?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  payments SalaryPayment[]
+}
+
+/// Wages paid to one employee for one month (BLUEPRINT §24.3).
+///
+/// ONE document covers what the reference app splits into "Pay Salary" and "Pay
+/// Advance": an advance is just a payment stamped with a month that has not
+/// arrived yet, and a partial payment is just a smaller amount. The month's DUE is
+/// derived (`monthlySalary − Σ paid for that month`), never stored — a stored due
+/// is a second number that can disagree with the payments behind it.
+model SalaryPayment {
+  id     Int      @id @default(autoincrement())
+  /// The month the wages are FOR — not when they were handed over.
+  month  Int // 1–12
+  year   Int
+  amount Decimal  @db.Decimal(14, 2)
+  /// When the money actually left. Back-datable: the shop pays on the last day.
+  date   DateTime @default(now())
+  note   String?
+  createdAt DateTime @default(now())
+
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  /// Which account it left. Required in practice — a wage that moves no money is
+  /// not a wage — but nullable so the FK matches every other document.
+  accountId Int?
+  account   Account? @relation(fields: [accountId], references: [id])
+
+  paidById Int?
+  paidBy   User? @relation("SalaryBy", fields: [paidById], references: [id])
+
+  /// The Salary expense this posted. It cascades away when the payment is deleted.
+  expenses Expense[]
+
+  @@index([employeeId])
+  @@index([year, month])
 }

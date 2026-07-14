@@ -143,3 +143,44 @@ export async function postStockLossExpense(
     },
   });
 }
+
+/** The system expense type that wages post against (BLUEPRINT §24.2). */
+export const SALARY_EXPENSE_TYPE = "Salary";
+
+/**
+ * Book wages as an ordinary expense.
+ *
+ * The reference app keeps salary in its own silo, with its own line on the P&L
+ * beside "Expense". We don't: wages are money the shop spent, so they post the
+ * same `Expense` every other cost does. That is what puts them into **Operating
+ * expenses → Net profit** with no second code path that could forget them, and it
+ * is what makes them show up by name on the account statement (§23).
+ *
+ * Unlike the loyalty and stock-loss expenses, this one HAS an account — the money
+ * really did leave the drawer. The caller writes the matching `Payment`.
+ */
+export async function postSalaryExpense(
+  tx: Tx,
+  args: {
+    salaryPaymentId: number;
+    employeeName: string;
+    monthLabel: string;
+    amount: number;
+    accountId: number | null;
+    date: Date;
+    branchId?: number | null;
+  },
+): Promise<number> {
+  const expense = await tx.expense.create({
+    data: {
+      date: args.date,
+      amount: round2(args.amount),
+      expenseTypeId: await systemExpenseTypeId(tx, SALARY_EXPENSE_TYPE),
+      accountId: args.accountId,
+      salaryPaymentId: args.salaryPaymentId,
+      branchId: args.branchId ?? null,
+      note: `${args.employeeName} — ${args.monthLabel} salary`,
+    },
+  });
+  return expense.id;
+}

@@ -1645,3 +1645,79 @@ opens a bank account.
 - **Cash Flow** as a separate screen. The P&L already carries a cash-movement block (§11), and the
   statement now carries the detail. A third view of the same money would be a fourth place for it to
   disagree.
+
+---
+
+## 24. Employees & salary *(studied read-only 2026-07-14; nothing created, edited or deleted)*
+
+### 24.1 What the reference shop actually does
+
+⚠️ **This one is used, and I had wrongly written it off.** `PROJECT_STATUS.md` claimed Phase-2's
+remainder had "no evidence of use". The user pushed back; the data says they were right.
+
+- **Four employees**: a Manager on 15,000 and three Sales Executives on 8,000 (one now Inactive).
+- **Salary is paid every month, without a gap** — **14 consecutive monthly runs** through Dec 2025.
+- **Sampled five months** (Mar, Jul, Sep, Nov, Dec 2025) — **every one identical**: each employee paid
+  their **full** salary, **due 0**, **dated the last day of the month**, in **cash**. The same
+  month-end habit as their expenses (§18.1).
+- ❌ **Commission is dead.** The feature exists — a `commission_rate` on the employee, a Sales
+  Commission screen, a Commission Payments list — and it is **zero for all four employees**, with the
+  manager's rate left **blank**. *The software offers it; the shop does not do it.*
+- ❌ **No evidence of advances.** They have a "Pay Advance" screen, but not one sampled month shows a
+  partial payment or a due, which is what an advance would produce.
+
+**Employee fields** (read from an existing record's edit page): name\*, designation\*, mobile\*,
+address\*, joining date\*, monthly salary\* — plus optional email, NID number, photo, commission rate.
+
+### 24.2 The modelling decision — and where theirs is worse
+
+In their system salary is a **silo**: it does **not** appear in the expense list at all (720,797 of
+expenses, no salary type among them). It gets its own **"Salary" line** in the Cash Flow and in the
+P&L, beside "Expense".
+
+**We do not copy that.** MPoS already has expenses that post a real `Payment` against an account and
+flow into **Operating expenses → Net profit** (§18). So:
+
+> **Paying a salary posts an ordinary `Expense` of system type "Salary".**
+
+Wages then land in the P&L **automatically**, the account statement (§23) names them, and there is no
+second code path that could forget them. This is precisely what §18 predicted: *"salary is an expense
+type, not a subsystem — it earns its own subsystem when there are employees to attach it to."* Now
+there are.
+
+### 24.3 One document, not two
+
+Their design has **two** forms — "Pay Salary" and "Pay Advance" — but the advance form carries a
+`salary_month`, an `already_salary` and an `advance_pay`. An advance **is** a salary payment for a
+month, made early. So MPoS has **one** document:
+
+> **A salary payment: employee · month · year · amount · date · account.**
+
+- Paying June's wages in May is simply a payment stamped `month = June`. **The advance comes free**,
+  with no second concept to keep in step.
+- Paying half is simply a smaller amount. **The partial payment comes free too**, and the month's
+  **due is derived** (`monthly salary − paid for that month`) rather than stored — a stored due is a
+  second number that can disagree.
+
+### 24.4 Requirements
+
+1. **Employees master** — the fields above (commission rate **omitted**: zero usage). Active/inactive,
+   because they retire staff rather than delete them (one of their four is Inactive).
+2. **An employee who has been paid cannot be deleted** — refuse, don't cascade, or the salary expenses
+   would be stranded (same rule as an account with history, §23.3).
+3. **A salary payment posts a real `Expense`** of type **"Salary"** (a system type, like "Stock loss"
+   and "Loyalty points") against a real account, so money **leaves the drawer** and the **P&L books
+   it**. An expense that doesn't move the drawer is a lie on the P&L (§18).
+4. **The salary sheet** — one month at a time: every active employee, their salary, what they have been
+   paid for that month, and what is left. Defaults to **this month**, and the payment date defaults to
+   the **last day of the month**, because that is when the shop pays.
+5. **Deleting a salary payment reverses it exactly** — the expense and its payment go with it, and the
+   account balance goes back.
+6. **Admin-only** (`employees.manage`) on the page *and* every server action. What the staff are paid
+   is not a cashier's business — the same reasoning as expenses (§18.8).
+
+### 24.5 Not built
+
+- **Commission** — zero usage (§24.1). Build only on request.
+- **A separate advance document** — subsumed by §24.3.
+- **Attendance, leave, payroll tax** — no trace of any of it, and none is a clothing shop's problem.
