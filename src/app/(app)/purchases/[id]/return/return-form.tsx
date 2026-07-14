@@ -1,5 +1,7 @@
 "use client";
 
+import { selectId } from "@/lib/select";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -138,7 +140,7 @@ export function ReturnForm({
           <Label>Reason *</Label>
           <Select
             value={returnTypeId ? String(returnTypeId) : undefined}
-            onValueChange={(v) => setReturnTypeId(Number(v))}
+            onValueChange={(v) => { const id = selectId(v, []); if (id) setReturnTypeId(id); }}
           >
             <SelectTrigger>
               <SelectValue placeholder="Why is it going back?" />
@@ -246,7 +248,7 @@ export function ReturnForm({
               <Label className="text-xs">Account</Label>
               <Select
                 value={refundAccountId ? String(refundAccountId) : undefined}
-                onValueChange={(v) => setRefundAccountId(Number(v))}
+                onValueChange={(v) => { const id = selectId(v, []); if (id) setRefundAccountId(id); }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Account" />

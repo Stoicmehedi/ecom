@@ -18,6 +18,9 @@ import { paidRatio } from "@/lib/costing";
 import { pointsEarned, pointsValue, redeemLimit } from "@/lib/loyalty";
 import type { ShopSettings } from "@/lib/settings";
 import { checkout, holdSale, resumeHeldSale, discardHeldSale } from "./actions";
+import Image from "next/image";
+import { fileUrl } from "@/lib/files";
+import { selectId } from "@/lib/select";
 import { browsePos, searchPos, type PosHit, type PosProduct } from "./search";
 import { VariantPicker, needsPicker } from "./variant-picker";
 import { ExchangeDialog, type ExchangePick } from "./exchange-panel";
@@ -483,7 +486,7 @@ export function PosTerminal({
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={categoryId ? String(categoryId) : ALL}
-            onValueChange={(v) => setCategoryId(v === ALL ? undefined : Number(v))}
+            onValueChange={(v) => setCategoryId(selectId(v, [ALL]) ?? undefined)}
           >
             <SelectTrigger className="w-56">
               <SelectValue placeholder="All categories" />
@@ -500,7 +503,7 @@ export function PosTerminal({
 
           <Select
             value={brandId ? String(brandId) : ALL}
-            onValueChange={(v) => setBrandId(v === ALL ? undefined : Number(v))}
+            onValueChange={(v) => setBrandId(selectId(v, [ALL]) ?? undefined)}
           >
             <SelectTrigger className="w-44">
               <SelectValue placeholder="All brands" />
@@ -590,6 +593,18 @@ export function PosTerminal({
                     : "hover:border-primary hover:bg-accent"
                 }`}
               >
+                {h.imageKey && (
+                  <div className="relative mb-2 aspect-square w-full overflow-hidden rounded bg-muted/40">
+                    <Image
+                      src={fileUrl(h.imageKey)!}
+                      alt=""
+                      fill
+                      sizes="160px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
+                )}
                 <p className="line-clamp-2 text-sm font-medium">{h.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {many ? `${h.variants.length} options` : h.variants[0].sku}
@@ -624,7 +639,7 @@ export function PosTerminal({
         <div className="flex gap-2">
           <Select
             value={customerId ? String(customerId) : undefined}
-            onValueChange={(v) => pickCustomer(Number(v))}
+            onValueChange={(v) => { const id = selectId(v, []); if (id) pickCustomer(id); }}
           >
             <SelectTrigger className="flex-1">
               <SelectValue placeholder="Customer" />
@@ -1045,13 +1060,13 @@ export function PosTerminal({
                   <Label className="text-xs">Account</Label>
                   <Select
                     value={p.accountId ? String(p.accountId) : undefined}
-                    onValueChange={(v) =>
+                    onValueChange={(v) => {
+                      const id = selectId(v, []);
+                      if (!id) return;
                       setPayments((prev) =>
-                        prev.map((x, idx) =>
-                          idx === i ? { ...x, accountId: Number(v) } : x,
-                        ),
-                      )
-                    }
+                        prev.map((x, idx) => (idx === i ? { ...x, accountId: id } : x)),
+                      );
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Account" />

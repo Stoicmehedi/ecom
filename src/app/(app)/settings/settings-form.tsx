@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { pointsEarned, pointsValue } from "@/lib/loyalty";
 import type { ShopSettings } from "@/lib/settings";
 import { invoicePrefixError, invoiceRule, nextDocNo, seqOf } from "@/lib/docno";
+import { ImageUpload } from "@/components/image-upload";
 import { saveSettings } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,16 @@ export function SettingsForm({
           </p>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <ImageUpload
+                folder="logo"
+                value={s.logoKey}
+                onChange={(key) => set("logoKey", key)}
+                label="Logo"
+                hint="Prints at the top of the receipt, the invoice and the shared link."
+              />
+            </div>
+
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="shopName">Shop name *</Label>
               <Input

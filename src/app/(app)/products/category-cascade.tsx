@@ -1,5 +1,7 @@
 "use client";
 
+import { selectId } from "@/lib/select";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -155,6 +157,7 @@ export function CategoryCascade({
 
   const sel = (id: number | null) => (id == null ? "none" : String(id));
 
+
   return (
     <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
       {/* Category */}
@@ -164,7 +167,9 @@ export function CategoryCascade({
           <Select
             value={sel(catId)}
             onValueChange={(v) => {
-              setCatId(v === "none" ? null : Number(v));
+              const id = selectId(v);
+              if (id === undefined) return;
+              setCatId(id);
               setSubId(null);
               setChildId(null);
             }}
@@ -202,7 +207,9 @@ export function CategoryCascade({
             value={sel(subId)}
             disabled={catId == null}
             onValueChange={(v) => {
-              setSubId(v === "none" ? null : Number(v));
+              const id = selectId(v);
+              if (id === undefined) return;
+              setSubId(id);
               setChildId(null);
             }}
           >
@@ -238,7 +245,10 @@ export function CategoryCascade({
           <Select
             value={sel(childId)}
             disabled={subId == null}
-            onValueChange={(v) => setChildId(v === "none" ? null : Number(v))}
+            onValueChange={(v) => {
+              const id = selectId(v);
+              if (id !== undefined) setChildId(id);
+            }}
           >
             <SelectTrigger className="flex-1">
               <SelectValue

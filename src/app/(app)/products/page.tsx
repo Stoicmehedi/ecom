@@ -1,3 +1,5 @@
+import Image from "next/image";
+import { fileUrl } from "@/lib/files";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -190,10 +192,28 @@ export default async function ProductsPage({
               return (
                 <TableRow key={p.id} className={p.isActive ? undefined : "opacity-60"}>
                   <TableCell className="font-medium">
-                    {p.name}
-                    {p.code && (
-                      <span className="block text-xs text-muted-foreground">{p.code}</span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {p.imageKey ? (
+                        <Image
+                          src={fileUrl(p.imageKey)!}
+                          alt=""
+                          width={40}
+                          height={40}
+                          unoptimized
+                          className="size-10 shrink-0 rounded border object-cover"
+                        />
+                      ) : (
+                        <span className="size-10 shrink-0 rounded border bg-muted/40" />
+                      )}
+                      <span>
+                        {p.name}
+                        {p.code && (
+                          <span className="block text-xs text-muted-foreground">
+                            {p.code}
+                          </span>
+                        )}
+                      </span>
+                    </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {p.category?.name ?? "—"}

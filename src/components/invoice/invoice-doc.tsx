@@ -1,5 +1,7 @@
+import Image from "next/image";
 import { money, num, qty } from "@/lib/format";
 import { lineName, type InvoiceDoc } from "@/lib/invoice";
+import { fileUrl } from "@/lib/files";
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: "Cash",
@@ -15,8 +17,21 @@ export const methodLabel = (m: string | null | undefined) =>
   METHOD_LABELS[m ?? ""] ?? m ?? "Paid";
 
 export function ShopHeader({ shop }: { shop: InvoiceDoc["shop"] }) {
+  const logo = fileUrl(shop.logoKey);
   return (
     <div className="text-center">
+      {logo && (
+        // Print-safe: a fixed height, no optimiser, so what the till renders is what the
+        // printer puts on the roll.
+        <Image
+          src={logo}
+          alt=""
+          width={160}
+          height={64}
+          unoptimized
+          className="mx-auto mb-1 h-16 w-auto object-contain"
+        />
+      )}
       <p className="text-base font-bold tracking-wide">{shop.shopName}</p>
       {shop.shopAddress && <p>{shop.shopAddress}</p>}
       {shop.shopPhone && <p>{shop.shopPhone}</p>}
@@ -33,6 +48,7 @@ export function ShopHeader({ shop }: { shop: InvoiceDoc["shop"] }) {
  */
 export function A4Invoice({ doc }: { doc: InvoiceDoc }) {
   const { sale, shop, totalInWords, tendered, change, totalQty } = doc;
+  const logo = fileUrl(shop.logoKey);
 
   // Date always; the time only if the shop wants it on the document (§27.3).
   const stamp = sale.date.toLocaleString(undefined, {
@@ -46,6 +62,16 @@ export function A4Invoice({ doc }: { doc: InvoiceDoc }) {
     <div className="invoice mx-auto w-full max-w-3xl bg-white p-8 text-black">
       <div className="flex flex-wrap items-start justify-between gap-6 border-b pb-6">
         <div>
+          {logo && (
+            <Image
+              src={logo}
+              alt=""
+              width={200}
+              height={80}
+              unoptimized
+              className="mb-2 h-20 w-auto object-contain"
+            />
+          )}
           <h1 className="text-2xl font-bold tracking-tight">{shop.shopName}</h1>
           {shop.shopAddress && <p className="text-sm">{shop.shopAddress}</p>}
           {shop.shopPhone && <p className="text-sm">{shop.shopPhone}</p>}

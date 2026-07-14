@@ -1041,6 +1041,61 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
     uploads directory must be backed up **beside** the database, or a restore comes back with dead image
     links. This is written into §7.
 
+- **Shop logo & product images — BUILT (`BLUEPRINT.md` §28).** Migration `uploads`. The storage question
+  §12 had been parking since the receipt work is closed, and with it the last gap in §27.
+  - **Local disk, outside `public/`** (settled with the user): `UPLOAD_DIR`, defaulting to
+    `./data/uploads`. The DB stores a **key**, never a URL, and `/api/files/<key>` serves the bytes.
+    ⚠️ **`public/` was never a real option** — Next.js serves it as a *build-time* asset directory, so a
+    file written there at runtime is not reliably served and a redeploy silently takes the shop's logo
+    and every product photo with it. Object storage was rejected *for this app*: a single-store till
+    should not need the network to show its own product images. **One module** (`src/lib/storage.ts`),
+    so an S3 driver is a new file, not a migration.
+  - **The browser's word is never taken for what a file is.** The declared MIME type and the extension
+    are both attacker-controlled, so the **bytes are sniffed** (PNG/JPEG/WebP magic numbers) and the
+    extension comes from what they actually say. The stored name is **16 bytes of CSPRNG hex**, never
+    the user's filename — a filename can carry `../`, a null byte, or somebody else's name. Size capped
+    at 2 MB. The serving route validates the key against a strict pattern before it touches the disk.
+  - **Files do not accumulate.** Replacing an image deletes the old one; deleting a product takes its
+    photo with it; **duplicating a product copies the bytes to a key of its own** (a shared key would
+    mean deleting one product blanks the other's picture); and an upload that is replaced or removed
+    before the record is saved is **discarded** — the server refusing to discard a key any record still
+    references.
+  - **Product images earn their keep on the POS tile** — a cashier finds goods faster by sight than by
+    name — and on the product list. They replace the **pasted image URL**, which needed the picture
+    hosted somewhere else first and had **never held a single value**.
+  - ⚠️ **Backups changed, and §7 now says so:** a `pg_dump` alone is no longer a complete backup. The
+    uploads directory must be backed up **beside** the database, or a restore comes back with every
+    image link dead.
+
+  🐛 **And it uncovered a live bug that had made the whole catalogue uneditable** (`BLUEPRINT.md`
+  §12.11). Radix fires `onValueChange("")` while a `<Select>` settles — and **`Number("") === 0`** — so
+  the category came out as **id 0**, which no row can have. Every save of an existing product died on
+  `Product_categoryId_fkey` behind the words *"Something went wrong saving the product."*
+  **Every product has a category, so no product could be edited at all** — not renamed, not retired, not
+  repriced. **Proven on the committed `main`, with none of this work applied**, by opening Classic Tee
+  and pressing Save: it failed. The same `Number(v)` sat on **seven** other selects, including two
+  **payment-account** pickers — the same crash, but with money in it. Now **one parser**
+  (`src/lib/select.ts`): an empty event is the widget talking to itself and is **ignored**; only a
+  sentinel clears the pick. The server also refuses an id that does not exist **by name** rather than
+  dying on a constraint behind a shrug — the shrug is what hid this.
+
+  **Browser-verified end to end.** A logo uploaded in Settings landed on disk under a random name and
+  printed at the top of the **receipt** at its true size; a product photo uploaded on Classic Tee's edit
+  page (**which now saves at all — and keeps its category, Apparel › Tops › T-Shirts**) shows on the
+  **POS tile**. Replacing it **deleted the old file** — two files on disk, zero orphans.
+  **Forged uploads refused:** a PHP payload named `evil.png` was rejected (*"That is not a PNG, JPEG or
+  WebP image"*) and **wrote nothing**; and the genuine `uploadImage` server action — captured from a
+  real admin upload, wire encoding and all — **replayed from a cashier's session** was refused for
+  **both** folders (*"You do not have permission to change shop settings"* / *"…to add, edit, delete and
+  import products"*), **no key returned, no file written**. Signed out with `curl`: a real key serves
+  **200 image/png**, while `../../../.env`, its URL-encoded form, an unknown key and a malformed key all
+  **404**.
+  - In passing, five permission labels were noun phrases, so their refusals read *"You do not have
+    permission to expenses."* They are verb phrases now, which reads correctly in the sentence **and** in
+    the role editor's checkboxes.
+
+  Typecheck + production build pass; `check-reports.ts` reconciles; **no new lint findings**.
+
 ---
 
 ## 5. Current state
@@ -1149,6 +1204,15 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   after a sale. ⚠️ The study caught a real defect on the way: MPoS was printing *"Goods once sold are
   exchangeable within 7 days"* on every slip — **a returns promise in the shop's name that no shop ever
   made.** It is gone; the footer note is **empty by default**, and the shop writes its own policy or none.
+- ✅ **Uploads done** (`BLUEPRINT.md` §28) — the **shop logo** on every document and **product photos**
+  on the POS tile and product list, replacing a pasted image URL nobody could use. Files live on
+  **local disk outside `public/`** behind one swappable module; bytes are **sniffed**, names are ours,
+  and a replaced or deleted image takes its file with it. Gates proven against a **forged wire replay**;
+  path traversal 404s. ⚠️ **Back up `data/uploads` beside the database** (§7).
+- ✅ **`Number("") === 0` bug fixed** (`BLUEPRINT.md` §12.11) — Radix's empty settle event was becoming
+  **id 0**, so **no product with a category could be saved at all**: every edit died on a foreign key
+  behind *"Something went wrong."* It was live on `main` and proven there. One parser now
+  (`src/lib/select.ts`) across **eight** selects, two of which chose the **account a payment posts to**.
 - 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses → Stock adjustments → Receipt & invoice). The app runs the
   whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
   margin, and who owes what in both directions.
@@ -1255,10 +1319,7 @@ full on the user's instruction anyway.
 app's Users/Settings uncovered that MPoS enforced permissions on only 6 of 18 action files — a cashier
 could delete sales and bulk-import the catalogue. Fixed wholesale, plus a role editor. See the log.
 
-**START HERE (next session).**
-
-The user chose three **Settings** additions alongside Users (Users is now done). These are the
-committed next work, in order:
+**The three Settings additions the user chose alongside Users are all done:**
 
 ~~1. Invoice numbering prefix~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §26). The digit-parsing worry
    was justified: the old parse would have exploded the sequence on any prefix carrying a digit. All six
@@ -1267,14 +1328,18 @@ committed next work, in order:
 ~~1. Receipt / invoice toggles~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §27). Eight settings, and one
    real defect closed: we were printing a 7-day exchange policy the shop never agreed to. See the log.
 
-1. **The shop logo, and product images** (`BLUEPRINT.md` §28 — to write). ⚠️ **The storage question is
-   now SETTLED** (2026-07-14, with the user): **local disk, in a writable directory outside `public/`**,
-   DB stores a relative key, files served by a validating route handler, all behind one swappable
-   storage module (`src/lib/storage.ts`) so an S3 driver stays one file away. Build:
-   - upload + validation (type, size), the **logo on the receipt/A4/public link** (§20, §27.4),
-   - **product image upload**, replacing today's pasted URL,
-   - ⚠️ **and put the uploads directory into the backup story in §7** — a `pg_dump` alone is no longer a
-     complete backup, and a restore with dead image links is exactly the failure this must not have.
+~~1. The shop logo, and product images~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §28). Storage settled
+   (local disk, outside `public/`), logo on every document, photos on the POS tile. It also uncovered
+   §12.11: **no product could be edited at all**. See the progress log.
+
+**START HERE (next session).** Nothing is committed ahead. Suggested, in order:
+
+1. **A product-image sweeper, or nothing.** Abandoning a half-edited product page still leaves one
+   orphan file (§28.4). It is bounded and harmless; a tiny script that deletes unreferenced keys would
+   close it. Do it only if it is worth the code.
+2. **From the Phase-2 remainder — but check the shop's data first, per item** (quotations, SMS, courier,
+   customer areas). See the note below: "no evidence of use" was written about employees once, and it
+   was false.
 
 **Then, from the Phase-2 remainder — but check the shop's data first.** Nothing is now a known defect.
 Of what is left (quotations, SMS, courier, customer areas), **none shows evidence of use** in the
@@ -1321,6 +1386,12 @@ npx prisma db seed
 
 # 5. Dev server
 npm run dev            # http://localhost:3000
+
+# ⚠️ BACKUP — it is TWO things now (BLUEPRINT §28.1), not one:
+#   pg_dump ecom > ecom.sql          # the database…
+#   tar czf uploads.tgz data/uploads # …AND the uploaded files (logo, product photos)
+# A database restored without `data/uploads` comes back with every image link dead. The
+# directory is git-ignored on purpose: it is the shop's content, not the app's.
 
 # Rebuild the DB from scratch (DESTRUCTIVE — dev only; wipes every row):
 npx prisma migrate reset --force   # drops the DB and replays all migrations…

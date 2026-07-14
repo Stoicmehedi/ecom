@@ -1,5 +1,7 @@
 "use client";
 
+import { selectId } from "@/lib/select";
+
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Search, Loader2 } from "lucide-react";
@@ -250,7 +252,7 @@ export function PurchaseForm({
             <div className="flex gap-2">
               <Select
                 value={supplierId ? String(supplierId) : undefined}
-                onValueChange={(v) => setSupplierId(Number(v))}
+                onValueChange={(v) => { const id = selectId(v, []); if (id) setSupplierId(id); }}
               >
                 <SelectTrigger className="flex-1">
                   <SelectValue placeholder="Select supplier" />
@@ -483,13 +485,13 @@ export function PurchaseForm({
                 <Label className="text-xs">Account</Label>
                 <Select
                   value={p.accountId ? String(p.accountId) : undefined}
-                  onValueChange={(v) =>
+                  onValueChange={(v) => {
+                    const id = selectId(v, []);
+                    if (!id) return;
                     setPayments((prev) =>
-                      prev.map((x, idx) =>
-                        idx === i ? { ...x, accountId: Number(v) } : x,
-                      ),
-                    )
-                  }
+                      prev.map((x, idx) => (idx === i ? { ...x, accountId: id } : x)),
+                    );
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Account" />

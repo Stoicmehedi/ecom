@@ -56,3 +56,8 @@ yarn-error.log*
 
 /src/generated/prisma
 /invoice.png
+
+# Uploaded files (BLUEPRINT §28) — the shop’s logo and product images.
+# Local disk, outside public/. Back this up BESIDE the database: a pg_dump alone is not
+# a complete backup, and a restore without these comes back with dead image links.
+/data/

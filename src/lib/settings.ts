@@ -17,6 +17,8 @@ export type ShopSettings = LoyaltySettings & {
   shopPhone: string | null;
   shopEmail: string | null;
   currencyWord: string;
+  /// The shop's logo, as a storage key (§28) — `/api/files/<key>` serves the bytes.
+  logoKey: string | null;
   /// How sale invoices are numbered (§26). The only document whose numbering is the shop's.
   invoicePrefix: string;
   invoiceStartNo: number;
@@ -56,6 +58,7 @@ export async function getSettings(): Promise<ShopSettings> {
     shopPhone: row.shopPhone,
     shopEmail: row.shopEmail,
     currencyWord: row.currencyWord,
+    logoKey: row.logoKey,
     invoicePrefix: row.invoicePrefix,
     invoiceStartNo: row.invoiceStartNo,
     showTime: row.showTime,

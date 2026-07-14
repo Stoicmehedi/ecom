@@ -105,6 +105,9 @@ model ShopSetting {
   shopEmail   String?
   /// The word the amount-in-words line ends with — "TK Only", "Taka Only".
   currencyWord String @default("TK")
+  /// The shop's logo, as a storage key (BLUEPRINT §28). Not a URL: the bytes live on our
+  /// own disk and `/api/files/<key>` serves them.
+  logoKey     String?
 
   updatedAt DateTime @updatedAt
 }
@@ -285,7 +288,10 @@ model Product {
   code        String? // a second identifier alongside the variants' SKUs
   description String?
   type        ProductType @default(SIMPLE)
-  imageUrl    String?
+  /// An uploaded photo, as a storage key (BLUEPRINT §28). This replaced a pasted image
+  /// URL that nobody could use without hosting the picture somewhere else first — and
+  /// which never held a single value.
+  imageKey    String?
   isActive    Boolean     @default(true)
   sortIndex   Int         @default(0)
   createdAt   DateTime    @default(now())

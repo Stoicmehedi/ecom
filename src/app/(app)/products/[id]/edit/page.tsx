@@ -39,7 +39,7 @@ export default async function EditProductPage({
     categoryId: product.categoryId,
     brandId: product.brandId,
     unitId: product.unitId,
-    imageUrl: product.imageUrl,
+    imageKey: product.imageKey,
     isActive: product.isActive,
     alertQty: product.alertQty != null ? String(product.alertQty) : null,
     minSalePrice: product.minSalePrice != null ? String(product.minSalePrice) : null,

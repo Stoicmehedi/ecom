@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { invoicePrefixError } from "@/lib/docno";
+import { deleteImage, isValidKey } from "@/lib/storage";
 
 export type SettingsResult = { ok?: boolean; error?: string };
 
@@ -25,6 +26,14 @@ const schema = z.object({
   shopPhone: z.string().trim().max(40).nullable().optional(),
   shopEmail: z.string().trim().max(80).nullable().optional(),
   currencyWord: z.string().trim().min(1).max(20),
+  // The logo's storage key (§28) — the upload action minted it and proved the bytes are
+  // really an image; here we only check it is a key we wrote.
+  logoKey: z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .refine((k) => !k || isValidKey(k), "That is not an image we stored."),
   // How invoices are numbered (§26). The prefix is checked by the same function the
   // form checks it with, so the screen and the server cannot disagree about what is legal.
   invoicePrefix: z.string().trim().max(10),
@@ -78,8 +87,14 @@ export async function saveSettings(input: SettingsInput): Promise<SettingsResult
   const prefixError = invoicePrefixError(s.invoicePrefix);
   if (prefixError) return { error: prefixError };
 
+  // The logo being replaced or cleared. Its file is deleted after the write lands.
+  const previousLogo =
+    (await prisma.shopSetting.findUnique({ where: { id: 1 }, select: { logoKey: true } }))
+      ?.logoKey ?? null;
+
   const row = {
     ...s,
+    logoKey: s.logoKey ?? null,
     shopAddress: s.shopAddress?.trim() || null,
     shopPhone: s.shopPhone?.trim() || null,
     shopEmail: s.shopEmail?.trim() || null,
@@ -91,6 +106,10 @@ export async function saveSettings(input: SettingsInput): Promise<SettingsResult
     update: row,
     create: { id: 1, ...row },
   });
+
+  if (previousLogo && previousLogo !== (s.logoKey ?? null)) {
+    await deleteImage(previousLogo);
+  }
 
   revalidatePath("/settings");
   revalidatePath("/pos");

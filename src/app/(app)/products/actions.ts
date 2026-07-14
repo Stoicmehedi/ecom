@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { copyImage, deleteImage, isValidKey } from "@/lib/storage";
 import { checkQtyLines } from "@/lib/qty";
 import { revalidatePath } from "next/cache";
 import { isUniqueError } from "@/lib/db-error";
@@ -36,7 +37,14 @@ const productSchema = z.object({
   categoryId: z.number().int().nullable().optional(),
   brandId: z.number().int().nullable().optional(),
   unitId: z.number().int().nullable().optional(),
-  imageUrl: z.string().trim().url("Image must be a valid URL").nullable().optional(),
+  // An uploaded photo's storage key (§28) — not a URL. The upload action minted it and
+  // already proved the bytes are an image; here we only check it is a key we wrote.
+  imageKey: z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .refine((k) => !k || isValidKey(k), "That is not an image we stored."),
   isActive: z.boolean().default(true),
   alertQty: z.number().min(0).nullable().optional(),
   minSalePrice: z.number().min(0).nullable().optional(),
@@ -92,6 +100,24 @@ async function ensureBarcode(tx: Prisma.TransactionClient, variantId: number) {
   // Five collisions is impossible in practice; leaving it blank beats throwing.
 }
 
+/** Which of the picked references does not exist, if any. */
+async function missingRef(p: {
+  categoryId?: number | null;
+  brandId?: number | null;
+  unitId?: number | null;
+}): Promise<string | null> {
+  if (p.categoryId && !(await prisma.category.count({ where: { id: p.categoryId } }))) {
+    return "That category no longer exists — pick it again.";
+  }
+  if (p.brandId && !(await prisma.brand.count({ where: { id: p.brandId } }))) {
+    return "That brand no longer exists — pick it again.";
+  }
+  if (p.unitId && !(await prisma.unit.count({ where: { id: p.unitId } }))) {
+    return "That unit no longer exists — pick it again.";
+  }
+  return null;
+}
+
 export async function saveProduct(input: ProductInput): Promise<ActionResult> {
   const denied = await requirePermission("products.manage");
   if (denied) return { error: denied };
@@ -132,6 +158,12 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
   );
   if (badOpening) return { error: badOpening };
 
+  // A category, brand or unit that does not exist can only arrive from a stale screen or a
+  // forged payload — either way, say which one rather than letting it die on a foreign key
+  // with "something went wrong" (§12.11: that message hid this bug for a week).
+  const missing = await missingRef(p);
+  if (missing) return { error: missing };
+
   const productData = {
     name: p.name,
     code: p.code || null,
@@ -140,12 +172,20 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
     categoryId: p.categoryId ?? null,
     brandId: p.brandId ?? null,
     unitId: p.unitId ?? null,
-    imageUrl: p.imageUrl || null,
+    imageKey: p.imageKey || null,
     isActive: p.isActive,
     alertQty: p.alertQty ?? null,
     minSalePrice: p.minSalePrice ?? null,
     attributeCategoryId: isSimple ? null : (p.attributeCategoryId ?? null),
   };
+
+  // The picture this product used to have, if it is being replaced or cleared. Read before
+  // the write, deleted after it lands — a replaced image whose file stayed would be a disk
+  // that only grows (§28.2).
+  const previousImage = p.id
+    ? (await prisma.product.findUnique({ where: { id: p.id }, select: { imageKey: true } }))
+        ?.imageKey ?? null
+    : null;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -241,8 +281,14 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
       return productId!;
     });
 
+    // The row now points at the new picture (or at none), so the old file is unreferenced.
+    if (previousImage && previousImage !== productData.imageKey) {
+      await deleteImage(previousImage);
+    }
+
     revalidatePath("/products");
     revalidatePath("/inventory");
+    revalidatePath("/pos");
     return { ok: true, id: result };
   } catch (e) {
     if (e instanceof VariantInUse) {
@@ -276,6 +322,12 @@ export async function deleteProduct(id: number): Promise<ActionResult> {
         "Cannot delete: this product has sales or purchase history. Disable it instead.",
     };
   }
+
+  const doomed = await prisma.product.findUnique({
+    where: { id },
+    select: { imageKey: true },
+  });
+
   try {
     await prisma.$transaction([
       prisma.stockMovement.deleteMany({ where: { variant: { productId: id } } }),
@@ -285,6 +337,11 @@ export async function deleteProduct(id: number): Promise<ActionResult> {
   } catch {
     return { error: "Failed to delete product." };
   }
+
+  // The row is gone, so nothing points at the file any more. Deleted last, on purpose:
+  // an uploads directory that only grows is a disk that eventually fills (§28.2).
+  await deleteImage(doomed?.imageKey);
+
   revalidatePath("/products");
   return { ok: true };
 }
@@ -332,7 +389,9 @@ export async function duplicateProduct(id: number): Promise<ActionResult> {
           code: null, // a code identifies one product; the copy needs its own
           description: src.description,
           type: src.type,
-          imageUrl: src.imageUrl,
+          // Its own copy of the picture — a shared key would mean deleting one
+          // product takes the other's image with it (§28.2).
+          imageKey: await copyImage(src.imageKey),
           isActive: src.isActive,
           alertQty: src.alertQty,
           minSalePrice: src.minSalePrice,

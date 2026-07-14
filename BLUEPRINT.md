@@ -1849,6 +1849,37 @@ it is a bug, not a design.)
 - **Per-branch users** — single store (their branch list has exactly one row).
 - **Self-service change-password page** — worth having; folded into the user's own edit for now.
 
+### 12.11 ⚠️ `Number("") === 0` — the bug that made every product uneditable
+
+*Found 2026-07-14 while building §28, on code that had been live for days.*
+
+Radix fires `onValueChange("")` while a `<Select>` settles on mount. The handlers did the
+obvious thing:
+
+```ts
+onValueChange={(v) => setCatId(v === "none" ? null : Number(v))}   // Number("") === 0
+```
+
+So the category became **id 0** — an id no row can have. Saving then died on
+`Product_categoryId_fkey`, and the screen said only *"Something went wrong saving the product."*
+**Every product has a category, so no product could be edited at all** — you could not rename one,
+retire one, or change a price. The generic catch-all message is what hid it: it says a thing went
+wrong without saying which, so nobody could tell a foreign key from a typo.
+
+The same `Number(v)` sat on **seven** other selects — brand, unit, POS category/brand filters, the POS
+customer picker, the purchase supplier, the return reason, and two payment-account pickers. A payment
+posted to **account 0** would have been the same crash with money in it.
+
+**One parser, in one file** (`src/lib/select.ts`):
+
+- `""` → **ignored**. An empty event is the widget talking to itself, not the user choosing nothing.
+- `"none"` / `"all"` → `null`. The user really did clear it.
+- anything else → a positive integer, or ignored.
+
+And the server no longer lets a bad id reach the database: a category, brand or unit that does not
+exist is refused **by name** (*"That category no longer exists — pick it again"*) instead of dying on a
+constraint behind a shrug.
+
 ---
 
 ## 26. Document numbering *(studied read-only 2026-07-14; nothing created, edited or submitted)*
@@ -1986,3 +2017,65 @@ by all of them or by none — they cannot disagree about what prints.
 - **Printer names and silent printing** — a browser cannot print without the print dialog, and pretending
   otherwise in a settings screen would be a promise the app cannot keep.
 - **Transfer-invoice price, retail-on-wholesale, brandwise summary** — modules we do not have.
+
+---
+
+## 28. Files: the shop logo and product images
+
+### 28.1 Where uploaded files live *(settled with the user, 2026-07-14)*
+
+**On local disk, in a writable directory outside `public/`** — path from `UPLOAD_DIR`, defaulting to
+`./data/uploads`. The database stores a **key** (`products/3f9c…​.webp`), never a URL, and one route
+handler serves the bytes.
+
+Why not the two obvious alternatives:
+
+- ⚠️ **`public/` is a trap, not an option.** Next.js serves it as a **build-time** asset directory.
+  Files written into it at runtime are not reliably served by a production build, and any redeploy,
+  container rebuild or `git clean` silently takes the shop's logo and every product image with it.
+  It looks like the simple choice; it is the one that loses data.
+- **Object storage (S3/R2) was rejected for *this* app, not in general.** A single-store till should not
+  need the network to show its own product images, and a bucket's credentials are a dependency the shop
+  has no use for. Everything goes through **one module** (`src/lib/storage.ts`, `put`/`read`/`delete`),
+  so an S3 driver is a *new file*, not a migration.
+
+⚠️ **The cost, stated up front: backups.** A `pg_dump` is no longer a complete backup. The uploads
+directory must be backed up **beside** the database, or a restore comes back with every image link dead.
+Written into `PROJECT_STATUS.md` §7, where the backup commands live.
+
+### 28.2 The rules an upload obeys
+
+- **The browser's word is never taken for what a file is.** The declared MIME type and the file
+  extension are both attacker-controlled. The bytes are **sniffed** (PNG / JPEG / WebP magic numbers) and
+  the extension is derived from what the bytes actually say. Anything else is refused.
+- **Size is capped** (2 MB) on the server, not just on the input.
+- **The stored name is random** (16 bytes of CSPRNG hex), never the user's filename. A filename is
+  attacker-controlled text: it can carry `../`, a null byte, or a name that collides with someone else's.
+- **The serving route validates the key** against a strict pattern before it touches the disk, so a
+  crafted path can never walk out of the uploads directory.
+- **Replacing an image deletes the old file**, and so does deleting the product. An uploads directory
+  that only ever grows is a disk that eventually fills.
+- Files are served with a long immutable cache — safe, because the name changes whenever the bytes do.
+
+### 28.3 What it is used for
+
+- **The shop logo** — on the 80mm receipt, the A4 invoice and the public link (the three documents that
+  already read one loader, §20). This closes the last piece of §27.4.
+- **Product images** — replacing the pasted **image URL**, which nobody could use without hosting the
+  image somewhere else first. The field had **never held a single value**. The image shows on the
+  product list and on the **POS tile**, which is the only place it earns its keep: a cashier finds goods
+  faster by sight than by name.
+
+**Permissions:** the logo is gated on `settings.manage`, a product image on `products.manage` — the same
+gates as the records they belong to. An upload endpoint that anyone can post bytes to is a free disk.
+
+### 28.4 The upload that nobody kept
+
+An image is uploaded *before* the record is saved — that is what makes the preview possible, and it is
+worth it. But it means picking a photo and then pressing Remove, or uploading twice, leaves a file on
+disk with nothing pointing at it.
+
+So the form remembers **the keys it minted this session** and discards one the moment it is dropped.
+The server refuses to discard a key that any record still references, so a discard can never take a
+live image with it. Abandoning the whole page (a browser closed mid-edit) still leaves one orphan —
+that is the residue we accept, and it is bounded by one file per abandoned edit.

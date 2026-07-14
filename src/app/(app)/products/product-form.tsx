@@ -1,5 +1,7 @@
 "use client";
 
+import { selectId } from "@/lib/select";
+
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, Lock, Wand2, ArrowDownToLine } from "lucide-react";
@@ -8,6 +10,7 @@ import { saveProduct, type ProductInput } from "./actions";
 import { CategoryCascade, type Cat } from "./category-cascade";
 import { priceLine } from "@/lib/pricing";
 import { Button } from "@/components/ui/button";
+import { ImageUpload } from "@/components/image-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,7 +59,7 @@ export type ProductFormData = {
   categoryId: number | null;
   brandId: number | null;
   unitId: number | null;
-  imageUrl: string | null;
+  imageKey: string | null;
   isActive: boolean;
   alertQty: string | null;
   minSalePrice: string | null;
@@ -136,7 +139,7 @@ export function ProductForm({
   const [unitId, setUnitId] = useState(
     product?.unitId ? String(product.unitId) : "none",
   );
-  const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? "");
+  const [imageKey, setImageKey] = useState<string | null>(product?.imageKey ?? null);
   const [isActive, setIsActive] = useState(product?.isActive ?? true);
   const [alertQty, setAlertQty] = useState(product?.alertQty ?? "");
   const [minSalePrice, setMinSalePrice] = useState(product?.minSalePrice ?? "");
@@ -300,7 +303,7 @@ export function ProductForm({
       categoryId,
       brandId: brandId === "none" ? null : Number(brandId),
       unitId: unitId === "none" ? null : Number(unitId),
-      imageUrl: imageUrl || null,
+      imageKey,
       isActive,
       alertQty: alertQty === "" ? null : numOf(alertQty),
       minSalePrice: minSalePrice === "" ? null : numOf(minSalePrice),
@@ -376,7 +379,7 @@ export function ProductForm({
 
           <div className="space-y-2">
             <Label>Brand</Label>
-            <Select value={brandId} onValueChange={setBrandId}>
+            <Select value={brandId} onValueChange={(v) => v && setBrandId(v)}>
               <SelectTrigger>
                 <SelectValue placeholder="None" />
               </SelectTrigger>
@@ -393,7 +396,7 @@ export function ProductForm({
 
           <div className="space-y-2">
             <Label>Unit</Label>
-            <Select value={unitId} onValueChange={setUnitId}>
+            <Select value={unitId} onValueChange={(v) => v && setUnitId(v)}>
               <SelectTrigger>
                 <SelectValue placeholder="None" />
               </SelectTrigger>
@@ -457,12 +460,12 @@ export function ProductForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="imageUrl">Image URL</Label>
-            <Input
-              id="imageUrl"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://…"
+            <ImageUpload
+              folder="products"
+              value={imageKey}
+              onChange={setImageKey}
+              label="Photo"
+              hint="Shows on the product list and on the POS tile. Up to 2 MB."
             />
           </div>
 
@@ -510,7 +513,8 @@ export function ProductForm({
               <Select
                 value={axisId ? String(axisId) : "none"}
                 onValueChange={(v) => {
-                  const id = v === "none" ? null : Number(v);
+                  const id = selectId(v);
+                  if (id === undefined) return;
                   setAxisId(id);
                   setPickedAttrs([]); // values belong to an axis; changing it clears them
                 }}

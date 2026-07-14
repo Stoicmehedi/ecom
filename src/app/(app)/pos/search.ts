@@ -54,6 +54,8 @@ export type PosHit = {
 export type PosProduct = {
   productId: number;
   name: string;
+  /** The product's photo, if it has one (§28.3) — a cashier finds goods faster by sight. */
+  imageKey: string | null;
   variants: PosHit[];
   /** Summed across variants — what "in stock" means for the product as a whole. */
   stockQty: number;
@@ -62,7 +64,7 @@ export type PosProduct = {
 };
 
 const variantSelect = {
-  product: { select: { id: true, name: true, minSalePrice: true } },
+  product: { select: { id: true, name: true, minSalePrice: true, imageKey: true } },
   attribute: { select: { name: true } },
   color: { select: { name: true, hex: true } },
 } as const;
@@ -78,7 +80,7 @@ type VariantWithProduct = {
   discountValue: unknown;
   wholesalePrice: unknown;
   wholesaleQty: unknown;
-  product: { id: number; name: string; minSalePrice: unknown };
+  product: { id: number; name: string; minSalePrice: unknown; imageKey: string | null };
   attribute: { name: string } | null;
   color: { name: string; hex: string | null } | null;
 };
@@ -120,6 +122,7 @@ function group(variants: VariantWithProduct[]): PosProduct[] {
     byProduct.set(v.product.id, {
       productId: v.product.id,
       name: v.product.name,
+      imageKey: v.product.imageKey,
       variants: [hit],
       stockQty: hit.stockQty,
       minPrice: hit.price,

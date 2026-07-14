@@ -125,9 +125,9 @@ export const PERMISSIONS: PermissionGroup[] = [
   {
     group: "Money",
     items: [
-      { key: "expenses.manage", label: "Expenses" },
-      { key: "accounts.manage", label: "Accounts, deposits and transfers" },
-      { key: "employees.manage", label: "Staff and salary" },
+      { key: "expenses.manage", label: "Record expenses" },
+      { key: "accounts.manage", label: "Manage accounts, deposits and transfers" },
+      { key: "employees.manage", label: "Manage staff and salary" },
     ],
   },
   {
@@ -144,8 +144,8 @@ export const PERMISSIONS: PermissionGroup[] = [
   {
     group: "Administration",
     items: [
-      { key: "settings.manage", label: "Shop settings" },
-      { key: "users.manage", label: "Users and roles", hint: "The keys to the shop." },
+      { key: "settings.manage", label: "Change shop settings" },
+      { key: "users.manage", label: "Manage users and roles", hint: "The keys to the shop." },
     ],
   },
 ];
