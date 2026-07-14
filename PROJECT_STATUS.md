@@ -650,6 +650,42 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   token **404**, `noindex` present, and **the cost figures (5.00, 4.00) appear nowhere in the HTML**.
   After **Revoke**, the previously-working link **404s**. `check-reports.ts` still reconciles.
 
+### 2026-07-14
+
+- **POS grid filters — BUILT.** The POS grid gets a **category** and a **brand** filter beside the
+  search box. Cheap, as expected — but the study of the data turned it into a bug fix.
+
+  ⚠️ **The obvious implementation would have shipped an empty screen.** A product is filed on the
+  **deepest** category picked for it (every seeded product sits on a level-3 leaf: Classic Tee is on
+  *Apparel › Tops › T-Shirts*, never on *Apparel*). So matching `categoryId` **exactly** — which is
+  what the dropdown invites, since it lists all three levels — returns **zero products for every
+  category that has children**. Filtering on a category has to mean *"this one and everything under
+  it"*.
+  - **The subtree rule is written once** (`src/lib/categories.ts`): `getCategoryTree()` (depth-first,
+    each node carrying its full `Apparel › Tops › T-Shirts` path) and `categoryFilter()`, which
+    expands a category to its whole branch.
+  - 🐛 **The same bug was already live in the products list** — `products/page.tsx` matched
+    `categoryId` exactly against a flat dropdown of all three levels, so picking *Apparel* or *Tops*
+    showed **nothing**. Fixed with the same helper, and **the CSV export route had it too** (an export
+    that filtered differently from the page it was launched from is worse than no export). All three
+    now share one definition.
+  - **The dropdowns show the full path**, not a bare leaf name — two categories can share a name, a
+    path cannot.
+  - **Only branches that hold a sellable product are offered.** An option that can only ever return an
+    empty grid is a dead end the cashier has to discover by clicking it.
+  - 🔑 **A scan deliberately ignores the filters.** The barcode names the goods in the customer's hand;
+    refusing to ring them up because the grid happens to be narrowed to another brand would be a bug
+    wearing a feature's clothes. A *typed search* does respect them — that is browsing.
+
+  **Browser-verified.** *Apparel › Tops* (a level-2 category with **no product filed on it**) pulled in
+  the whole branch — Classic Tee, Field Tee, Trail Hoodie — and dropped the Cap and Socks; adding brand
+  *Zephyr* narrowed it to the two tees (Trail Hoodie is Northbound). With **both** filters active,
+  **scanning the Canvas Cap's barcode — excluded by both — still dropped it straight into the cart** at
+  9.00, while *typing* "cap" correctly found nothing. The products list on `?categoryId=2` now reads
+  **"3 of 5 products"** (it would have read 0 before), and its **CSV export returns the matching 18
+  variants** rather than an empty file. Typecheck + production build pass; `check-reports.ts` still
+  reconciles; **no new lint findings** (the 9 existing ones pre-date this).
+
 ---
 
 ## 5. Current state
@@ -715,6 +751,11 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   all), an **A4 invoice**, **PDF via the browser's own print**, and **sharing**: WhatsApp as text, plus an
   optional **public link** (32-byte CSPRNG token, minted on demand, revocable, `noindex`, no cost data).
   All three documents read **one loader**, so they cannot disagree.
+- ✅ **POS grid filters done** — category + brand, beside the search box. A category filter means
+  **the category and everything under it** (products are filed on the deepest leaf, so an exact match
+  would return an empty screen); the rule lives once in `src/lib/categories.ts` and is shared by the
+  POS, the products list and the CSV export — **the latter two had the exact-match bug live.** A scan
+  ignores the filters by design; a typed search respects them.
 - 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses → Stock adjustments → Receipt & invoice). The app runs the
   whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
   margin, and who owes what in both directions.
@@ -783,20 +824,25 @@ cost is visible in it. See the progress log.
 ~~4. Receipt polish~~ — ✅ **DONE 2026-07-13** (`BLUEPRINT.md` §20). It turned out to be more than
 polish: the receipt had no shop identity on it at all, and change was never stored.
 
+~~5. POS grid filters~~ — ✅ **DONE 2026-07-14.** It also uncovered and fixed a live exact-match
+category bug in the products list *and* the CSV export. See the progress log.
+
 **START HERE (next session).**
 
-1. **POS grid filters** (brand / category) — cheap, and it only bites once a real catalogue is loaded.
+1. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug: should an invoice's
+   due close when its goods come back? Today a return settles against the *customer's account*, never
+   the invoice, so a fully-returned credit sale still shows its original due on the Sales and Dues
+   reports while the customer's ledger is correctly square. **Ask the user, then make it so.**
 
 **Then, in rough order of value:**
 
-2. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug.
-3. Then the rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary (**salary is an expense type
+2. The rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary (**salary is an expense type
    today** — it earns its own subsystem when there are employees to attach it to), VAT (only if it is
-   actually needed).
-4. Still open from §20: a **shop logo** on the receipt — deliberately deferred, because an image needs
+   actually needed), quotations.
+3. Still open from §20: a **shop logo** on the receipt — deliberately deferred, because an image needs
    the **storage decision** §12 has been parking (where do uploaded files live?). Settle that once and
    it unblocks product images too.
-6. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
+4. Housekeeping: `middleware.ts` for edge-level route protection. Still open from §12: **product image
    upload** (ours is a pasted URL — needs a storage decision), **per-language product names**, and a
    **Product Groups** master.
 

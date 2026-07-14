@@ -3,6 +3,7 @@ import { num } from "@/lib/format";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { getSettings } from "@/lib/settings";
+import { getSellableCategoryTree } from "@/lib/categories";
 import { browsePos } from "./search";
 import { PosTerminal } from "./pos-terminal";
 
@@ -13,7 +14,7 @@ export default async function PosPage() {
   const canFreeIssue = hasPermission(session, "sales.free_issue");
   const settings = await getSettings();
 
-  const [customers, accounts, products, held] = await Promise.all([
+  const [customers, accounts, products, held, categories, brands] = await Promise.all([
     prisma.contact.findMany({
       where: { type: "CUSTOMER" },
       orderBy: [{ isWalkIn: "desc" }, { name: "asc" }],
@@ -22,6 +23,14 @@ export default async function PosPage() {
     prisma.account.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true } }),
     browsePos(),
     prisma.heldSale.findMany({ orderBy: { id: "desc" } }),
+    getSellableCategoryTree(),
+    // Only brands with something to sell — a filter that can only ever return an
+    // empty grid is a dead end the cashier has to discover by clicking it.
+    prisma.brand.findMany({
+      where: { products: { some: { isActive: true } } },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
 
   return (
@@ -38,6 +47,8 @@ export default async function PosPage() {
         canFreeIssue={canFreeIssue}
         settings={settings}
         initialProducts={products}
+        categories={categories.map((c) => ({ id: c.id, path: c.path }))}
+        brands={brands}
         heldSales={held.map((h) => ({
           id: h.id,
           label: h.label,

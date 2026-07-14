@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toCsv } from "@/lib/reports/export";
+import { categoryFilter, getCategoryTree } from "@/lib/categories";
 import { toDateStr } from "@/lib/reports/range";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -23,8 +24,12 @@ export async function GET(req: NextRequest) {
   const brandId = Number(q.get("brandId")) || undefined;
   const status = q.get("status");
 
+  // The same subtree rule the list screen uses — an export that filtered
+  // differently from the page it was launched from would be worse than useless.
+  const tree = await getCategoryTree();
+
   const where: Prisma.ProductWhereInput = {
-    ...(categoryId ? { categoryId } : {}),
+    ...categoryFilter(tree, categoryId),
     ...(brandId ? { brandId } : {}),
     ...(status === "active"
       ? { isActive: true }

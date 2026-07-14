@@ -2,7 +2,24 @@
 
 import { prisma } from "@/lib/prisma";
 import { num } from "@/lib/format";
+import { categoryFilter, getCategoryTree } from "@/lib/categories";
 import type { Prisma } from "@/generated/prisma/client";
+
+/** Narrows the grid. Both are optional; both are just a way of browsing. */
+export type PosFilter = { categoryId?: number; brandId?: number };
+
+/**
+ * A filter narrows what the cashier *browses*. It never narrows what a scan can
+ * find (see `searchPos`), so it is only ever applied to the grid query.
+ */
+async function productWhere(filter: PosFilter): Promise<Prisma.ProductWhereInput> {
+  const tree = filter.categoryId ? await getCategoryTree() : [];
+  return {
+    isActive: true,
+    ...categoryFilter(tree, filter.categoryId),
+    ...(filter.brandId ? { brandId: filter.brandId } : {}),
+  };
+}
 
 /**
  * A sellable variant, carrying everything the cart needs to price it the same
@@ -127,9 +144,14 @@ const listOrder = [
  * variant and nothing else, so the caller adds it to the cart without opening
  * the picker. That is what a barcode scan has to feel like: the fast path must
  * not get slower to make the browse path better.
+ *
+ * **A scan deliberately ignores the filter.** The barcode names the goods in the
+ * cashier's hand; refusing to ring them up because the grid happens to be
+ * narrowed to another brand would be a bug wearing a feature's clothes.
  */
 export async function searchPos(
   q: string,
+  filter: PosFilter = {},
 ): Promise<{ products: PosProduct[]; exact: PosHit | null }> {
   const term = q.trim();
   if (!term) return { products: [], exact: null };
@@ -142,7 +164,7 @@ export async function searchPos(
     prisma.productVariant.findMany({
       where: {
         product: {
-          isActive: true,
+          ...(await productWhere(filter)),
           OR: [
             { name: { contains: term, mode: "insensitive" } },
             { code: { contains: term, mode: "insensitive" } },
@@ -163,9 +185,9 @@ export async function searchPos(
 }
 
 /** The tile grid shown before the cashier types anything. */
-export async function browsePos(): Promise<PosProduct[]> {
+export async function browsePos(filter: PosFilter = {}): Promise<PosProduct[]> {
   const variants = await prisma.productVariant.findMany({
-    where: { product: { isActive: true } },
+    where: { product: await productWhere(filter) },
     take: 200,
     orderBy: listOrder,
     include: variantSelect,

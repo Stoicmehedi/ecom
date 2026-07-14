@@ -18,7 +18,7 @@ import { paidRatio } from "@/lib/costing";
 import { pointsEarned, pointsValue, redeemLimit } from "@/lib/loyalty";
 import type { ShopSettings } from "@/lib/settings";
 import { checkout, holdSale, resumeHeldSale, discardHeldSale } from "./actions";
-import { searchPos, type PosHit, type PosProduct } from "./search";
+import { browsePos, searchPos, type PosHit, type PosProduct } from "./search";
 import { VariantPicker, needsPicker } from "./variant-picker";
 import { ExchangeDialog, type ExchangePick } from "./exchange-panel";
 import { quickAddCustomer } from "../customers/actions";
@@ -84,12 +84,17 @@ const METHODS = [
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+/** Radix has no empty-string value, so "no filter" needs a sentinel. */
+const ALL = "all";
+
 export function PosTerminal({
   customers,
   accounts,
   canFreeIssue,
   settings,
   initialProducts,
+  categories,
+  brands,
   heldSales,
 }: {
   customers: CustomerOption[];
@@ -97,6 +102,8 @@ export function PosTerminal({
   canFreeIssue: boolean;
   settings: ShopSettings;
   initialProducts: PosProduct[];
+  categories: { id: number; path: string }[];
+  brands: { id: number; name: string }[];
   heldSales: HeldSaleOption[];
 }) {
   const router = useRouter();
@@ -113,6 +120,11 @@ export function PosTerminal({
   const [hits, setHits] = useState<PosProduct[]>(initialProducts);
   const [picking, setPicking] = useState<PosProduct | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Browsing filters. They narrow the grid; they never narrow a scan (§13.8).
+  const [categoryId, setCategoryId] = useState<number | undefined>();
+  const [brandId, setBrandId] = useState<number | undefined>();
+  const filtered = categoryId !== undefined || brandId !== undefined;
 
   // A customer's group rate is NOT pre-filled as a bill discount any more — it is
   // one of the two candidates each line is priced against, and the better of the
@@ -175,21 +187,31 @@ export function PosTerminal({
     setPicking(p);
   }
 
-  // Search. An exact barcode/SKU hit drops straight into the cart — that's a scan.
+  // What the grid shows: the search term, narrowed by the filters. An exact
+  // barcode/SKU hit drops straight into the cart — that's a scan, and it is the
+  // one path the filters must never stand in the way of.
   useEffect(() => {
     const term = query.trim();
-    if (!term) {
+    const filter = { categoryId, brandId };
+
+    // The unfiltered, unsearched grid is already on screen from the server.
+    if (!term && !filtered) {
       setHits(initialProducts);
       return;
     }
+
     let cancelled = false;
     const t = setTimeout(async () => {
-      const { products: found, exact } = await searchPos(term);
+      if (!term) {
+        const found = await browsePos(filter);
+        if (!cancelled) setHits(found);
+        return;
+      }
+      const { products: found, exact } = await searchPos(term, filter);
       if (cancelled) return;
       if (exact) {
         addLine(exact);
         setQuery("");
-        setHits(initialProducts);
         return;
       }
       setHits(found);
@@ -199,7 +221,7 @@ export function PosTerminal({
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query, categoryId, brandId]);
 
   function setQty(i: number, qty: number) {
     setLines((prev) =>
@@ -453,6 +475,58 @@ export function PosTerminal({
             autoFocus
             autoComplete="off"
           />
+        </div>
+
+        {/* Browsing filters. A scan still finds anything, filter or no filter. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={categoryId ? String(categoryId) : ALL}
+            onValueChange={(v) => setCategoryId(v === ALL ? undefined : Number(v))}
+          >
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All categories</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {c.path}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={brandId ? String(brandId) : ALL}
+            onValueChange={(v) => setBrandId(v === ALL ? undefined : Number(v))}
+          >
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="All brands" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All brands</SelectItem>
+              {brands.map((b) => (
+                <SelectItem key={b.id} value={String(b.id)}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {filtered && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setCategoryId(undefined);
+                setBrandId(undefined);
+                searchRef.current?.focus();
+              }}
+            >
+              <X className="size-4" />
+              Clear
+            </Button>
+          )}
         </div>
 
         {heldSales.length > 0 && (

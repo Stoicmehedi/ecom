@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { money, num, qty } from "@/lib/format";
+import { categoryFilter, getCategoryTree } from "@/lib/categories";
 import { ProductRowActions } from "./product-row-actions";
 import { ProductFilters } from "./product-filters";
 import type { Prisma } from "@/generated/prisma/client";
@@ -37,8 +38,13 @@ export default async function ProductsPage({
   const brandId = int(one(params.brandId));
   const status = one(params.status) ?? ALL;
 
+  // A product is filed on the deepest category picked for it, so filtering on
+  // "Apparel" has to mean "Apparel and everything under it" — an exact match
+  // would return an empty page for every category that has children.
+  const tree = await getCategoryTree();
+
   const where: Prisma.ProductWhereInput = {
-    ...(categoryId ? { categoryId } : {}),
+    ...categoryFilter(tree, categoryId),
     ...(brandId ? { brandId } : {}),
     ...(status === "active"
       ? { isActive: true }
@@ -59,7 +65,7 @@ export default async function ProductsPage({
       : {}),
   };
 
-  const [products, categories, brands, total] = await Promise.all([
+  const [products, brands, total] = await Promise.all([
     prisma.product.findMany({
       where,
       orderBy: [{ sortIndex: "asc" }, { name: "asc" }],
@@ -70,10 +76,6 @@ export default async function ProductsPage({
         _count: { select: { variants: true } },
         variants: { select: { stockQty: true, sellingPrice: true } },
       },
-    }),
-    prisma.category.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
     }),
     prisma.brand.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.product.count(),
@@ -113,7 +115,7 @@ export default async function ProductsPage({
       <CatalogTabs />
 
       <ProductFilters
-        categories={categories}
+        categories={tree.map((c) => ({ id: c.id, name: c.path }))}
         brands={brands}
         q={q}
         categoryId={categoryId}
