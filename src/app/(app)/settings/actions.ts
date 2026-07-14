@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { invoicePrefixError } from "@/lib/docno";
 
 export type SettingsResult = { ok?: boolean; error?: string };
 
@@ -24,6 +25,14 @@ const schema = z.object({
   shopPhone: z.string().trim().max(40).nullable().optional(),
   shopEmail: z.string().trim().max(80).nullable().optional(),
   currencyWord: z.string().trim().min(1).max(20),
+  // How invoices are numbered (§26). The prefix is checked by the same function the
+  // form checks it with, so the screen and the server cannot disagree about what is legal.
+  invoicePrefix: z.string().trim().max(10),
+  invoiceStartNo: z
+    .number()
+    .int("The starting number must be a whole number")
+    .min(1, "The starting number must be at least 1")
+    .max(999_999_999),
 });
 
 export type SettingsInput = z.input<typeof schema>;
@@ -53,6 +62,9 @@ export async function saveSettings(input: SettingsInput): Promise<SettingsResult
       return { error: "Set what one point is worth when spent (e.g. 0.10)." };
     }
   }
+
+  const prefixError = invoicePrefixError(s.invoicePrefix);
+  if (prefixError) return { error: prefixError };
 
   const row = {
     ...s,

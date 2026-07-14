@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { checkVariantQtys } from "@/lib/qty-server";
+import { ADJUSTMENT_NO, nextDocNo } from "@/lib/docno";
 import { auth } from "@/lib/auth";
 import { requirePermission } from "@/lib/guard";
 import { round2, round3 } from "@/lib/costing";
@@ -44,8 +45,7 @@ async function nextAdjustmentNo(tx: Tx): Promise<string> {
     orderBy: { id: "desc" },
     select: { adjustmentNo: true },
   });
-  const n = last ? parseInt(last.adjustmentNo.replace(/\D/g, ""), 10) || 0 : 0;
-  return `ADJ-${String(n + 1).padStart(5, "0")}`;
+  return nextDocNo(last?.adjustmentNo, ADJUSTMENT_NO);
 }
 
 export async function saveAdjustment(input: AdjustmentInput): Promise<ActionResult> {

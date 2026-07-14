@@ -4,7 +4,7 @@
 > account — can understand the full state without relying on private notes. **Update this file after
 > every task.**
 
-**Last updated:** 2026-07-13
+**Last updated:** 2026-07-14
 **Repo:** https://github.com/Stoicmehedi/ecom (private)
 **App name:** MPoS
 
@@ -945,6 +945,50 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   would be money out of the till and out of the books) and, for every account, **opening + movements =
   balance**.
 
+- **Invoice numbering — BUILT (`BLUEPRINT.md` §26).** Migration `invoice_numbering`. The shop can now
+  set the prefix and starting number its invoices carry, so MPoS can continue the books it is replacing
+  instead of restarting them at `INV-00001`.
+
+  **What the reference app settled** (studied read-only 2026-07-14; nothing created, edited or
+  submitted): their Business Settings holds **exactly two** numbering fields — `invoice_prefix` (`IN-`)
+  and `invoice_suffix`, which is really the **starting number** (`10000001`). **There is no prefix for
+  any other document**, and their live invoices bear it out: `IN-10006550`, `IN-10006549`… ⚠️ Their
+  **purchases have no document number of their own at all** — the "Invoice No" on the purchase list is
+  the *supplier's* (`IN-391/5`, repeating across rows). So the scope was chosen by their data, not by
+  taste: **the invoice is the only document a customer holds, and the only one worth making settable.**
+  MPoS keeps its own `PUR-00001` sequence regardless, and that stands.
+
+  - **One numbering rule in one file** (`src/lib/docno.ts`) — all six sequences (invoice, purchase,
+    purchase return, sale return, adjustment, exchange) now mint their numbers through it. Five keep a
+    fixed prefix; only the invoice's comes from Settings. Pure and Prisma-free, so the settings screen
+    previews the next number **with the very function the till calls to mint it**.
+  - 🐛 **The parse was a live bug waiting for a digit.** Every generator read the last number with
+    `replace(/\D/g, "")` — *strip every non-digit* — which works only while no prefix contains a digit.
+    Give it a perfectly reasonable `IN2026-` and `IN2026-10000001` parses as **202610000001**: the
+    sequence explodes on the next sale. The number is always at the **end**, so that is where it is read
+    from now (`/(\d+)$/`), and the prefix is irrelevant to the arithmetic. A prefix **ending** in a
+    digit is the one thing that cannot survive (`IN2` + `00001` reads back as 200001), so it is refused
+    on the screen **and on the server**, with the reason given.
+  - **A duplicate is impossible whatever is typed.** Next = `max(last + 1, start)`, so raising the start
+    jumps the sequence forward and a start *below* what is already issued is overtaken, never re-issued.
+    Settings says so out loud — *"you have already issued INV-00004, so numbering carries on from there"*
+    — before it is saved, not after.
+  - **Only new invoices change** (settled with the user): one already printed keeps the number the
+    customer is holding.
+
+  **Browser-verified end to end, every figure read back from the DB.** Set the shop's real rule
+  (`IN-` / 10000001) on a DB whose last invoice was `INV-00004`: preview read **IN-10000001**, and the
+  next sale was minted **IN-10000001** exactly — then a second sale **IN-10000002**, which is the case
+  that proves the new parse (the old one would have read the prefix into the number). The four old
+  `INV-` invoices were untouched. Typing a prefix ending in a digit showed the refusal live *and* was
+  **refused by the server** when saved anyway — the prefix in the DB was still `IN-` afterwards.
+  A unit check of the rule covers the fresh DB, continuation, the jump to a start number, the overtake,
+  a digit **inside** the prefix, and an empty prefix.
+
+  **Dev DB returned to exactly where it was:** both test sales deleted through the app's own reversal
+  path (Cash back to **1,000.80**, Canvas Cap back to **18**), and the setting put back to the seeded
+  `INV-` / 1. `check-reports.ts` reconciles; typecheck + production build pass; **no new lint findings**.
+
 ---
 
 ## 5. Current state
@@ -1042,6 +1086,12 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   month that hasn't arrived, a *partial* is a smaller amount. Refuses to overpay a month, to overdraw
   the account, or to delete someone who has been paid. **Admin-only** (`employees.manage`), proven
   against a **forged wire payload**. Commission is **not** built — the reference shop has never used it.
+- ✅ **Invoice numbering done** (`BLUEPRINT.md` §26) — the invoice prefix and starting number are the
+  shop's (`IN-` / 10000001), so MPoS can carry on the numbering of the books it replaces. **One rule in
+  one file** (`src/lib/docno.ts`) now mints all six document sequences. It fixed a latent bug in the
+  process: the old "strip every non-digit" parse would have blown the sequence up the day a prefix
+  carried a digit (`IN2026-10000001` → 202610000001). A duplicate is impossible whatever is typed
+  (`max(last + 1, start)`), and the screen previews the number the next sale will actually take.
 - 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses → Stock adjustments → Receipt & invoice). The app runs the
   whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
   margin, and who owes what in both directions.
@@ -1153,16 +1203,15 @@ could delete sales and bulk-import the catalogue. Fixed wholesale, plus a role e
 The user chose three **Settings** additions alongside Users (Users is now done). These are the
 committed next work, in order:
 
-1. **Invoice numbering prefix.** Make the invoice prefix and starting number configurable (the shop
-   uses `IN-` / `10000001`; MPoS hard-codes `INV-00001` in `nextInvoiceNo`). Small, self-contained —
-   a settings field read by the POS. ⚠️ Don't let a changed prefix break `nextInvoiceNo`'s
-   digit-parsing (it does `replace(/\D/g, "")` on the last invoice; confirm that still yields the next
-   number when the prefix changes).
-2. **Receipt / invoice toggles.** Show/hide on the printed receipt: barcode, signature lines
+~~1. Invoice numbering prefix~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §26). The digit-parsing worry
+   was justified: the old parse would have exploded the sequence on any prefix carrying a digit. All six
+   document sequences now share one rule. See the progress log.
+
+1. **Receipt / invoice toggles.** Show/hide on the printed receipt: barcode, signature lines
    ("Received By" / "Authorised By"), size & colour, time, payment details. Today these are hard-coded.
    Read from the reference app's Print Settings (studied 2026-07-14 — the list is in that day's notes:
    ~18 toggles, but only take the ones our receipt actually has a place for).
-3. **The storage decision + shop logo.** ⚠️ **Needs one call from the user first:** *where do uploaded
+2. **The storage decision + shop logo.** ⚠️ **Needs one call from the user first:** *where do uploaded
    files live?* (local `public/` dir, or object storage). It has been parked in §12 since the receipt
    work. Settle it, put the logo on the receipt (§20), and it **also unblocks product image upload**
    (ours is a pasted URL today).

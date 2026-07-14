@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { pointsEarned, pointsValue } from "@/lib/loyalty";
 import type { ShopSettings } from "@/lib/settings";
+import { invoicePrefixError, invoiceRule, nextDocNo, seqOf } from "@/lib/docno";
 import { saveSettings } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,13 @@ import { Label } from "@/components/ui/label";
 /** Bills to show the rule working on. Fixed, so the example never moves under you. */
 const SAMPLE_BILLS = [640, 740, 99];
 
-export function SettingsForm({ settings }: { settings: ShopSettings }) {
+export function SettingsForm({
+  settings,
+  lastInvoiceNo,
+}: {
+  settings: ShopSettings;
+  lastInvoiceNo: string | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [s, setS] = useState<ShopSettings>(settings);
@@ -42,6 +49,14 @@ export function SettingsForm({ settings }: { settings: ShopSettings }) {
   }));
   const hundredBack = pointsValue(pointsEarned(100, s), s);
   const returnPct = Math.round(hundredBack * 100) / 100;
+
+  // Same function the till mints the number with, so this promise is the one it keeps.
+  const prefixError = invoicePrefixError(s.invoicePrefix);
+  const nextInvoice = prefixError
+    ? null
+    : nextDocNo(lastInvoiceNo, invoiceRule(s));
+  // The start number is only honoured while it is ahead of what is already issued.
+  const overtaken = seqOf(lastInvoiceNo) >= s.invoiceStartNo;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -107,6 +122,68 @@ export function SettingsForm({ settings }: { settings: ShopSettings }) {
                 Ends the amount-in-words line: &ldquo;… {s.currencyWord || "TK"} Only&rdquo;.
               </p>
             </div>
+          </div>
+        </section>
+
+        {/* How invoices are numbered (§26). The only document a customer holds. */}
+        <section className="rounded-lg border p-4">
+          <h2 className="font-medium">Invoice numbering</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Only new invoices are numbered this way. Ones you have already printed keep the
+            number the customer is holding.
+          </p>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field
+              id="invoicePrefix"
+              label="Prefix"
+              hint="Goes in front of the number. May be left empty."
+            >
+              <Input
+                id="invoicePrefix"
+                value={s.invoicePrefix}
+                onChange={(e) => set("invoicePrefix", e.target.value)}
+                placeholder="INV-"
+              />
+            </Field>
+
+            <Field
+              id="invoiceStartNo"
+              label="Start numbering at"
+              hint="Match the books you are moving off."
+            >
+              <Input
+                id="invoiceStartNo"
+                type="number"
+                min="1"
+                step="1"
+                value={s.invoiceStartNo}
+                onChange={(e) => set("invoiceStartNo", Number(e.target.value))}
+              />
+            </Field>
+          </div>
+
+          <div className="mt-4 rounded-md bg-muted/50 p-3 text-sm">
+            {prefixError ? (
+              <p className="text-destructive">{prefixError}</p>
+            ) : (
+              <>
+                <p>
+                  The next invoice will be{" "}
+                  <span className="font-semibold tabular-nums text-primary">
+                    {nextInvoice}
+                  </span>
+                  .
+                </p>
+                {overtaken && lastInvoiceNo && (
+                  <p className="mt-1 text-muted-foreground">
+                    You have already issued {lastInvoiceNo}, so numbering carries on from
+                    there rather than going back to {s.invoiceStartNo} — an invoice number
+                    is never handed out twice.
+                  </p>
+                )}
+              </>
+            )}
           </div>
         </section>
 

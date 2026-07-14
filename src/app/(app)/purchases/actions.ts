@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { checkVariantQtys } from "@/lib/qty-server";
+import { nextDocNo, PURCHASE_NO } from "@/lib/docno";
 import { revalidatePath } from "next/cache";
 import {
   avgAfterPurchase,
@@ -52,8 +53,7 @@ async function nextPurchaseNo(tx: Tx): Promise<string> {
     orderBy: { id: "desc" },
     select: { purchaseNo: true },
   });
-  const n = last ? parseInt(last.purchaseNo.replace(/\D/g, ""), 10) || 0 : 0;
-  return `PUR-${String(n + 1).padStart(5, "0")}`;
+  return nextDocNo(last?.purchaseNo, PURCHASE_NO);
 }
 
 /**

@@ -64,6 +64,13 @@ model ShopSetting {
   /// Shop-wide low-stock threshold; a product's own `alertQty` overrides it.
   defaultAlertQty Int @default(5)
 
+  /// How sale invoices are numbered (BLUEPRINT §26). The invoice is the only document
+  /// a customer holds, so it is the only one whose numbering a shop can set — it has to
+  /// line up with the books they are moving off. Next number = max(last + 1, start), so
+  /// a duplicate is impossible whatever is typed here.
+  invoicePrefix  String @default("INV-")
+  invoiceStartNo Int    @default(1)
+
   /// Who the shop IS — printed on every receipt and invoice (BLUEPRINT §20.1).
   /// Without these the receipt is headed with the name of our software, which tells
   /// the customer nothing about the shop they just bought from.

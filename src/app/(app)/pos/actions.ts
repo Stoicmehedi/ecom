@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { requirePermission } from "@/lib/guard";
-import { getSettings } from "@/lib/settings";
+import { getSettings, type ShopSettings } from "@/lib/settings";
+import { EXCHANGE_NO, invoiceRule, nextDocNo } from "@/lib/docno";
 import {
   pointsEarned,
   pointsForValue,
@@ -78,13 +79,13 @@ export type CheckoutInput = z.input<typeof checkoutSchema>;
 
 type Tx = Prisma.TransactionClient;
 
-async function nextInvoiceNo(tx: Tx): Promise<string> {
+/** The invoice's prefix and starting number are the shop's, not ours (§26). */
+async function nextInvoiceNo(tx: Tx, settings: ShopSettings): Promise<string> {
   const last = await tx.sale.findFirst({
     orderBy: { id: "desc" },
     select: { invoiceNo: true },
   });
-  const n = last ? parseInt(last.invoiceNo.replace(/\D/g, ""), 10) || 0 : 0;
-  return `INV-${String(n + 1).padStart(5, "0")}`;
+  return nextDocNo(last?.invoiceNo, invoiceRule(settings));
 }
 
 async function nextExchangeNo(tx: Tx): Promise<string> {
@@ -92,8 +93,7 @@ async function nextExchangeNo(tx: Tx): Promise<string> {
     orderBy: { id: "desc" },
     select: { exchangeNo: true },
   });
-  const n = last ? parseInt(last.exchangeNo.replace(/\D/g, ""), 10) || 0 : 0;
-  return `EXC-${String(n + 1).padStart(5, "0")}`;
+  return nextDocNo(last?.exchangeNo, EXCHANGE_NO);
 }
 
 /** The original invoice, shaped for the shared return core. */
@@ -437,7 +437,7 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
 
       const sale = await tx.sale.create({
         data: {
-          invoiceNo: await nextInvoiceNo(tx),
+          invoiceNo: await nextInvoiceNo(tx, settings),
           customerId: s.customerId ?? null,
           branchId: branch?.id ?? null,
           soldById,

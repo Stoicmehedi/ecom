@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { checkVariantQtys } from "@/lib/qty-server";
+import { nextDocNo, PURCHASE_RETURN_NO } from "@/lib/docno";
 import { revalidatePath } from "next/cache";
 import { avgAfterReversal, round2, round3 } from "@/lib/costing";
 import type { Prisma } from "@/generated/prisma/client";
@@ -37,8 +38,7 @@ async function nextReturnNo(tx: Tx): Promise<string> {
     orderBy: { id: "desc" },
     select: { returnNo: true },
   });
-  const n = last ? parseInt(last.returnNo.replace(/\D/g, ""), 10) || 0 : 0;
-  return `PRT-${String(n + 1).padStart(5, "0")}`;
+  return nextDocNo(last?.returnNo, PURCHASE_RETURN_NO);
 }
 
 export async function savePurchaseReturn(input: ReturnInput): Promise<ActionResult> {

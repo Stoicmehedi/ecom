@@ -1,5 +1,6 @@
 import { avgAfterPurchase, paidRatio, round2, round3 } from "@/lib/costing";
 import { checkQty, type UnitRule } from "@/lib/qty";
+import { nextDocNo, SALE_RETURN_NO } from "@/lib/docno";
 import { pointsToReverse, pointsValue, type LoyaltySettings } from "@/lib/loyalty";
 import { reverseLoyaltyExpense } from "@/lib/expenses";
 import type { Prisma } from "@/generated/prisma/client";
@@ -125,8 +126,7 @@ async function nextReturnNo(tx: Tx): Promise<string> {
     orderBy: { id: "desc" },
     select: { returnNo: true },
   });
-  const n = last ? parseInt(last.returnNo.replace(/\D/g, ""), 10) || 0 : 0;
-  return `SRT-${String(n + 1).padStart(5, "0")}`;
+  return nextDocNo(last?.returnNo, SALE_RETURN_NO);
 }
 
 /**

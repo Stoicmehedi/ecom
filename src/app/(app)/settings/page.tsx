@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { getSettings } from "@/lib/settings";
+import { prisma } from "@/lib/prisma";
 import { SettingsForm } from "./settings-form";
 
 export default async function SettingsPage() {
@@ -12,6 +13,14 @@ export default async function SettingsPage() {
 
   const settings = await getSettings();
 
+  // The last invoice issued, so the numbering preview can show the number the next sale
+  // will actually take — a start number below what is already issued is overtaken, not
+  // re-used (§26.2), and that should be visible before it is saved, not after.
+  const lastSale = await prisma.sale.findFirst({
+    orderBy: { id: "desc" },
+    select: { invoiceNo: true },
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -20,7 +29,7 @@ export default async function SettingsPage() {
           Shop-wide rules. These take effect on the next sale.
         </p>
       </div>
-      <SettingsForm settings={settings} />
+      <SettingsForm settings={settings} lastInvoiceNo={lastSale?.invoiceNo ?? null} />
     </div>
   );
 }

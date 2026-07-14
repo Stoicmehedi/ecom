@@ -1848,3 +1848,72 @@ it is a bug, not a design.)
   `createdBy` on most documents. Deferred, not dismissed: worth its own module.
 - **Per-branch users** — single store (their branch list has exactly one row).
 - **Self-service change-password page** — worth having; folded into the user's own edit for now.
+
+---
+
+## 26. Document numbering *(studied read-only 2026-07-14; nothing created, edited or submitted)*
+
+### 26.1 What the reference app actually does
+
+Its Business Settings carries **exactly two** numbering fields:
+
+| Field | Their live value |
+|---|---|
+| Invoice prefix | `IN-` |
+| Invoice suffix *(really the **starting number**)* | `10000001` |
+
+And that is the whole of it. **There is no prefix or start number for any other document.** Their
+live invoices read `IN-10006550`, `IN-10006549`… — the prefix, then a plain running number that began
+at the 10000001 they typed in, ~6,550 sales ago.
+
+⚠️ **Their purchases have no document number of their own at all.** The "Invoice No" column on the
+purchase list is the **supplier's** invoice number (`IN-391/5`, and it repeats across rows — which is
+the same non-uniqueness §7 found). MPoS deliberately keeps its own `PUR-00001` sequence *and* a
+separate supplier invoice number, and that decision stands.
+
+**So the shape is settled by their data, not by our taste: only the sale invoice is configurable.**
+It is the only document a customer ever holds, and the only one a shop must be able to line up with
+the numbering in the books it is migrating off. The rest are internal.
+
+### 26.2 The rule
+
+A document number is `<prefix><number>`, where the number continues from the last document of that
+kind. **One rule, one file** (`src/lib/docno.ts`), used by all six sequences — invoice, purchase,
+purchase return, sale return, adjustment, exchange — so they cannot drift apart. Five of them hold a
+fixed prefix; the invoice's comes from Settings.
+
+Next number = `max(last number + 1, starting number)`.
+
+- **Only new documents change** (settled with the user). An invoice already printed keeps the number
+  the customer is holding; changing the prefix does not rewrite history.
+- The `max` is what makes a **duplicate impossible**: raising the start number jumps the sequence
+  forward, and a start number *below* what has already been issued is simply overtaken rather than
+  re-issued. Settings shows the number the next sale will actually take, so this is never a surprise.
+
+### 26.3 The parse, and the bug it fixes
+
+Today every generator reads the last number with `replace(/\D/g, "")` — *strip every non-digit*. That
+works only for as long as no prefix contains a digit. Give it the shop's own `IN2026-` and
+`IN2026-10000001` parses as **202610000001**, and the sequence explodes on the very next sale.
+
+The number is always at the **end**, so that is where it is read from: `/(\d+)$/`. The prefix becomes
+irrelevant to the arithmetic, which is the point.
+
+The one thing that parse cannot survive is a prefix **ending in a digit** (`IN2` + `00001` →
+`IN200001`, which reads back as 200001). So a trailing digit is **refused at the settings screen**,
+with the reason given. A prefix with digits anywhere else is fine.
+
+### 26.4 Settings
+
+Two fields — **invoice prefix** and **starting number** — beside a live preview: *"the next invoice
+will be **IN-10000001**"*, computed with the very function the till calls. Admin-only, on the existing
+`settings.manage` gate.
+
+### 26.5 Not built
+
+- **Prefixes for the other five documents.** Nothing in the reference app or in their data asks for it,
+  and twelve more settings fields to rename documents nobody outside the shop ever sees is a worse
+  screen for no gain. The helper takes a prefix per document type, so this is a settings field away if
+  a shop ever needs it.
+- **A configurable zero-padding width.** Theirs has none (an 8-digit number needs no padding); ours
+  pads to 5, which is what every existing document already carries.

@@ -17,6 +17,9 @@ export type ShopSettings = LoyaltySettings & {
   shopPhone: string | null;
   shopEmail: string | null;
   currencyWord: string;
+  /// How sale invoices are numbered (§26). The only document whose numbering is the shop's.
+  invoicePrefix: string;
+  invoiceStartNo: number;
 };
 
 /** The settings row, created from the schema defaults the first time it is asked for. */
@@ -42,5 +45,7 @@ export async function getSettings(): Promise<ShopSettings> {
     shopPhone: row.shopPhone,
     shopEmail: row.shopEmail,
     currencyWord: row.currencyWord,
+    invoicePrefix: row.invoicePrefix,
+    invoiceStartNo: row.invoiceStartNo,
   };
 }
