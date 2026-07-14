@@ -138,11 +138,22 @@ async function main() {
   check("month grouping Σ net == P&L net sales", byMonth.totals?.net, pl.netSales);
 
   // ---- Dues
+  //
+  // The receivable is NOT just the open invoices any more (BLUEPRINT §22.2): a
+  // customer can owe a balance no invoice explains (one they walked in with), or
+  // hold an advance to their credit. Both carry their own row, which is what lets
+  // this invoice-level report add up to the account-level balances — asserted in
+  // full further down. Here we just check the invoice rows themselves.
   console.log("\nDues:");
   const recv = await duesReport("receivable");
   const openSales = await prisma.sale.findMany({ where: { due: { gt: 0 } } });
-  check("receivable Σ due", recv.totals?.due, r2(openSales.reduce((a, s) => a + N(s.due), 0)));
-  check("receivable rows", recv.rows.length, openSales.length);
+  const invoiceRows = recv.rows.filter((r) => String(r.invoice).startsWith("INV-"));
+  check(
+    "receivable Σ invoice due",
+    r2(invoiceRows.reduce((a, r) => a + Number(r.due ?? 0), 0)),
+    r2(openSales.reduce((a, s) => a + N(s.due), 0)),
+  );
+  check("receivable invoice rows", invoiceRows.length, openSales.length);
 
   const pay = await duesReport("payable");
   const openPur = await prisma.purchase.findMany({ where: { due: { gt: 0 } } });
@@ -164,6 +175,55 @@ async function main() {
         r2(N(it.saleItem.price) * ratio),
       );
     }
+  }
+
+  // ---- THE reconciliation this whole design exists to guarantee (BLUEPRINT §22.5).
+  //
+  // What a customer owes is written down twice — on the invoice (`Sale.due`) and on
+  // the account (`Contact.dueBalance`). They are two views of one debt, so they must
+  // agree. Before §22 they did not: paying off a credit sale, or returning goods for
+  // credit, moved the account and left the invoice reading "due" forever.
+  //
+  // Per customer: account balance = what their open invoices still owe + whatever
+  // opening balance is left. Any drift means an invoice was settled without the
+  // account moving, or the reverse.
+  console.log("\nThe Dues report agrees with the customers' own balances:");
+  const customers = await prisma.contact.findMany({
+    where: { type: "CUSTOMER" },
+    select: { id: true, name: true, dueBalance: true, sales: { select: { due: true } } },
+  });
+
+  // The Dues report is built from INVOICES; a customer's page is built from their
+  // ACCOUNT. They are two views of one debt, so their totals must be the same number.
+  // Before §22 they were not: paying off a credit sale, or returning goods for credit,
+  // moved the account and left the invoice reading "due" forever.
+  const dues = await duesReport("receivable");
+  const accountSum = r2(customers.reduce((a, c) => a + N(c.dueBalance), 0));
+  check("Dues report total = Σ customer balances", dues.totals?.due, accountSum);
+
+  // And per customer, so a mismatch names who rather than just how much.
+  for (const c of customers) {
+    const invoiced = r2(c.sales.reduce((a, s) => a + N(s.due), 0));
+    const onReport = r2(
+      dues.rows
+        .filter((row) => row.customer === c.name)
+        .reduce((a, row) => a + Number(row.due ?? 0), 0),
+    );
+    if (Math.abs(N(c.dueBalance)) > 0.005 || Math.abs(invoiced) > 0.005) {
+      check(`${c.name}: on the Dues report`, onReport, N(c.dueBalance));
+    }
+  }
+
+  // An invoice must never claim to have collected more than it billed.
+  const allSales = await prisma.sale.findMany({
+    select: { invoiceNo: true, total: true, paid: true, credited: true, due: true },
+  });
+  for (const s of allSales) {
+    check(
+      `${s.invoiceNo}: paid + credited + due = total`,
+      r2(N(s.paid) + N(s.credited) + N(s.due)),
+      r2(N(s.total)),
+    );
   }
 
   console.log(

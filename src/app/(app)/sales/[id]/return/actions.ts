@@ -4,13 +4,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { avgAfterReversal, round2, round3 } from "@/lib/costing";
-import {
-  creditFor,
-  pointsMovementFor,
-  validateReturnLines,
-  writeSaleReturn,
-} from "@/lib/sale-return";
+import { validateReturnLines, writeSaleReturn } from "@/lib/sale-return";
 import { getSettings } from "@/lib/settings";
+import { settleAgainstInvoices, unsettle } from "@/lib/settle";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -63,30 +59,35 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
   if (invalid) return { error: invalid };
 
   const settings = await getSettings();
-  const total = creditFor(sale, lines);
 
-  // Part of the bill may have been paid in points. Those come back as POINTS, not as
-  // money (§15.5) — refunding them in cash would let a customer launder points into
-  // money. So only `payable` is settled across the counter.
-  const points = pointsMovementFor(sale, total, settings);
-  const payable = round2(total - points.restoredValue);
+  // The credit itself is computed inside `writeSaleReturn`, which is also what the
+  // exchange calls — one copy of the maths (§10.1a, §15.5). Part of the bill may
+  // have been paid in points, and those come back as points, so what lands on the
+  // account is `payable`, not the goods' full worth.
 
-  if (r.refunded > payable + 0.005) {
+  // **Cash never goes back to a customer** (BLUEPRINT §22.3, settled with the user).
+  // A return is always a credit. The screen no longer offers a refund; this refuses
+  // one even if the browser sends it, because a control that must never be used is
+  // a trap, and a rule the browser can talk around is not a rule.
+  if (r.refunded > 0.005) {
     return {
-      error: points.restoredValue > 0
-        ? `At most ${payable.toFixed(2)} can be refunded in money — ${points.restored} points (${points.restoredValue.toFixed(2)}) go back as points.`
-        : "Refund is more than the value of the returned goods.",
+      error:
+        "A return is credited to the customer's account — money never goes back across the counter.",
     };
   }
 
-  // Crediting a walk-in would leave a balance owed to nobody — the money has to
-  // go back across the counter.
+  // **Only a registered customer can hold a credit** (§22.3). A walk-in has no
+  // account, so crediting one would park a balance owed to nobody — the same trap
+  // as a due on a walk-in (§9.8). They must be registered at the counter, or
+  // exchange the goods instead (§14), which needs no account at all.
   const isWalkIn = !sale.customerId || (sale.customer?.isWalkIn ?? false);
-  if (isWalkIn && r.refunded < payable - 0.005) {
+  if (isWalkIn) {
     return {
-      error: "A walk-in must be refunded in full — there is no account to credit.",
+      error:
+        "A walk-in has no account to credit. Add them as a customer first, or exchange the goods instead.",
     };
   }
+  const customerId = sale.customerId as number;
 
   try {
     const id = await prisma.$transaction(async (tx) => {
@@ -95,41 +96,31 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
         lines,
         date: new Date(r.date),
         note: r.note,
-        refunded: r.refunded,
+        refunded: 0,
         settings,
       });
 
-      // Goods coming back cancel that much of the debt; cash handed over
-      // reinstates it and leaves the drawer. Only the MONEY part touches the ledger —
-      // the points part was never money in it.
-      if (sale.customerId) {
-        const netDueChange = round2(r.refunded - ret.payable);
-        await tx.contact.update({
-          where: { id: sale.customerId },
-          data: { dueBalance: { increment: netDueChange } },
-        });
-      }
+      // The goods' worth, less any points handed back with them — those return as
+      // points, not as money (§15.5), or they would launder into cash.
+      const credit = ret.payable;
 
-      if (r.refunded > 0) {
-        await tx.payment.create({
-          data: {
-            direction: "OUT",
-            amount: round2(r.refunded),
-            method: r.refundMethod || "CASH",
-            accountId: r.refundAccountId ?? null,
-            contactId: sale.customerId,
-            saleReturnId: ret.id,
-            date: new Date(r.date),
-            note: `Refund for ${ret.returnNo}`,
-          },
-        });
-        if (r.refundAccountId) {
-          await tx.account.update({
-            where: { id: r.refundAccountId },
-            data: { balance: { decrement: round2(r.refunded) } },
-          });
-        }
-      }
+      // The credit settles THIS invoice first — the goods came off this bill — and
+      // only then spills to the customer's other open invoices, oldest first (§22.3).
+      await settleAgainstInvoices(tx, {
+        contactId: customerId,
+        amount: credit,
+        kind: "CREDIT",
+        ref: { saleReturnId: ret.id },
+        date: new Date(r.date),
+        preferSaleId: sale.id,
+      });
+
+      // The account falls by the whole credit whether or not there was an invoice
+      // left to land it on — any surplus simply becomes an advance.
+      await tx.contact.update({
+        where: { id: customerId },
+        data: { dueBalance: { decrement: credit } },
+      });
 
       return ret.id;
     });
@@ -208,6 +199,11 @@ export async function deleteSaleReturn(id: number): Promise<ActionResult> {
       await tx.payment.deleteMany({ where: { saleReturnId: id } });
 
       if (ret.customerId) {
+        // Re-open the exact invoices this credit closed, by the exact amounts
+        // (§22.4). Re-deriving them would be guesswork the moment another payment
+        // has landed since; reading back the rows it wrote is not.
+        await unsettle(tx, { saleReturnId: id });
+
         // `moneyCredit`, not `total` — the points part never touched the ledger.
         const netDueChange = round2(Number(ret.refunded) - Number(ret.moneyCredit));
         await tx.contact.update({

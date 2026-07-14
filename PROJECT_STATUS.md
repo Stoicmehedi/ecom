@@ -735,6 +735,77 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   the DB is the one that is *supposed* to be fractional. Typecheck + build pass; `check-reports.ts`
   reconciles; no new lint findings.
 
+- **Settling a sale — BUILT (`BLUEPRINT.md` §22). The `Sale.due` question is closed, and it was hiding
+  a worse bug than the one it named.** Migrations `whole_units` … `due_allocations`.
+
+  ⚠️ **What a customer owes was written down twice, and only one copy was ever updated.** The
+  **invoice** (`Sale.due`) and the **account** (`Contact.dueBalance`) are two views of one debt — and
+  *every* post-sale movement updated the account and left the invoice alone:
+
+  | After the sale… | Account | Invoice |
+  |---|---|---|
+  | Customer **pays** their due | ✅ falls | ❌ **untouched** |
+  | Customer **returns** goods for credit | ✅ falls | ❌ **untouched** |
+
+  The known issue was the return. **Chasing it found the payment case, which is far worse** — because
+  paying off credit is the ordinary path, and returning goods on an unpaid bill is not. A customer who
+  bought on credit for 100 and then *handed over the 100 in cash* had an account of 0 and an invoice
+  still reading **due 100, DUE** — and the **Dues report is built from invoices**, so it chased them
+  forever for money already paid, while their own page said they owed nothing.
+
+  - **One rule** (`src/lib/settle.ts`): *a debt is settled against invoices, oldest first; the account
+    balance is what is left over.* Both movements — money paid, goods handed back — funnel through it,
+    so they cannot drift apart. A return credit settles **its own invoice first** (the goods came off
+    *that* bill), then spills to older ones.
+  - **An allocation ledger** (`DueAllocation`) records what settled which invoice. `Sale.due` becomes
+    a cache of it — same discipline as `PointEntry` behind the points balance (§15). It exists so a
+    deletion reverses **exactly**: re-deriving which invoices a deleted payment had settled is
+    guesswork the moment a second payment has landed; reading back the rows it wrote is not.
+  - **`Sale.credited` added**, so an invoice always reads **`total = paid + credited + due`** — money
+    in, goods back, still owed. Folding a return into `paid` would claim the customer paid money they
+    never paid.
+  - **Cash never goes back to a customer** (settled with the user): a return is **always** a credit.
+    The refund controls are **gone from the screen**, and the server refuses a refund whatever the
+    browser sends. A control that must never be used is a trap.
+  - **Only a registered customer can hold a credit.** A walk-in has no account, so crediting one would
+    park a balance owed to nobody (the §9 trap). They must be registered at the counter, or **exchange**
+    instead (§14) — which needs no account at all.
+  - **The Dues report gains the rows that make it add up**: a customer's **opening balance** (derived,
+    so it stays honest after part-payment — the `openingBalance` column never moves) and any **advance
+    on account**. Their report carries the same "Initial Due" idea; ours also handles the advance,
+    which theirs does not.
+
+  **What the reference app settled** (studied read-only 2026-07-14; nothing created, edited or
+  deleted): their Customer Due Report is **invoice-level, like ours** — which confirmed the shape — and
+  it carries an **"Initial Due"** row for the opening balance, which is exactly the piece ours was
+  missing. ⚠️ Their **guests hold dues** (one "Guest" owes 980). **Deliberately not copied** — a due on
+  a walk-in is money owed by nobody. Their credit sales are rare but real: **7 unpaid invoices out of
+  ~6,500**. *(Their default date filter is "today"; it was widened to 2020–2026 before concluding
+  anything — the same trap as the stock-adjustment study.)*
+
+  **The invariant, asserted** (`check-reports.ts`, §22.5): **the Dues report's total equals the sum of
+  the customers' own balances**, per customer *and* overall, plus `paid + credited + due = total` on
+  every invoice. The two screens can no longer disagree without the check screaming.
+
+  **Browser-verified end to end, every figure read back from the DB.** Sold 4 tees to Nadia on credit
+  (48.00, nothing paid) → invoice **due 48**, account **48**. Returned 2 → invoice
+  **`48 = 0 paid + 24 credited + 24 due`, PARTIAL**, account **24** — *the case that was broken.* Then
+  she **paid the 24** → invoice **PAID**, account **0**, and the Dues report went from chasing her to
+  *"Nobody owes you anything"* — *the case that was worse.* Deleting the return **re-opened exactly**
+  what it had closed (credited 24 → 0, due 0 → 24, PARTIAL) and **left the payment's allocation
+  untouched**, which is the whole reason the ledger exists. A return against a **fully-paid** invoice
+  correctly became an **advance** (account −12) with no allocation row.
+
+  **Both gates proven by forging the wire.** A payload demanding **12.00 cash back** was refused
+  (*"money never goes back across the counter"*); a return against a **walk-in** invoice was refused
+  (*"a walk-in has no account to credit"*). **Neither wrote a row** — allocations, balances and cash
+  all unchanged. Typecheck + build pass; no new lint findings.
+
+  🐛 **A hole found by the verification itself:** an advance sitting *alongside* an open invoice made
+  the Dues report overstate the debt (it showed her 24 when she netted 12). The report now carries an
+  **"Advance on account"** row, and the invariant was tightened from an inequality to an **exact
+  equality** — which is what caught it.
+
 ---
 
 ## 5. Current state
@@ -820,12 +891,13 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   balance exactly where it started. See `BLUEPRINT.md` §10.1a.
 - ✅ **Reports reviewed by a multi-agent code review at high effort**; all 10 confirmed defects fixed
   (money math, the `reports.view` gate on screens, two 500s, and the totals/links/rounding nits).
-- ⬜ **`Sale.due` is not reduced by a return** — a return settles against the *customer's account
-  balance*, never the invoice. So a fully-returned credit sale still shows its original due on the
-  Sales and Dues reports, while the customer's ledger is correctly square. Both numbers are
-  internally consistent (invoice-level vs account-level), but decide deliberately whether an
-  invoice's due should close when its goods come back. **Not a bug we hit; a modelling choice to
-  settle.**
+- ✅ **`Sale.due` settled** (`BLUEPRINT.md` §22) — an invoice's due now closes as it is paid *and* as
+  goods come back, because both funnel through **one rule** (`src/lib/settle.ts`: oldest invoice
+  first) backed by an **allocation ledger** so a deletion reverses exactly. Chasing the return case
+  uncovered the worse one: **paying off a credit sale never closed its invoice either**, so the Dues
+  report chased customers who had already paid. **Cash never goes back to a customer** — a return is
+  always a credit, and only a registered customer can hold one. `check-reports.ts` now asserts the
+  Dues report totals to the customers' own balances.
 - ⬜ Deferred to Phase 2 (out of scope for the purchases module): purchase orders, stock
   adjustments, supplier advances/due-dismiss, attachments, areas & contact groups.
 
@@ -843,6 +915,10 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   **Cotton Fabric** (`FAB-001`) and **`PUR-00002`** (2.5 m @ 3.00 from Rahim Traders) — kept on purpose:
   it is the only thing in the DB that exercises the *decimal* half of the rule, the way Field Tee
   exercises the price floor. It is the sole fractional stock row, and it is meant to be.
+  Verifying the settlement rule (§22) then added **`INV-00004`** (4 tees to Nadia on credit, 48.00),
+  a return of 2 that was later deleted, a **return of 1** left standing (`SRT-00003`), and a **24.00
+  payment** — so Nadia ends holding a 24.00 invoice and a 12.00 advance, netting **12.00 owed**, and
+  Cash sits at **24,900.80**. Kept: it is the only data that exercises the allocation ledger.
   Re-seed before the next module if you want a clean slate.
 
 **Dev logins** (both seeded): `admin` / `admin123` (Admin — sees everything) · `cashier` /
@@ -887,18 +963,24 @@ category bug in the products list *and* the CSV export. See the progress log.
 ~~6. Whole vs decimal units~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §21). A live data-integrity bug:
 half a shirt could be bought, returned and counted, though not sold. See the progress log.
 
+~~7. Settle the `Sale.due` question~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §22). It was not a
+modelling choice in the end: **paying off a credit sale never closed its invoice**, so the Dues report
+chased customers who had already paid. See the progress log.
+
 **START HERE (next session).**
 
-1. **Settle the `Sale.due` question** (see §5) — a modelling decision, not a bug: should an invoice's
-   due close when its goods come back? Today a return settles against the *customer's account*, never
-   the invoice, so a fully-returned credit sale still shows its original due on the Sales and Dues
-   reports while the customer's ledger is correctly square. **Ask the user, then make it so.**
+1. **Manual account movements — deposit / withdraw / transfer.** The clearest remaining hole. Accounts
+   (Cash, Bank) exist and their balances move correctly whenever a sale, purchase, expense or payment
+   touches them — but **there is no accounts screen and no way to move money by hand.** A shop banks
+   its cash takings; today that cannot be recorded at all. Study the reference app's account module
+   read-only first (`/accounts`, their deposit/withdraw screens).
 
 **Then, in rough order of value:**
 
 2. The rest of Phase 2 (see `BLUEPRINT.md` §5): employees/salary (**salary is an expense type
    today** — it earns its own subsystem when there are employees to attach it to), VAT (only if it is
-   actually needed), quotations.
+   actually needed), quotations. ⚠️ **Check the shop's own data before building any of them** — that
+   method has now killed or corrected six assumptions.
 3. Still open from §20: a **shop logo** on the receipt — deliberately deferred, because an image needs
    the **storage decision** §12 has been parking (where do uploaded files live?). Settle that once and
    it unblocks product images too.

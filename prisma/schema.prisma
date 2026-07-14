@@ -352,6 +352,7 @@ model Contact {
 
   purchases       Purchase[]
   sales           Sale[]
+  allocations     DueAllocation[]
   payments        Payment[]
   purchaseReturns PurchaseReturn[]
   saleReturns     SaleReturn[]
@@ -463,6 +464,11 @@ model Sale {
   vat           Decimal      @default(0) @db.Decimal(14, 2) // deferred — stays 0 for now
   total         Decimal      @default(0) @db.Decimal(14, 2)
   paid          Decimal      @default(0) @db.Decimal(14, 2)
+  /// Goods handed back against this invoice, settled as a credit (BLUEPRINT §22.4).
+  /// Kept apart from `paid` because the customer never paid this money — so an
+  /// invoice always reads `total = paid + credited + due`: money in, goods back,
+  /// still owed.
+  credited      Decimal      @default(0) @db.Decimal(14, 2)
   due           Decimal      @default(0) @db.Decimal(14, 2)
   status        DocStatus    @default(PAID)
   note          String?
@@ -487,11 +493,12 @@ model Sale {
   soldById   Int?
   soldBy     User?    @relation("SoldBy", fields: [soldById], references: [id])
 
-  items    SaleItem[]
-  payments Payment[]
-  returns  SaleReturn[]
-  points   PointEntry[]
-  expenses Expense[]
+  items       SaleItem[]
+  payments    Payment[]
+  returns     SaleReturn[]
+  points      PointEntry[]
+  expenses    Expense[]
+  allocations DueAllocation[]
 
   exchangedFrom Exchange[] @relation("ExchangeFrom")
   exchangedTo   Exchange?  @relation("ExchangeTo")
@@ -553,6 +560,8 @@ model SaleReturn {
   /// the original sale come back to them and are recorded as their own entry.
   pointsReversed Int  @default(0)
   createdAt DateTime @default(now())
+  /// Which invoices this credit settled (BLUEPRINT §22.4).
+  allocations DueAllocation[]
 
   saleId     Int
   sale       Sale     @relation(fields: [saleId], references: [id])
@@ -642,6 +651,9 @@ model Payment {
   saleReturn       SaleReturn?     @relation(fields: [saleReturnId], references: [id])
   expenseId        Int?
   expense          Expense?        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  /// Which invoices this payment settled (BLUEPRINT §22.4).
+  allocations DueAllocation[]
 }
 
 // ---------- Stock adjustments (BLUEPRINT §19) ----------
@@ -779,4 +791,44 @@ model StockMovement {
   variant   ProductVariant @relation(fields: [variantId], references: [id])
 
   @@index([variantId])
+}
+
+/// What settled which invoice (BLUEPRINT §22.4).
+///
+/// `Sale.due` is a cache; this is the ledger behind it. Every payment a customer
+/// makes against their account, and every credit for goods they hand back, lands
+/// on one or more invoices — oldest first — and each landing is a row here.
+///
+/// It exists so a deletion can be reversed *exactly*. Re-deriving which invoices a
+/// deleted payment had settled is guesswork the moment a second payment has been
+/// made; reading back the rows it wrote is not. Same discipline as `PointEntry`
+/// behind `Contact.loyaltyPoints` (§15): a balance nobody can explain is a balance
+/// nobody can trust.
+model DueAllocation {
+  id     Int            @id @default(autoincrement())
+  kind   AllocationKind
+  /// Always positive — the direction is the `kind`, never the sign.
+  amount Decimal        @db.Decimal(14, 2)
+  date   DateTime       @default(now())
+
+  saleId    Int
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  contactId Int
+  contact   Contact @relation(fields: [contactId], references: [id])
+
+  /// Exactly one of these names the movement that caused it.
+  paymentId    Int?
+  payment      Payment?    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  saleReturnId Int?
+  saleReturn   SaleReturn? @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@index([contactId])
+}
+
+enum AllocationKind {
+  /// Money the customer handed over after the sale.
+  PAYMENT
+  /// Goods the customer handed back. No money moved.
+  CREDIT
 }

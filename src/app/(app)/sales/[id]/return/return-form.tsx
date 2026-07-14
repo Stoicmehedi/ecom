@@ -10,13 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { qtyStep } from "@/lib/qty";
 import {
   Table,
@@ -39,13 +32,6 @@ type ReturnLine = {
   allowDecimal: boolean;
 };
 
-const METHODS = [
-  { value: "CASH", label: "Cash" },
-  { value: "CARD", label: "Card" },
-  { value: "BANK", label: "Bank transfer" },
-  { value: "MOBILE", label: "Mobile banking" },
-];
-
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export function SaleReturnForm({
@@ -57,7 +43,6 @@ export function SaleReturnForm({
   saleTotal,
   pointsRedeemed,
   settings,
-  accounts,
   lines: initialLines,
 }: {
   saleId: number;
@@ -68,7 +53,6 @@ export function SaleReturnForm({
   saleTotal: number;
   pointsRedeemed: number;
   settings: ShopSettings;
-  accounts: { id: number; name: string }[];
   lines: ReturnLine[];
 }) {
   const router = useRouter();
@@ -77,11 +61,6 @@ export function SaleReturnForm({
   const [lines, setLines] = useState(initialLines);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
-  const [refunded, setRefunded] = useState(0);
-  const [refundMethod, setRefundMethod] = useState("CASH");
-  const [refundAccountId, setRefundAccountId] = useState<number | null>(
-    accounts[0]?.id ?? null,
-  );
 
   const total = r2(lines.reduce((s, l) => s + l.qty * l.price, 0));
 
@@ -104,23 +83,17 @@ export function SaleReturnForm({
         // out (§21). The server refuses it too — this just says so sooner.
         const whole = l.allowDecimal ? value : Math.round(value);
         const capped = Math.max(0, Math.min(whole, maxFor(l)));
-        // A walk-in gets cash back, so the refund tracks the return value.
         return { ...l, qty: capped };
       }),
     );
   }
 
-  // Keep a walk-in's refund pinned to the full value — there's no account to credit.
-  // (A walk-in holds no points, so `payable` is simply the whole value.)
-  const effectiveRefund = isWalkIn ? payable : refunded;
-
   function onSubmit() {
     if (total <= 0) return toast.error("Enter a return quantity for at least one item");
-    if (effectiveRefund > payable + 0.005) {
+    // A walk-in has no account to credit, and money never goes back (§22.3).
+    if (isWalkIn) {
       return toast.error(
-        pointsBackValue > 0
-          ? `At most ${payable.toFixed(2)} can go back in money — ${pointsBack} points return as points`
-          : "Refund is more than the value of the returned goods",
+        "A walk-in has no account to credit — add them as a customer, or exchange the goods",
       );
     }
 
@@ -129,9 +102,6 @@ export function SaleReturnForm({
         saleId,
         date,
         note: note || undefined,
-        refunded: effectiveRefund,
-        refundMethod,
-        refundAccountId,
         items: lines
           .filter((l) => l.qty > 0)
           .map((l) => ({ saleItemId: l.saleItemId, qty: l.qty })),
@@ -232,68 +202,25 @@ export function SaleReturnForm({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* There is no Refund box any more. Money never goes back to a customer
+            (BLUEPRINT §22.3) — a control that must never be used is a trap, so the
+            software simply cannot do it. The server refuses a refund too. */}
         <div className="space-y-3 rounded-lg border p-4">
-          <h3 className="font-medium">Refund</h3>
+          <h3 className="font-medium">Credit</h3>
           {isWalkIn ? (
-            <p className="text-sm text-muted-foreground">
-              This was a walk-in sale, so the full{" "}
-              <span className="font-medium text-foreground">{payable.toFixed(2)}</span>{" "}
-              goes back across the counter — there is no account to credit.
+            <p className="text-sm text-destructive">
+              This was a <span className="font-medium">walk-in</span> sale, and a walk-in
+              has no account to credit. Add them as a customer first, or{" "}
+              <span className="font-medium">exchange</span> the goods at the POS instead.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Leave at zero to credit it against what they owe instead of handing
-              money back.
+              The goods are credited to{" "}
+              <span className="font-medium text-foreground">{customerName}</span>. It comes
+              off this invoice first, then anything left over off their other unpaid bills —
+              and any surplus stays on their account for next time.
             </p>
           )}
-          <div className="flex items-end gap-2">
-            <div className="flex-1 space-y-1">
-              <Label className="text-xs">Method</Label>
-              <Select value={refundMethod} onValueChange={setRefundMethod}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {METHODS.map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex-1 space-y-1">
-              <Label className="text-xs">Account</Label>
-              <Select
-                value={refundAccountId ? String(refundAccountId) : undefined}
-                onValueChange={(v) => setRefundAccountId(Number(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Account" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={String(a.id)}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="w-32 space-y-1">
-              <Label className="text-xs">Amount</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                max={payable}
-                className="text-right"
-                value={effectiveRefund}
-                disabled={isWalkIn}
-                onChange={(e) => setRefunded(Number(e.target.value))}
-              />
-            </div>
-          </div>
         </div>
 
         <div className="space-y-2 rounded-lg border p-4">
@@ -320,27 +247,19 @@ export function SaleReturnForm({
                 They paid part of this bill with points, so that part goes back as
                 points — not as money.
               </p>
-              <div className="flex justify-between border-t pt-1 text-sm font-medium">
-                <span>To settle in money</span>
-                <span className="tabular-nums">{payable.toFixed(2)}</span>
-              </div>
             </div>
           )}
-          <div className="flex justify-between py-1">
-            <span className="text-sm text-muted-foreground">Refunded</span>
-            <span className="text-sm tabular-nums">
-              {r2(effectiveRefund).toFixed(2)}
-            </span>
-          </div>
-          <div className="flex justify-between py-1">
-            <span className="text-sm text-muted-foreground">Credited against due</span>
+          <div className="flex justify-between border-t py-1 pt-2">
+            <span className="text-sm text-muted-foreground">Credited to account</span>
             {/* `payable`, not `total` — points handed back are not money, so they
                 never touch the customer's account (BLUEPRINT §15.5). */}
-            <span className="text-sm tabular-nums">
-              {r2(payable - effectiveRefund).toFixed(2)}
-            </span>
+            <span className="text-sm font-medium tabular-nums">{payable.toFixed(2)}</span>
           </div>
-          <Button className="mt-2 w-full" onClick={onSubmit} disabled={pending}>
+          <Button
+            className="mt-2 w-full"
+            onClick={onSubmit}
+            disabled={pending || isWalkIn}
+          >
             {pending ? "Saving…" : "Save return"}
           </Button>
         </div>

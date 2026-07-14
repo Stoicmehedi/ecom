@@ -15,7 +15,8 @@ export default async function SaleReturnPage({
   const saleId = Number(id);
   if (!Number.isFinite(saleId)) notFound();
 
-  const [sale, accounts, settings] = await Promise.all([
+  // No accounts are loaded any more: a return never moves money (BLUEPRINT §22.3).
+  const [sale, settings] = await Promise.all([
     prisma.sale.findUnique({
       where: { id: saleId },
       include: {
@@ -27,7 +28,6 @@ export default async function SaleReturnPage({
         },
       },
     }),
-    prisma.account.findMany({ orderBy: { id: "asc" }, select: { id: true, name: true } }),
     getSettings(),
   ]);
 
@@ -61,7 +61,6 @@ export default async function SaleReturnPage({
         saleTotal={num(sale.total)}
         pointsRedeemed={sale.pointsRedeemed}
         settings={settings}
-        accounts={accounts}
         lines={sale.items.map((i) => ({
           saleItemId: i.id,
           label: i.variant.label

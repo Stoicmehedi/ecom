@@ -1493,3 +1493,88 @@ has answered a design question.*
 
 1. **Whole-unit products already carrying fractional stock** — none exist today. If one ever did, it
    is a stock adjustment (a counted correction with a reason), never an automatic round.
+
+---
+
+## 22. Settling a sale — invoice level vs account level *(defect: two numbers for one debt)*
+
+### 22.1 The bug
+
+What a customer owes is written down **twice**:
+
+- on the **invoice** — `Sale.paid` / `Sale.due` / `Sale.status`;
+- on the **account** — `Contact.dueBalance`, the customer's running balance.
+
+Every post-sale money movement updates the **account** and *never* the **invoice**:
+
+| After the sale… | Account | Invoice |
+|---|---|---|
+| Customer pays their due (`receiveDue`) | ✅ falls | ❌ **untouched** |
+| Customer returns goods for credit | ✅ falls | ❌ **untouched** |
+
+So a customer who buys on credit for 100 and then **pays the 100 in full** has an account balance of
+0 and an invoice that still reads **due 100, status DUE** — and the **Dues report is built from
+invoices**, so it chases them forever for money they have already handed over. The Customers page
+(built from accounts) says they owe nothing. Two screens, one customer, different answers.
+
+The return case is the same bug; it is just rarer. Paying off credit is the ordinary path, which is
+what makes this the more serious half.
+
+### 22.2 What the reference app does *(studied read-only 2026-07-14; nothing created, edited or deleted)*
+
+Their Customer Due Report is **invoice-level, like ours** — one row per unpaid invoice — which
+confirms the shape. Two things their live data shows that ours does not do:
+
+1. It carries an **"Initial Due"** row for a customer's **opening balance**. That is not decoration:
+   it is what lets an invoice-level report reconcile to an account-level balance. Ours has no such
+   row, so a customer with an opening balance could never reconcile even with the bug fixed.
+2. Their guests **do** carry dues (a "Guest" holds 980). We deliberately refuse that — a due parked on
+   a walk-in is money owed by nobody (§9). **Not copied.**
+
+Their credit sales are rare but real: **7 unpaid invoices out of ~6,500** across 2024–2026.
+
+### 22.3 The rule
+
+> **A debt is settled against invoices, oldest first. The account balance is what is left over.**
+
+- **A payment** (`receiveDue`) settles the customer's oldest open invoice, then the next, and so on.
+- **A return credit** settles **its own invoice first** — the goods came off *that* bill — and only
+  then spills to other open invoices, oldest first.
+- **Anything left over** once every invoice is settled becomes an **advance** on the account (a
+  negative balance), exactly as today.
+- **Cash never goes back to a customer** (settled with the user, 2026-07-14): a sale return is
+  **always** a credit. The refund controls come off the return screen and **the server refuses a
+  refund**, whatever the browser sends.
+- **Only a registered customer can hold a credit.** A walk-in has no account, so a walk-in must be
+  registered at the counter (phone number) to take one — or **exchange** instead (§14), which needs no
+  account at all. Crediting "Walk-in" would park a balance owed to nobody.
+
+### 22.4 The allocation ledger
+
+`Sale.due` becomes a **cache**, and the ledger behind it is a new `DueAllocation` — one row per
+movement, each naming the payment or the return that caused it, and the invoice it landed on. Same
+discipline as `PointEntry` behind `Contact.loyaltyPoints` (§15): *a balance nobody can explain is a
+balance nobody can trust*, and an allocation that cannot be traced cannot be reversed exactly.
+
+- `Sale.credited` is added alongside `paid`, so an invoice always reads
+  **`total = paid + credited + due`** — money in, goods back, still owed. Folding a return into `paid`
+  would say the customer paid money they never paid.
+- **Deleting a return or a payment reverses its allocations exactly** — the invoices re-open by the
+  amounts that closed them, not by a re-derivation that could drift.
+
+### 22.5 The invariant
+
+`scripts/check-reports.ts` asserts:
+
+> **Σ (invoice dues) + Σ (opening balances) = Σ (customer account balances)**
+
+That is the whole point of the change, expressed as a test. Once asserted, the two views cannot
+silently diverge again — which is exactly how the product-profit ↔ P&L reconciliation (§11) has kept
+the reports honest.
+
+### 22.6 Not changed
+
+- **Purchase returns** — the *supplier* refunds *us*. Money coming in is not the rule we are removing.
+- **Exchange** (§14) — the credit is spent on goods on the spot, so it never touches the account and
+  therefore never touches an invoice's due.
+- **A sale's own payments at the till** — the POS already writes `paid`/`due` correctly at checkout.

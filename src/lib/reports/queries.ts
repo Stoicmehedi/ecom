@@ -527,23 +527,68 @@ export async function duesReport(side: DueSide): Promise<ReportTable> {
     Math.max(0, Math.floor((today.getTime() - d.getTime()) / 86_400_000));
 
   if (side === "receivable") {
-    const sales = await prisma.sale.findMany({
-      where: { due: { gt: 0 } },
-      orderBy: { date: "asc" },
-      include: { customer: { select: { id: true, name: true, phone: true } } },
-    });
+    const [sales, customers] = await Promise.all([
+      prisma.sale.findMany({
+        where: { due: { gt: 0 } },
+        orderBy: { date: "asc" },
+        include: { customer: { select: { id: true, name: true, phone: true } } },
+      }),
+      prisma.contact.findMany({
+        where: { type: "CUSTOMER" },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          dueBalance: true,
+          createdAt: true,
+        },
+      }),
+    ]);
 
-    const rows: Row[] = sales.map((s) => ({
-      date: s.date.toISOString(),
-      invoice: s.invoiceNo,
-      customer: s.customer?.name ?? "—",
-      phone: s.customer?.phone ?? "",
-      total: num(s.total),
-      paid: num(s.paid),
-      due: num(s.due),
-      age: ageDays(s.date),
-      _href: `/sales/${s.id}`,
-    }));
+    // Not everything a customer owes is on an invoice, and not everything they hold
+    // is a debt (§22.2). Whatever their account carries beyond their open invoices is
+    // either a balance they walked in with (positive) or an advance sitting to their
+    // credit (negative) — and BOTH need a row, or this invoice-level report cannot
+    // add up to the account-level balance on their own page.
+    //
+    // Derived, not read from `openingBalance`: that column never moves, so it would
+    // still claim 500 after 500 had been paid off.
+    const invoiced = new Map<number, number>();
+    for (const s of sales) {
+      if (!s.customerId) continue;
+      invoiced.set(s.customerId, round2((invoiced.get(s.customerId) ?? 0) + num(s.due)));
+    }
+
+    const rows: Row[] = [
+      ...customers
+        .map((c) => ({
+          c,
+          rest: round2(num(c.dueBalance) - (invoiced.get(c.id) ?? 0)),
+        }))
+        .filter(({ rest }) => Math.abs(rest) > 0.005)
+        .map(({ c, rest }) => ({
+          date: c.createdAt.toISOString(),
+          invoice: rest > 0 ? "Opening balance" : "Advance on account",
+          customer: c.name,
+          phone: c.phone ?? "",
+          total: rest,
+          paid: 0,
+          due: rest,
+          age: ageDays(c.createdAt),
+          _href: `/customers/${c.id}`,
+        })),
+      ...sales.map((s) => ({
+        date: s.date.toISOString(),
+        invoice: s.invoiceNo,
+        customer: s.customer?.name ?? "—",
+        phone: s.customer?.phone ?? "",
+        total: num(s.total),
+        paid: num(s.paid),
+        due: num(s.due),
+        age: ageDays(s.date),
+        _href: `/sales/${s.id}`,
+      })),
+    ].sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
     const columns: Column[] = [
       { key: "date", label: "Date", type: "date" },

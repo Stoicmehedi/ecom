@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { settleAgainstInvoices } from "@/lib/settle";
 import { revalidatePath } from "next/cache";
 import { round2 } from "@/lib/costing";
 import { isUniqueError, isFkError } from "@/lib/db-error";
@@ -166,7 +167,7 @@ export async function receiveCustomerDue(
 
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.payment.create({
+      const payment = await tx.payment.create({
         data: {
           direction: "IN",
           amount: round2(amount),
@@ -176,6 +177,19 @@ export async function receiveCustomerDue(
           note: note || "Customer due received",
         },
       });
+
+      // The money lands on their open invoices, oldest first (BLUEPRINT §22.3).
+      // Without this the account went to zero while the invoices still read "due",
+      // and the Dues report — which is built from invoices — chased a customer who
+      // had already paid.
+      await settleAgainstInvoices(tx, {
+        contactId: customerId,
+        amount: round2(amount),
+        kind: "PAYMENT",
+        ref: { paymentId: payment.id },
+        date: payment.date,
+      });
+
       await tx.contact.update({
         where: { id: customerId },
         data: { dueBalance: { decrement: round2(amount) } },
