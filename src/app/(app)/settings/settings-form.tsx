@@ -304,6 +304,108 @@ export function SettingsForm({
           </div>
         </section>
 
+        {/* What prints on the paper the customer walks out with (§27). */}
+        <section className="rounded-lg border p-4">
+          <h2 className="font-medium">What prints on the receipt</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The 80mm receipt, the A4 invoice and the shared link all read the same
+            settings, so they cannot disagree about what was sold.
+          </p>
+
+          <div className="mt-4 space-y-3">
+            <Toggle
+              checked={s.showTime}
+              onChange={(v) => set("showTime", v)}
+              label="Time of sale"
+              hint="The date always prints; the time is optional."
+            />
+            <Toggle
+              checked={s.showSizeColour}
+              onChange={(v) => set("showSizeColour", v)}
+              label="Size &amp; colour on each line"
+              hint="&ldquo;Classic Tee — Red / M&rdquo; rather than just &ldquo;Classic Tee&rdquo;."
+            />
+            <Toggle
+              checked={s.showSku}
+              onChange={(v) => set("showSku", v)}
+              label="SKU on each line"
+              hint="A4 only. It is your stock code — it means nothing to the customer."
+            />
+            <Toggle
+              checked={s.showPaymentDetails}
+              onChange={(v) => set("showPaymentDetails", v)}
+              label="Payment details"
+              hint="How the bill was settled: cash, card, points, goods exchanged."
+            />
+            <Toggle
+              checked={s.showInWords}
+              onChange={(v) => set("showInWords", v)}
+              label="Amount in words"
+              hint="A digit can be altered with a pen; a sentence cannot."
+            />
+            <Toggle
+              checked={s.showSignatures}
+              onChange={(v) => set("showSignatures", v)}
+              label="Signature lines"
+              hint="A4 only — a till roll has no room for them."
+            />
+          </div>
+
+          {s.showSignatures && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <Field id="signatureLeft" label="Left signature">
+                <Input
+                  id="signatureLeft"
+                  value={s.signatureLeft}
+                  onChange={(e) => set("signatureLeft", e.target.value)}
+                  placeholder="Received by"
+                />
+              </Field>
+              <Field id="signatureRight" label="Right signature">
+                <Input
+                  id="signatureRight"
+                  value={s.signatureRight}
+                  onChange={(e) => set("signatureRight", e.target.value)}
+                  placeholder="Authorised by"
+                />
+              </Field>
+            </div>
+          )}
+
+          <div className="mt-4 space-y-4">
+            <Field
+              id="footerNote"
+              label="Footer note"
+              hint="Prints at the bottom of every receipt and invoice. Your words, in your shop's name — a returns policy, an offer, or nothing at all."
+            >
+              <Input
+                id="footerNote"
+                value={s.footerNote ?? ""}
+                onChange={(e) => set("footerNote", e.target.value)}
+                placeholder="e.g. Exchange within 7 days with this receipt"
+              />
+            </Field>
+
+            <Field
+              id="defaultPrint"
+              label="After a sale, open"
+              hint="Whichever document you actually hand over."
+            >
+              <select
+                id="defaultPrint"
+                className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+                value={s.defaultPrint}
+                onChange={(e) =>
+                  set("defaultPrint", e.target.value as ShopSettings["defaultPrint"])
+                }
+              >
+                <option value="RECEIPT">80mm receipt</option>
+                <option value="A4">A4 invoice</option>
+              </select>
+            </Field>
+          </div>
+        </section>
+
         {/* Stock */}
         <section className="rounded-lg border p-4">
           <h2 className="font-medium">Stock</h2>
@@ -385,6 +487,33 @@ export function SettingsForm({
         )}
       </aside>
     </div>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: React.ReactNode;
+  hint?: React.ReactNode;
+}) {
+  return (
+    <label className="flex items-start gap-2 text-sm">
+      <input
+        type="checkbox"
+        className="mt-0.5 size-4 accent-primary"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>
+        <span className="font-medium">{label}</span>
+        {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
+      </span>
+    </label>
   );
 }
 

@@ -989,6 +989,58 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   path (Cash back to **1,000.80**, Canvas Cap back to **18**), and the setting put back to the seeded
   `INV-` / 1. `check-reports.ts` reconciles; typecheck + production build pass; **no new lint findings**.
 
+- **Receipt & invoice toggles — BUILT (`BLUEPRINT.md` §27).** Migration `receipt_toggles`. What prints
+  on the paper a customer walks out with is the shop's to decide; all of it was hard-coded.
+
+  ⚠️ **The study found a defect, not a preference: we were printing a policy the shop never made.**
+  Both the receipt and the A4 invoice ended with *"Goods once sold are exchangeable within 7 days."*
+  **Nobody chose that — we wrote it.** It is a returns promise, in the shop's name, in a customer's
+  hand, and it was our placeholder text. Same family as the receipt once headed with the name of our
+  till software (§20): the document was speaking for the shop without asking it. It is now the
+  **footer note** — a settings field, **empty by default**. MPoS states no policy of its own; a shop
+  that offers one types the one it actually offers. (Their equivalent field is empty too.)
+
+  **What the reference app settled** (studied read-only 2026-07-14; nothing created, edited or
+  submitted): ~20 print switches, and the useful part is which ones their shop turns **on** — logo,
+  name, **signature fields** (*"Received By"* / *"Authorised By"*), barcode, size & colour, **time**,
+  payment details — and which it leaves **off**: **SKU**, product image, description, discount
+  percentage. Also **default print = POS**: the till roll is the document they hand over.
+
+  - **Eight settings, only where our documents have a place for them:** time, size & colour, SKU (A4,
+    **off** by default — it is our stock code and means nothing to a customer), payment details, amount
+    in words, signature lines **and what they say**, the footer note, and **which document the till
+    opens after a sale** (80mm receipt or A4 invoice).
+  - The signature lines are **A4-only** — a till roll has no room, and a toggle that does nothing to the
+    document in front of you is a lie.
+  - All three surfaces (receipt, A4, public link) already read **one loader** (§20), so a toggle is
+    honoured by all of them or by none. They cannot drift.
+  - **Not built, with reasons** (§27.4): the **logo** (next item — needs storage); the **invoice
+    barcode**, which their shop has on — but **nothing in MPoS scans an invoice** (returns, exchanges
+    and reprints all pick the sale from a list), and a barcode nobody can scan is ink; printer names and
+    **silent printing**, which a browser cannot do and which it would be dishonest to offer.
+
+  **Browser-verified end to end.** With the defaults the receipt printed the date **and time**,
+  *"Classic Tee — Navy / M"*, the amount in words — and **no invented returns promise**. Turning time
+  and size/colour off and SKU on changed **both** documents accordingly (`Classic Tee` with `CT-M-NAV`
+  on the A4), the signature lines re-read *"Customer"* / *"For Zephyr & Co."*, and the footer carried
+  the shop's own sentence. With **default print = A4**, ringing up a sale landed the till on
+  `/sales/8/invoice` instead of the receipt. Settings and the test sale were then put back, so the dev
+  DB is unchanged (Cash **1,000.80**, Canvas Cap **18**, 4 sales). `check-reports.ts` reconciles;
+  typecheck + production build pass; **no new lint findings**.
+
+- **Storage decision — SETTLED (with the user, 2026-07-14): uploaded files live on local disk, in a
+  writable directory *outside* `public/`.** This unblocks the shop logo and product image upload
+  (§28, next).
+  - **`public/` is a trap, not an option.** Next.js serves it as a *build-time* asset directory: files
+    written there at runtime are not reliably served by a production build, and a redeploy or a rebuild
+    silently takes the shop's logo and every product image with it.
+  - **Object storage was rejected for this app, not in general.** A single-store till should not need
+    the network to show its own product images, and S3 credentials are a dependency the shop has no use
+    for. One storage module with `put`/`get`/`delete` keeps an S3 driver a *file* away, not a migration.
+  - ⚠️ **The cost, stated up front: backups.** A `pg_dump` alone stops being a complete backup — the
+    uploads directory must be backed up **beside** the database, or a restore comes back with dead image
+    links. This is written into §7.
+
 ---
 
 ## 5. Current state
@@ -1092,6 +1144,11 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   process: the old "strip every non-digit" parse would have blown the sequence up the day a prefix
   carried a digit (`IN2026-10000001` → 202610000001). A duplicate is impossible whatever is typed
   (`max(last + 1, start)`), and the screen previews the number the next sale will actually take.
+- ✅ **Receipt & invoice toggles done** (`BLUEPRINT.md` §27) — time, size & colour, SKU, payment details,
+  amount in words, signature lines (and their wording), a footer note, and which document the till opens
+  after a sale. ⚠️ The study caught a real defect on the way: MPoS was printing *"Goods once sold are
+  exchangeable within 7 days"* on every slip — **a returns promise in the shop's name that no shop ever
+  made.** It is gone; the footer note is **empty by default**, and the shop writes its own policy or none.
 - 🎉 **PHASE 1 IS COMPLETE**, and Phase 2 is under way (Expenses → Stock adjustments → Receipt & invoice). The app runs the
   whole retail loop end to end: buy stock in → sell it → take it back → and know the **net** profit, the
   margin, and who owes what in both directions.
@@ -1207,14 +1264,17 @@ committed next work, in order:
    was justified: the old parse would have exploded the sequence on any prefix carrying a digit. All six
    document sequences now share one rule. See the progress log.
 
-1. **Receipt / invoice toggles.** Show/hide on the printed receipt: barcode, signature lines
-   ("Received By" / "Authorised By"), size & colour, time, payment details. Today these are hard-coded.
-   Read from the reference app's Print Settings (studied 2026-07-14 — the list is in that day's notes:
-   ~18 toggles, but only take the ones our receipt actually has a place for).
-2. **The storage decision + shop logo.** ⚠️ **Needs one call from the user first:** *where do uploaded
-   files live?* (local `public/` dir, or object storage). It has been parked in §12 since the receipt
-   work. Settle it, put the logo on the receipt (§20), and it **also unblocks product image upload**
-   (ours is a pasted URL today).
+~~1. Receipt / invoice toggles~~ — ✅ **DONE 2026-07-14** (`BLUEPRINT.md` §27). Eight settings, and one
+   real defect closed: we were printing a 7-day exchange policy the shop never agreed to. See the log.
+
+1. **The shop logo, and product images** (`BLUEPRINT.md` §28 — to write). ⚠️ **The storage question is
+   now SETTLED** (2026-07-14, with the user): **local disk, in a writable directory outside `public/`**,
+   DB stores a relative key, files served by a validating route handler, all behind one swappable
+   storage module (`src/lib/storage.ts`) so an S3 driver stays one file away. Build:
+   - upload + validation (type, size), the **logo on the receipt/A4/public link** (§20, §27.4),
+   - **product image upload**, replacing today's pasted URL,
+   - ⚠️ **and put the uploads directory into the backup story in §7** — a `pg_dump` alone is no longer a
+     complete backup, and a restore with dead image links is exactly the failure this must not have.
 
 **Then, from the Phase-2 remainder — but check the shop's data first.** Nothing is now a known defect.
 Of what is left (quotations, SMS, courier, customer areas), **none shows evidence of use** in the

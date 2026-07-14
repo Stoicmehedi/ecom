@@ -20,6 +20,17 @@ export type ShopSettings = LoyaltySettings & {
   /// How sale invoices are numbered (§26). The only document whose numbering is the shop's.
   invoicePrefix: string;
   invoiceStartNo: number;
+  /// What prints on the receipt and the invoice (§27).
+  showTime: boolean;
+  showSizeColour: boolean;
+  showSku: boolean;
+  showPaymentDetails: boolean;
+  showInWords: boolean;
+  showSignatures: boolean;
+  signatureLeft: string;
+  signatureRight: string;
+  footerNote: string | null;
+  defaultPrint: "RECEIPT" | "A4";
 };
 
 /** The settings row, created from the schema defaults the first time it is asked for. */
@@ -47,5 +58,15 @@ export async function getSettings(): Promise<ShopSettings> {
     currencyWord: row.currencyWord,
     invoicePrefix: row.invoicePrefix,
     invoiceStartNo: row.invoiceStartNo,
+    showTime: row.showTime,
+    showSizeColour: row.showSizeColour,
+    showSku: row.showSku,
+    showPaymentDetails: row.showPaymentDetails,
+    showInWords: row.showInWords,
+    showSignatures: row.showSignatures,
+    signatureLeft: row.signatureLeft,
+    signatureRight: row.signatureRight,
+    footerNote: row.footerNote,
+    defaultPrint: row.defaultPrint,
   };
 }

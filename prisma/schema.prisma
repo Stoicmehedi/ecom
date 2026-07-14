@@ -41,6 +41,12 @@ enum PointEntryType {
   REVERSE
 }
 
+/// Which document the till opens after a sale (BLUEPRINT §27.3).
+enum PrintDoc {
+  RECEIPT
+  A4
+}
+
 /// Shop-wide settings. Exactly ONE row (id = 1), with typed columns and real
 /// defaults rather than a key/value bag of strings (BLUEPRINT §17.1).
 /// The loyalty defaults are the reference shop's actual live rule, verified against
@@ -70,6 +76,25 @@ model ShopSetting {
   /// a duplicate is impossible whatever is typed here.
   invoicePrefix  String @default("INV-")
   invoiceStartNo Int    @default(1)
+
+  /// What prints on the receipt and the invoice (BLUEPRINT §27). All of this was
+  /// hard-coded until now.
+  showTime           Boolean @default(true)
+  showSizeColour     Boolean @default(true)
+  /// Off by default: the SKU is our code, and it means nothing to the customer.
+  showSku            Boolean @default(false)
+  showPaymentDetails Boolean @default(true)
+  showInWords        Boolean @default(true)
+  /// A4 only — an 80mm till roll has no room for signature lines.
+  showSignatures     Boolean @default(true)
+  signatureLeft      String  @default("Received by")
+  signatureRight     String  @default("Authorised by")
+  /// ⚠️ Empty by default, and it must stay that way (§27.2). MPoS used to print
+  /// "Goods once sold are exchangeable within 7 days" — a returns promise in the shop's
+  /// name that no shop ever made. A policy on a customer's slip is the shop's to write.
+  footerNote         String?
+  /// Which document opens after a sale is rung up.
+  defaultPrint       PrintDoc @default(RECEIPT)
 
   /// Who the shop IS — printed on every receipt and invoice (BLUEPRINT §20.1).
   /// Without these the receipt is headed with the name of our software, which tells

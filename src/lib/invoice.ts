@@ -82,10 +82,18 @@ export async function loadInvoice(where: { id: number } | { publicToken: string 
   };
 }
 
-/** The line as it should read on paper: "Classic Tee — Red / M". */
-export function lineName(item: InvoiceDoc["sale"]["items"][number]): string {
+/**
+ * The line as it should read on paper: "Classic Tee — Red / M".
+ *
+ * The size and colour are a setting (§27.3) — a shop that sells one-size goods only has
+ * a label that says nothing, and the till roll is narrow.
+ */
+export function lineName(
+  item: InvoiceDoc["sale"]["items"][number],
+  showSizeColour = true,
+): string {
   const { product, label } = item.variant;
-  return label ? `${product.name} — ${label}` : product.name;
+  return label && showSizeColour ? `${product.name} — ${label}` : product.name;
 }
 
 /**
@@ -98,7 +106,7 @@ export function shareText(doc: InvoiceDoc): string {
   const { sale, shop } = doc;
   const lines = sale.items.map((i) => {
     const price = i.isFree ? "FREE" : num(i.subtotal).toFixed(2);
-    return `${num(i.qty)} × ${lineName(i)}  ${price}`;
+    return `${num(i.qty)} × ${lineName(i, shop.showSizeColour)}  ${price}`;
   });
 
   const out = [
@@ -113,6 +121,8 @@ export function shareText(doc: InvoiceDoc): string {
   if (num(sale.due) > 0) out.push(`Due:   ${num(sale.due).toFixed(2)}`);
   if (sale.pointsEarned > 0) out.push(`Points earned: ${sale.pointsEarned}`);
   out.push("", "Thank you!");
+  // The shop's own words, if it has any. Never ours (§27.2).
+  if (shop.footerNote) out.push(shop.footerNote);
 
   return out.join("\n");
 }

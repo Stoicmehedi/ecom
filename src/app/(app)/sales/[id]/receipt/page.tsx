@@ -24,12 +24,12 @@ export default async function ReceiptPage({
   if (!doc) notFound();
   const { sale, shop, totalInWords, tendered, change } = doc;
 
+  // Date always; the time only if the shop wants it on the slip (§27.3).
   const stamp = sale.date.toLocaleString(undefined, {
     day: "2-digit",
     month: "short",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    ...(shop.showTime ? { hour: "2-digit" as const, minute: "2-digit" as const } : {}),
   });
 
   return (
@@ -82,7 +82,7 @@ export default async function ReceiptPage({
             {sale.items.map((i) => (
               <tr key={i.id} className="align-top">
                 <td colSpan={2} className="pb-1">
-                  <div>{lineName(i)}</div>
+                  <div>{lineName(i, shop.showSizeColour)}</div>
                   <div className="flex justify-between">
                     <span>
                       {i.isFree ? (
@@ -124,9 +124,10 @@ export default async function ReceiptPage({
         </div>
         <div className="my-1 border-t border-dashed border-black" />
 
-        {sale.payments.map((p) => (
-          <Line key={p.id} label={methodLabel(p.method)} value={money(p.amount)} />
-        ))}
+        {shop.showPaymentDetails &&
+          sale.payments.map((p) => (
+            <Line key={p.id} label={methodLabel(p.method)} value={money(p.amount)} />
+          ))}
 
         {/* Recorded at the till, so a reprint shows the same figures as the original
             slip in the customer's hand (§20.3). */}
@@ -146,9 +147,12 @@ export default async function ReceiptPage({
         <Divider />
 
         {/* A digit can be altered with a pen; a sentence cannot. */}
-        <p className="text-center">In words: {totalInWords}</p>
-
-        <Divider />
+        {shop.showInWords && (
+          <>
+            <p className="text-center">In words: {totalInWords}</p>
+            <Divider />
+          </>
+        )}
 
         <p className="text-center">
           {sale.items.length} item{sale.items.length === 1 ? "" : "s"}
@@ -171,7 +175,8 @@ export default async function ReceiptPage({
           </>
         )}
         <p className="mt-2 text-center font-semibold">Thank you!</p>
-        <p className="text-center">Goods once sold are exchangeable within 7 days.</p>
+        {/* The shop's own words, or none at all. MPoS promises nothing on its behalf (§27.2). */}
+        {shop.footerNote && <p className="text-center">{shop.footerNote}</p>}
       </div>
     </div>
   );

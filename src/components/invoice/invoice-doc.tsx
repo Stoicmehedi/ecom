@@ -34,12 +34,12 @@ export function ShopHeader({ shop }: { shop: InvoiceDoc["shop"] }) {
 export function A4Invoice({ doc }: { doc: InvoiceDoc }) {
   const { sale, shop, totalInWords, tendered, change, totalQty } = doc;
 
+  // Date always; the time only if the shop wants it on the document (§27.3).
   const stamp = sale.date.toLocaleString(undefined, {
     day: "2-digit",
     month: "short",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    ...(shop.showTime ? { hour: "2-digit" as const, minute: "2-digit" as const } : {}),
   });
 
   return (
@@ -90,8 +90,10 @@ export function A4Invoice({ doc }: { doc: InvoiceDoc }) {
             <tr key={i.id} className="border-b align-top">
               <td className="p-2">{n + 1}</td>
               <td className="p-2">
-                {lineName(i)}
-                <span className="ml-2 text-xs text-neutral-500">{i.variant.sku}</span>
+                {lineName(i, shop.showSizeColour)}
+                {shop.showSku && (
+                  <span className="ml-2 text-xs text-neutral-500">{i.variant.sku}</span>
+                )}
                 {i.isFree && (
                   <span className="ml-2 text-xs font-semibold uppercase">Free</span>
                 )}
@@ -163,9 +165,11 @@ export function A4Invoice({ doc }: { doc: InvoiceDoc }) {
       </table>
 
       {/* Digits can be altered with a pen; a sentence cannot. That is what this is for. */}
-      <p className="mt-4 border-t pt-4 text-sm">
-        <span className="font-semibold">In words:</span> {totalInWords}
-      </p>
+      {shop.showInWords && (
+        <p className="mt-4 border-t pt-4 text-sm">
+          <span className="font-semibold">In words:</span> {totalInWords}
+        </p>
+      )}
 
       {sale.note && (
         <p className="mt-2 text-sm">
@@ -173,7 +177,7 @@ export function A4Invoice({ doc }: { doc: InvoiceDoc }) {
         </p>
       )}
 
-      {sale.payments.length > 0 && (
+      {shop.showPaymentDetails && sale.payments.length > 0 && (
         <div className="mt-6">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
             Payment details
@@ -203,13 +207,17 @@ export function A4Invoice({ doc }: { doc: InvoiceDoc }) {
         </div>
       )}
 
-      <div className="mt-16 flex justify-between gap-8 text-sm">
-        <div className="w-48 border-t pt-1 text-center">Received by</div>
-        <div className="w-48 border-t pt-1 text-center">Authorised by</div>
-      </div>
+      {shop.showSignatures && (
+        <div className="mt-16 flex justify-between gap-8 text-sm">
+          <div className="w-48 border-t pt-1 text-center">{shop.signatureLeft}</div>
+          <div className="w-48 border-t pt-1 text-center">{shop.signatureRight}</div>
+        </div>
+      )}
 
+      {/* The shop's own words, or none. MPoS states no returns policy of its own (§27.2). */}
       <p className="mt-8 text-center text-xs text-neutral-500">
-        Goods once sold are exchangeable within 7 days. Thank you for shopping with us.
+        Thank you for shopping with us.
+        {shop.footerNote && <span className="block">{shop.footerNote}</span>}
       </p>
     </div>
   );

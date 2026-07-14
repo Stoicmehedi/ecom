@@ -33,6 +33,18 @@ const schema = z.object({
     .int("The starting number must be a whole number")
     .min(1, "The starting number must be at least 1")
     .max(999_999_999),
+  // What prints on the documents (§27). Every one of these was hard-coded before.
+  showTime: z.boolean(),
+  showSizeColour: z.boolean(),
+  showSku: z.boolean(),
+  showPaymentDetails: z.boolean(),
+  showInWords: z.boolean(),
+  showSignatures: z.boolean(),
+  signatureLeft: z.string().trim().max(40),
+  signatureRight: z.string().trim().max(40),
+  // Empty means MPoS prints no policy of its own — which is the point (§27.2).
+  footerNote: z.string().trim().max(300).nullable().optional(),
+  defaultPrint: z.enum(["RECEIPT", "A4"]),
 });
 
 export type SettingsInput = z.input<typeof schema>;
@@ -71,6 +83,7 @@ export async function saveSettings(input: SettingsInput): Promise<SettingsResult
     shopAddress: s.shopAddress?.trim() || null,
     shopPhone: s.shopPhone?.trim() || null,
     shopEmail: s.shopEmail?.trim() || null,
+    footerNote: s.footerNote?.trim() || null,
   };
 
   await prisma.shopSetting.upsert({

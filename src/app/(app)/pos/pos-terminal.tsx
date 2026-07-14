@@ -402,7 +402,9 @@ export function PosTerminal({
       setExchange(null);
       setCustomerId(walkIn?.id);
       toast.success(exchange ? "Exchange complete" : "Sale complete");
-      router.push(`/sales/${res.saleId}/receipt`);
+      // Whichever document the shop actually hands over (§27.3) — till roll or A4.
+      const doc = settings.defaultPrint === "A4" ? "invoice" : "receipt";
+      router.push(`/sales/${res.saleId}/${doc}`);
     });
   }
 

@@ -1917,3 +1917,72 @@ will be **IN-10000001**"*, computed with the very function the till calls. Admin
   a shop ever needs it.
 - **A configurable zero-padding width.** Theirs has none (an 8-digit number needs no padding); ours
   pads to 5, which is what every existing document already carries.
+
+---
+
+## 27. What prints on the receipt *(studied read-only 2026-07-14; nothing created, edited or submitted)*
+
+### 27.1 What the reference app has, and what the shop actually turns on
+
+Their Print Settings is ~20 switches. The live values are the useful part — this is what a real shop
+chose:
+
+| On | Off |
+|---|---|
+| Logo, business name | Product image, product description |
+| **Signature fields** (labelled *"Received By"* and *"Authorised By"*) | **SKU on the invoice** |
+| Barcode on the invoice | Discount percentage |
+| Size & colour on the line | "In words" total **due** |
+| **Show time** | Brandwise summary, transfer/wholesale extras |
+| Payment details (*Both* documents) | Silent printing |
+
+Also: **default print = POS** (which document opens after a sale — the till roll, not the A4), and a
+free-text **Note** on the invoice — which in their account is **empty**.
+
+### 27.2 ⚠️ The defect this found: we are printing a policy the shop never made
+
+Our receipt *and* our A4 invoice both end with:
+
+> *"Goods once sold are exchangeable within 7 days."*
+
+**Nobody chose that. We wrote it.** It is a returns promise, in the shop's name, on paper in a
+customer's hand — and it is not the shop's promise, it is our placeholder text. It is the same family
+of mistake as the receipt that was headed with the name of our till software (§20): the document was
+speaking for the shop without asking it.
+
+It becomes the **invoice footer note** — a settings field, **empty by default**. A shop that wants a
+returns policy on its slips types the one it actually offers. MPoS states no policy of its own.
+
+### 27.3 What we make settable
+
+Only what our documents have a place for today. Every one of these is hard-coded right now.
+
+| Setting | Applies to | Default |
+|---|---|---|
+| Show the **time** beside the date | Receipt + A4 | on |
+| Show **size & colour** on the line | Receipt + A4 | on |
+| Show the **SKU** on the line | A4 | **off** — it is our code, and it means nothing to the customer (their shop keeps it off too) |
+| Show the **payment details** | Receipt + A4 | on |
+| Show the **signature lines**, and **what they say** | A4 | on, *"Received by"* / *"Authorised by"* |
+| Show the **amount in words** | Receipt + A4 | on |
+| **Footer note** | Receipt + A4 | **empty** (§27.2) |
+| **Which document opens after a sale** — 80mm receipt or A4 invoice | POS | receipt |
+
+The signature lines are **A4-only**: an 80mm till roll has no room for them, and theirs prints them on
+the invoice too. A toggle that does nothing on the document you are looking at is a lie.
+
+All three surfaces (receipt, A4, public link) already read **one loader** (§20), so a toggle is honoured
+by all of them or by none — they cannot disagree about what prints.
+
+### 27.4 Not built
+
+- **Logo** — needs the storage decision (settled 2026-07-14: local disk, §28). Next item.
+- **Barcode on the invoice.** Theirs is on, and it is the one omission worth naming: **nothing in MPoS
+  scans an invoice.** A return, an exchange and a reprint are all reached by picking the sale from a
+  list. A barcode nobody can scan is ink. Worth building the day the POS can scan an invoice back in.
+- **Product image / description on the line** — the image needs storage; the description is a line the
+  reference shop keeps off.
+- **Shipping address** — no delivery in MPoS (§13, deliberately).
+- **Printer names and silent printing** — a browser cannot print without the print dialog, and pretending
+  otherwise in a settings screen would be a promise the app cannot keep.
+- **Transfer-invoice price, retail-on-wholesale, brandwise summary** — modules we do not have.
