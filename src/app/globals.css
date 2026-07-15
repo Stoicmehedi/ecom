@@ -4,15 +4,17 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --radius: 0.65rem;
+  /* Crisper corners read as "tool", not "toy" — dense admin surfaces (BLUEPRINT UI §). */
+  --radius: 0.375rem;
 
-  /* Neutral base */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  /* Neutral base — surfaces are pure white; the app canvas behind them is a hair
+     cooler/darker so cards and the sidebar separate without heavy borders. */
+  --background: oklch(0.985 0.001 240);
+  --foreground: oklch(0.16 0.01 240);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.16 0.01 240);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.16 0.01 240);
 
   /* Emerald primary/accent */
   --primary: oklch(0.596 0.145 163.225); /* emerald-600 */
@@ -49,12 +51,12 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+  --background: oklch(0.165 0.008 240);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.205 0.006 240);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.205 0.006 240);
+  --popover-foreground: oklch(0.97 0 0);
 
   --primary: oklch(0.696 0.17 162.48); /* emerald-500 for dark */
   --primary-foreground: oklch(0.205 0 0);
@@ -137,5 +139,50 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+    /* Dense-admin base: 13.5px body, so untagged text sits tight with the
+       component scale rather than at the browser's roomy 16px. */
+    font-size: 0.84375rem;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Headings hold their own scale; keep them crisp, not loud. */
+  h1, h2, h3, h4 {
+    letter-spacing: -0.01em;
+  }
+
+  /* Figures line up in columns — the single most "professional" typographic
+     move for a POS: money and quantities never jitter between rows. */
+  .tabular,
+  [data-slot="table-cell"],
+  [data-slot="table-head"] {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  /* An emerald selection and a thin, unobtrusive scrollbar — small signals that
+     the whole surface was tuned, not left at defaults. */
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 22%, transparent);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: color-mix(in oklch, var(--foreground) 16%, transparent);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--foreground) 28%, transparent);
+    background-clip: content-box;
   }
 }

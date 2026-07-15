@@ -587,10 +587,10 @@ export function PosTerminal({
                 type="button"
                 disabled={out}
                 onClick={() => tapProduct(h)}
-                className={`rounded-lg border p-3 text-left transition ${
+                className={`rounded-lg border bg-card p-3 text-left transition ${
                   out
                     ? "cursor-not-allowed opacity-50"
-                    : "hover:border-primary hover:bg-accent"
+                    : "hover:border-primary/60 hover:shadow-sm"
                 }`}
               >
                 {h.imageKey && (
@@ -635,7 +635,17 @@ export function PosTerminal({
       />
 
       {/* Right: the cart */}
-      <div className="flex h-fit flex-col gap-3 rounded-lg border p-4 lg:sticky lg:top-4">
+      <div className="flex h-fit flex-col gap-3 rounded-lg border bg-card p-3 shadow-sm lg:sticky lg:top-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Cart
+          </h2>
+          {lines.length > 0 && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+              {lines.length} item{lines.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           <Select
             value={customerId ? String(customerId) : undefined}
