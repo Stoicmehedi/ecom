@@ -1249,7 +1249,8 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   - **POS always in reach.** Because hiding the sidebar also hides the pinned POS link, the till now
     lives in the **header** too — an emerald `POS` button beside the store chip, on every page, gated on
     the same `pos.access` permission as its nav link. Verified it stays and works with the sidebar hidden.
-  - Typecheck + build clean. **Not merged, not pushed** — `main` is the rollback for this pass.
+  - Typecheck + build clean. **Merged to `main` and pushed** (merge `de6ff62`); `pre-ui-refresh`
+    (`2a3722f`) remains the deep rollback tag.
 
 ---
 
