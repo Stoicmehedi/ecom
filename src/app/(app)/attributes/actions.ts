@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isUniqueError, isFkError } from "@/lib/db-error";
 import { requirePermission } from "@/lib/guard";
+import { logActivity } from "@/lib/activity";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -36,6 +37,13 @@ export async function saveAttributeCategory(
     if (isUniqueError(e)) return { error: "That axis already exists." };
     return { error: "Something went wrong. Please try again." };
   }
+
+  await logActivity(prisma, {
+    module: "Attribute",
+    action: id ? "Updated" : "Created",
+    details: `Attribute '${parsed.data}' ${id ? "updated" : "created"}`,
+  });
+
   revalidatePath("/attributes");
   return { ok: true };
 }
@@ -52,12 +60,23 @@ export async function deleteAttributeCategory(id: number): Promise<ActionState> 
       error: `Cannot delete: ${used} product${used === 1 ? " uses" : "s use"} this axis.`,
     };
   }
+  const doomed = await prisma.attributeCategory.findUnique({
+    where: { id },
+    select: { name: true },
+  });
   try {
     await prisma.attributeCategory.delete({ where: { id } });
   } catch (e) {
     if (isFkError(e)) return { error: "Cannot delete: this axis is in use." };
     return { error: "Failed to delete." };
   }
+
+  await logActivity(prisma, {
+    module: "Attribute",
+    action: "Deleted",
+    details: `Attribute '${doomed?.name ?? ""}' deleted`,
+  });
+
   revalidatePath("/attributes");
   return { ok: true };
 }
@@ -93,6 +112,13 @@ export async function saveAttribute(
     if (isUniqueError(e)) return { error: "That value already exists on this axis." };
     return { error: "Something went wrong. Please try again." };
   }
+
+  await logActivity(prisma, {
+    module: "Attribute",
+    action: id ? "Updated" : "Created",
+    details: `Attribute '${parsed.data.name}' ${id ? "updated" : "created"}`,
+  });
+
   revalidatePath("/attributes");
   return { ok: true };
 }
@@ -105,12 +131,23 @@ export async function deleteAttribute(id: number): Promise<ActionState> {
   if (used > 0) {
     return { error: `Cannot delete: ${used} variant(s) are this value.` };
   }
+  const doomed = await prisma.attribute.findUnique({
+    where: { id },
+    select: { name: true },
+  });
   try {
     await prisma.attribute.delete({ where: { id } });
   } catch (e) {
     if (isFkError(e)) return { error: "Cannot delete: this value is in use." };
     return { error: "Failed to delete." };
   }
+
+  await logActivity(prisma, {
+    module: "Attribute",
+    action: "Deleted",
+    details: `Attribute '${doomed?.name ?? ""}' deleted`,
+  });
+
   revalidatePath("/attributes");
   return { ok: true };
 }
@@ -152,6 +189,13 @@ export async function saveColor(
     if (isUniqueError(e)) return { error: "That colour already exists." };
     return { error: "Something went wrong. Please try again." };
   }
+
+  await logActivity(prisma, {
+    module: "Attribute",
+    action: id ? "Updated" : "Created",
+    details: `Colour '${parsed.data.name}' ${id ? "updated" : "created"}`,
+  });
+
   revalidatePath("/attributes");
   return { ok: true };
 }
@@ -164,12 +208,23 @@ export async function deleteColor(id: number): Promise<ActionState> {
   if (used > 0) {
     return { error: `Cannot delete: ${used} variant(s) are this colour.` };
   }
+  const doomed = await prisma.color.findUnique({
+    where: { id },
+    select: { name: true },
+  });
   try {
     await prisma.color.delete({ where: { id } });
   } catch (e) {
     if (isFkError(e)) return { error: "Cannot delete: this colour is in use." };
     return { error: "Failed to delete." };
   }
+
+  await logActivity(prisma, {
+    module: "Attribute",
+    action: "Deleted",
+    details: `Colour '${doomed?.name ?? ""}' deleted`,
+  });
+
   revalidatePath("/attributes");
   return { ok: true };
 }

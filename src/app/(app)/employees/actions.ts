@@ -8,6 +8,7 @@ import { requirePermission } from "@/lib/guard";
 import { round2 } from "@/lib/costing";
 import { monthLabel } from "@/lib/months";
 import { postSalaryExpense } from "@/lib/expenses";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -71,9 +72,19 @@ export async function saveEmployee(
   try {
     if (id) {
       await prisma.employee.update({ where: { id }, data });
+      await logActivity(prisma, {
+        module: "Employee",
+        action: "Updated",
+        details: `Employee '${e.name}' updated`,
+      });
     } else {
       const branch = await prisma.branch.findFirst({ select: { id: true } });
       await prisma.employee.create({ data: { ...data, branchId: branch?.id ?? null } });
+      await logActivity(prisma, {
+        module: "Employee",
+        action: "Created",
+        details: `Employee '${e.name}' created`,
+      });
     }
   } catch {
     return { error: "Something went wrong saving the employee." };
@@ -97,8 +108,18 @@ export async function deleteEmployee(id: number): Promise<ActionResult> {
     };
   }
 
+  const employee = await prisma.employee.findUnique({
+    where: { id },
+    select: { name: true },
+  });
+
   try {
     await prisma.employee.delete({ where: { id } });
+    await logActivity(prisma, {
+      module: "Employee",
+      action: "Deleted",
+      details: `Employee '${employee?.name ?? `#${id}`}' deleted`,
+    });
   } catch {
     return { error: "Failed to delete the employee." };
   }
@@ -186,6 +207,7 @@ export async function paySalary(
   try {
     const session = await auth();
     const userId = session?.user?.id ? Number(session.user.id) : null;
+    const actor = await activityActor();
     const date = new Date(p.date);
 
     await prisma.$transaction(async (tx) => {
@@ -200,6 +222,13 @@ export async function paySalary(
           note: p.note?.trim() || null,
           paidById: userId,
         },
+      });
+
+      await logActivity(tx, {
+        module: "Salary",
+        action: "Created",
+        details: `Salary paid — ${employee.name}, ${amount.toFixed(2)} for ${monthLabel(p.month, p.year)}`,
+        actor,
       });
 
       // Wages are an ordinary expense (§24.2) — that is what puts them in the P&L
@@ -253,12 +282,16 @@ export async function deleteSalaryPayment(id: number): Promise<ActionResult> {
     where: { id },
     select: {
       id: true,
+      amount: true,
+      employee: { select: { name: true } },
       // Every money row this payment caused hangs off its expense, so undoing it is
       // one delete plus one balance correction — no re-derivation, nothing to miss.
       expenses: { select: { payments: { select: { accountId: true, amount: true } } } },
     },
   });
   if (!payment) return { error: "That payment no longer exists." };
+
+  const actor = await activityActor();
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -277,6 +310,13 @@ export async function deleteSalaryPayment(id: number): Promise<ActionResult> {
       // The Salary expense — and the OUT payment hanging off it — cascade away with
       // the wage payment (both FKs are onDelete: Cascade).
       await tx.salaryPayment.delete({ where: { id } });
+
+      await logActivity(tx, {
+        module: "Salary",
+        action: "Deleted",
+        details: `Salary payment undone — ${payment.employee.name}, ${Number(payment.amount).toFixed(2)}`,
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to undo the payment." };

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { makeEan13 } from "@/lib/barcode";
 import type { Prisma } from "@/generated/prisma/client";
 import { requirePermission } from "@/lib/guard";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ImportRow = {
   line: number;
@@ -236,6 +237,8 @@ export async function runImport(csv: string): Promise<ImportResult> {
   let created = 0;
   let updated = 0;
 
+  const actor = await activityActor();
+
   try {
     await prisma.$transaction(
       async (tx) => {
@@ -408,6 +411,13 @@ export async function runImport(csv: string): Promise<ImportResult> {
           }
           created++;
         }
+
+        await logActivity(tx, {
+          module: "Product",
+          action: "Created",
+          details: `Catalogue import — ${created} created, ${updated} updated`,
+          actor,
+        });
       },
       { timeout: 60_000 },
     );

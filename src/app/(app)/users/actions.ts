@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { requirePermission } from "@/lib/guard";
 import { isPermissionKey } from "@/lib/permissions";
+import { logActivity } from "@/lib/activity";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -141,10 +142,20 @@ export async function saveUser(
   try {
     if (id) {
       await prisma.user.update({ where: { id }, data });
+      await logActivity(prisma, {
+        module: "User",
+        action: "Updated",
+        details: `User '${u.username}' updated`,
+      });
     } else {
       const branch = await prisma.branch.findFirst({ select: { id: true } });
       await prisma.user.create({
         data: { ...data, passwordHash: await bcrypt.hash(password, 10), branchId: branch?.id ?? null },
+      });
+      await logActivity(prisma, {
+        module: "User",
+        action: "Created",
+        details: `User '${u.username}' created`,
       });
     }
   } catch (e) {
@@ -207,6 +218,11 @@ export async function deleteUser(id: number): Promise<ActionResult> {
 
   try {
     await prisma.user.delete({ where: { id } });
+    await logActivity(prisma, {
+      module: "User",
+      action: "Deleted",
+      details: `User '${user.name}' deleted`,
+    });
   } catch {
     return { error: "Failed to delete the user." };
   }
@@ -253,8 +269,18 @@ export async function saveRole(
   try {
     if (id) {
       await prisma.role.update({ where: { id }, data: { name: parsed.data.name, permissions } });
+      await logActivity(prisma, {
+        module: "Role",
+        action: "Updated",
+        details: `Role '${parsed.data.name}' updated`,
+      });
     } else {
       await prisma.role.create({ data: { name: parsed.data.name, permissions } });
+      await logActivity(prisma, {
+        module: "Role",
+        action: "Created",
+        details: `Role '${parsed.data.name}' created`,
+      });
     }
   } catch (e) {
     if (String(e).includes("Unique")) {
@@ -288,6 +314,11 @@ export async function deleteRole(id: number): Promise<ActionResult> {
 
   try {
     await prisma.role.delete({ where: { id } });
+    await logActivity(prisma, {
+      module: "Role",
+      action: "Deleted",
+      details: `Role '${role.name}' deleted`,
+    });
   } catch {
     return { error: "Failed to delete the role." };
   }

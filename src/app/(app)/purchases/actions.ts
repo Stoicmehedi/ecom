@@ -15,6 +15,7 @@ import {
 } from "@/lib/costing";
 import type { Prisma } from "@/generated/prisma/client";
 import { requirePermission } from "@/lib/guard";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -213,6 +214,8 @@ export async function savePurchase(input: PurchaseInput): Promise<ActionResult> 
     if (locked) return { error: locked };
   }
 
+  const actor = await activityActor();
+
   try {
     const id = await prisma.$transaction(async (tx) => {
       if (p.id) await reversePurchase(tx, p.id);
@@ -238,15 +241,18 @@ export async function savePurchase(input: PurchaseInput): Promise<ActionResult> 
       };
 
       let purchaseId: number;
+      let purchaseNo: string;
       if (p.id) {
-        await tx.purchase.update({ where: { id: p.id }, data: header });
+        const updated = await tx.purchase.update({ where: { id: p.id }, data: header });
         await tx.purchaseItem.deleteMany({ where: { purchaseId: p.id } });
         purchaseId = p.id;
+        purchaseNo = updated.purchaseNo;
       } else {
         const created = await tx.purchase.create({
           data: { ...header, purchaseNo: await nextPurchaseNo(tx) },
         });
         purchaseId = created.id;
+        purchaseNo = created.purchaseNo;
       }
 
       for (const it of items) {
@@ -289,6 +295,21 @@ export async function savePurchase(input: PurchaseInput): Promise<ActionResult> 
         data: { dueBalance: { increment: due } },
       });
 
+      const supplier = await tx.contact.findUnique({
+        where: { id: p.supplierId },
+        select: { name: true },
+      });
+      const supplierName = supplier?.name ?? "supplier";
+      await logActivity(tx, {
+        module: "Purchase",
+        action: p.id ? "Updated" : "Created",
+        details: p.id
+          ? `Purchase ${purchaseNo} from ${supplierName} updated, total ${total.toFixed(2)}.`
+          : `Purchase ${purchaseNo} from ${supplierName} recorded, total ${total.toFixed(2)}.`,
+        doc: { type: "purchases", no: purchaseNo, id: purchaseId },
+        actor,
+      });
+
       return purchaseId;
     });
 
@@ -308,10 +329,18 @@ export async function deletePurchase(id: number): Promise<ActionResult> {
   const locked = await lockReason(id);
   if (locked) return { error: locked };
 
+  const actor = await activityActor();
+
   try {
     await prisma.$transaction(async (tx) => {
       await reversePurchase(tx, id);
-      await tx.purchase.delete({ where: { id } });
+      const deleted = await tx.purchase.delete({ where: { id } });
+      await logActivity(tx, {
+        module: "Purchase",
+        action: "Deleted",
+        details: `Purchase ${deleted.purchaseNo} deleted`,
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to delete the purchase." };

@@ -9,6 +9,7 @@ import { isUniqueError } from "@/lib/db-error";
 import { makeEan13, isValidEan13 } from "@/lib/barcode";
 import type { Prisma } from "@/generated/prisma/client";
 import { requirePermission } from "@/lib/guard";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -187,6 +188,8 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
         ?.imageKey ?? null
     : null;
 
+  const actor = await activityActor();
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       let productId = p.id;
@@ -278,6 +281,14 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
         }
       }
 
+      await logActivity(tx, {
+        module: "Product",
+        action: p.id ? "Updated" : "Created",
+        details: `Product '${p.name}' ${p.id ? "updated" : "created"}`,
+        doc: { type: "products", no: p.code || p.name, id: productId! },
+        actor,
+      });
+
       return productId!;
     });
 
@@ -325,7 +336,7 @@ export async function deleteProduct(id: number): Promise<ActionResult> {
 
   const doomed = await prisma.product.findUnique({
     where: { id },
-    select: { imageKey: true },
+    select: { imageKey: true, name: true },
   });
 
   try {
@@ -342,6 +353,12 @@ export async function deleteProduct(id: number): Promise<ActionResult> {
   // an uploads directory that only grows is a disk that eventually fills (§28.2).
   await deleteImage(doomed?.imageKey);
 
+  await logActivity(prisma, {
+    module: "Product",
+    action: "Deleted",
+    details: `Product '${doomed?.name ?? ""}' deleted`,
+  });
+
   revalidatePath("/products");
   return { ok: true };
 }
@@ -357,11 +374,20 @@ export async function setProductActive(
   const denied = await requirePermission("products.manage");
   if (denied) return { error: denied };
 
+  let product;
   try {
-    await prisma.product.update({ where: { id }, data: { isActive } });
+    product = await prisma.product.update({ where: { id }, data: { isActive } });
   } catch {
     return { error: "Failed to update the product." };
   }
+
+  await logActivity(prisma, {
+    module: "Product",
+    action: "Updated",
+    details: `Product '${product.name}' ${isActive ? "enabled" : "disabled"}`,
+    doc: { type: "products", id },
+  });
+
   revalidatePath("/products");
   return { ok: true };
 }
@@ -380,6 +406,8 @@ export async function duplicateProduct(id: number): Promise<ActionResult> {
     },
   });
   if (!src) return { error: "Product not found." };
+
+  const actor = await activityActor();
 
   try {
     const newId = await prisma.$transaction(async (tx) => {
@@ -428,6 +456,15 @@ export async function duplicateProduct(id: number): Promise<ActionResult> {
         });
         await ensureBarcode(tx, created.id);
       }
+
+      await logActivity(tx, {
+        module: "Product",
+        action: "Created",
+        details: `Product '${copy.name}' duplicated`,
+        doc: { type: "products", id: copy.id },
+        actor,
+      });
+
       return copy.id;
     });
 

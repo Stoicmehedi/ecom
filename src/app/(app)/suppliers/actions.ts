@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { round2 } from "@/lib/costing";
 import { requirePermission } from "@/lib/guard";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -70,9 +71,21 @@ export async function saveSupplier(
         where: { id },
         data: { ...data, dueBalance: round2(Number(existing.dueBalance) + delta) },
       });
+      await logActivity(prisma, {
+        module: "Supplier",
+        action: "Updated",
+        details: `Supplier '${data.name}' updated`,
+        doc: { type: "suppliers", id },
+      });
     } else {
-      await prisma.contact.create({
+      const created = await prisma.contact.create({
         data: { ...data, type: "SUPPLIER", dueBalance: data.openingBalance },
+      });
+      await logActivity(prisma, {
+        module: "Supplier",
+        action: "Created",
+        details: `Supplier '${data.name}' created`,
+        doc: { type: "suppliers", id: created.id },
       });
     }
   } catch {
@@ -93,7 +106,12 @@ export async function deleteSupplier(id: number): Promise<ActionState> {
     return { error: "Cannot delete: this supplier has purchase history." };
   }
   try {
-    await prisma.contact.delete({ where: { id } });
+    const deleted = await prisma.contact.delete({ where: { id } });
+    await logActivity(prisma, {
+      module: "Supplier",
+      action: "Deleted",
+      details: `Supplier '${deleted.name}' deleted`,
+    });
   } catch {
     return { error: "Failed to delete supplier." };
   }
@@ -116,6 +134,12 @@ export async function quickAddSupplier(
   try {
     const c = await prisma.contact.create({
       data: { type: "SUPPLIER", name: n, phone: p },
+    });
+    await logActivity(prisma, {
+      module: "Supplier",
+      action: "Created",
+      details: `Supplier '${c.name}' created`,
+      doc: { type: "suppliers", id: c.id },
     });
     revalidatePath("/suppliers");
     return { id: c.id };
@@ -151,7 +175,7 @@ export async function paySupplierDue(
 
   const supplier = await prisma.contact.findUnique({
     where: { id: supplierId },
-    select: { dueBalance: true },
+    select: { dueBalance: true, name: true },
   });
   if (!supplier) return { error: "Supplier not found." };
 
@@ -159,6 +183,8 @@ export async function paySupplierDue(
   if (amount > due + 0.005) {
     return { error: `Amount exceeds the outstanding due (${due.toFixed(2)}).` };
   }
+
+  const actor = await activityActor();
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -182,6 +208,14 @@ export async function paySupplierDue(
           data: { balance: { decrement: round2(amount) } },
         });
       }
+
+      await logActivity(tx, {
+        module: "Due Payment",
+        action: "Created",
+        details: `Paid ${round2(amount).toFixed(2)} to '${supplier.name}'`,
+        doc: { type: "suppliers", id: supplierId },
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to record the payment." };

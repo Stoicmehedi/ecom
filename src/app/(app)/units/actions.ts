@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isFkError } from "@/lib/db-error";
 import { requirePermission } from "@/lib/guard";
+import { logActivity } from "@/lib/activity";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -46,6 +47,13 @@ export async function saveUnit(
   } catch {
     return { error: "Something went wrong. Please try again." };
   }
+
+  await logActivity(prisma, {
+    module: "Unit",
+    action: id ? "Updated" : "Created",
+    details: `Unit '${parsed.data.name}' ${id ? "updated" : "created"}`,
+  });
+
   revalidatePath("/units");
   return { ok: true };
 }
@@ -54,12 +62,23 @@ export async function deleteUnit(id: number): Promise<ActionState> {
   const denied = await requirePermission("products.masters");
   if (denied) return { error: denied };
 
+  const doomed = await prisma.unit.findUnique({
+    where: { id },
+    select: { name: true },
+  });
   try {
     await prisma.unit.delete({ where: { id } });
   } catch (e) {
     if (isFkError(e)) return { error: "Cannot delete: this unit is used by products." };
     return { error: "Failed to delete unit." };
   }
+
+  await logActivity(prisma, {
+    module: "Unit",
+    action: "Deleted",
+    details: `Unit '${doomed?.name ?? ""}' deleted`,
+  });
+
   revalidatePath("/units");
   return { ok: true };
 }

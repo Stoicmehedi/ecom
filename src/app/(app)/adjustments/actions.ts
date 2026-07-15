@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth";
 import { requirePermission } from "@/lib/guard";
 import { round2, round3 } from "@/lib/costing";
 import { postStockLossExpense } from "@/lib/expenses";
+import { logActivity, activityActor } from "@/lib/activity";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
@@ -68,6 +69,8 @@ export async function saveAdjustment(input: AdjustmentInput): Promise<ActionResu
     [...merged].map(([variantId, qty]) => ({ variantId, qty })),
   );
   if (badQty) return { error: badQty };
+
+  const actor = await activityActor();
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -161,6 +164,13 @@ export async function saveAdjustment(input: AdjustmentInput): Promise<ActionResu
         branchId: branch?.id ?? null,
       });
 
+      await logActivity(tx, {
+        module: "Stock Adjustment",
+        action: "Created",
+        details: `Stock adjustment ${adjustment.adjustmentNo} recorded, loss value ${lossValue.toFixed(2)}.`,
+        actor,
+      });
+
       return adjustment.id;
     });
 
@@ -203,6 +213,8 @@ export async function deleteAdjustment(id: number): Promise<ActionResult> {
     }
   }
 
+  const actor = await activityActor();
+
   try {
     await prisma.$transaction(async (tx) => {
       for (const item of adjustment.items) {
@@ -216,6 +228,12 @@ export async function deleteAdjustment(id: number): Promise<ActionResult> {
       });
       // The expense it booked cascades away with it (Expense.stockAdjustmentId).
       await tx.stockAdjustment.delete({ where: { id } });
+      await logActivity(tx, {
+        module: "Stock Adjustment",
+        action: "Deleted",
+        details: `Stock adjustment ${adjustment.adjustmentNo} deleted`,
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to delete the adjustment." };
@@ -244,7 +262,12 @@ export async function saveAdjustmentType(
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   try {
-    await prisma.adjustmentType.create({ data: { name: parsed.data.name } });
+    const type = await prisma.adjustmentType.create({ data: { name: parsed.data.name } });
+    await logActivity(prisma, {
+      module: "Stock Adjustment",
+      action: "Created",
+      details: `Adjustment reason '${type.name}' created`,
+    });
   } catch {
     return { error: "A reason with that name already exists." };
   }
@@ -269,7 +292,12 @@ export async function deleteAdjustmentType(id: number): Promise<ActionResult> {
   }
 
   try {
-    await prisma.adjustmentType.delete({ where: { id } });
+    const deleted = await prisma.adjustmentType.delete({ where: { id } });
+    await logActivity(prisma, {
+      module: "Stock Adjustment",
+      action: "Deleted",
+      details: `Adjustment reason '${deleted.name}' deleted`,
+    });
   } catch {
     return { error: "Failed to delete the reason." };
   }

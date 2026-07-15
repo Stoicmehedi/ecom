@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isFkError } from "@/lib/db-error";
 import { requirePermission } from "@/lib/guard";
+import { logActivity } from "@/lib/activity";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -55,6 +56,13 @@ export async function saveCategory(
   } catch {
     return { error: "Something went wrong. Please try again." };
   }
+
+  await logActivity(prisma, {
+    module: "Category",
+    action: id ? "Updated" : "Created",
+    details: `Category '${parsed.data.name}' ${id ? "updated" : "created"}`,
+  });
+
   revalidatePath("/categories");
   return { ok: true };
 }
@@ -111,6 +119,12 @@ export async function createCategoryPath(
       }
     }
 
+    await logActivity(prisma, {
+      module: "Category",
+      action: "Created",
+      details: `Category path '${[cat, sub, child].filter(Boolean).join(" > ")}' created`,
+    });
+
     revalidatePath("/categories");
     return { ok: true };
   } catch {
@@ -140,6 +154,13 @@ export async function updateCategoryNames(
   } catch {
     return { error: "Failed to update categories." };
   }
+
+  await logActivity(prisma, {
+    module: "Category",
+    action: "Updated",
+    details: `Category '${items.map((it) => it.name.trim()).join(", ")}' renamed`,
+  });
+
   revalidatePath("/categories");
   return { ok: true };
 }
@@ -174,6 +195,11 @@ export async function quickCreateCategory(
     const c = await prisma.category.create({
       data: { name: trimmed, parentId, level },
     });
+    await logActivity(prisma, {
+      module: "Category",
+      action: "Created",
+      details: `Category '${c.name}' created`,
+    });
     revalidatePath("/categories");
     return {
       ok: true,
@@ -192,12 +218,23 @@ export async function deleteCategory(id: number): Promise<ActionState> {
   if (childCount > 0) {
     return { error: "Cannot delete: this category has sub-categories." };
   }
+  const doomed = await prisma.category.findUnique({
+    where: { id },
+    select: { name: true },
+  });
   try {
     await prisma.category.delete({ where: { id } });
   } catch (e) {
     if (isFkError(e)) return { error: "Cannot delete: this category is used by products." };
     return { error: "Failed to delete category." };
   }
+
+  await logActivity(prisma, {
+    module: "Category",
+    action: "Deleted",
+    details: `Category '${doomed?.name ?? ""}' deleted`,
+  });
+
   revalidatePath("/categories");
   return { ok: true };
 }

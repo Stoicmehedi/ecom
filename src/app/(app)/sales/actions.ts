@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { round2, round3 } from "@/lib/costing";
 import { requirePermission } from "@/lib/guard";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -23,6 +24,8 @@ export async function deleteSale(id: number): Promise<ActionState> {
     include: { items: true, payments: true },
   });
   if (!sale) return { error: "Sale not found." };
+
+  const actor = await activityActor();
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -67,6 +70,13 @@ export async function deleteSale(id: number): Promise<ActionState> {
       }
 
       await tx.sale.delete({ where: { id } });
+
+      await logActivity(tx, {
+        module: "Sale",
+        action: "Deleted",
+        details: `Sale ${sale.invoiceNo} deleted`,
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to delete the sale." };

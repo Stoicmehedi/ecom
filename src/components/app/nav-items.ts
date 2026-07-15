@@ -18,6 +18,7 @@ import {
   Landmark,
   IdCard,
   ShieldCheck,
+  ScrollText,
 } from "lucide-react";
 import type { PermissionKey } from "@/lib/permissions";
 
@@ -76,6 +77,12 @@ export const navItems: NavItem[] = [
   },
   { label: "Reports", href: "/reports", icon: BarChart3, permission: "reports.view" },
   { label: "Users", href: "/users", icon: ShieldCheck, permission: "users.manage" },
+  {
+    label: "Activity Log",
+    href: "/activity",
+    icon: ScrollText,
+    permission: "activity.view",
+  },
   { label: "Settings", href: "/settings", icon: Settings, permission: "settings.manage" },
 ];
 

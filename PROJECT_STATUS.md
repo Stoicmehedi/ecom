@@ -4,7 +4,7 @@
 > account — can understand the full state without relying on private notes. **Update this file after
 > every task.**
 
-**Last updated:** 2026-07-14
+**Last updated:** 2026-07-15
 **Repo:** https://github.com/Stoicmehedi/ecom (private)
 **App name:** MPoS
 
@@ -1140,6 +1140,54 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   unjudged, and would have to be assessed on merit. **Not opened at all:** notices, banks, packaging
   settings, preorder/expiry reports.
 
+### 2026-07-15
+
+- **Activity log — BUILT (`BLUEPRINT.md` §29).** Migration `activity_log`. Studied the reference app's
+  `/activity/logs` read-only first: a rolling **60-day** window over **transactional documents only**
+  (Sale, Purchase, returns, Due Payment, Expense, Stock Adjustment, account moves, …), columns
+  User · Module · Details · **Action (Created/Updated/Deleted)** · Date · View, filters carried in the
+  URL, PDF/Excel/Print export. Their own data proved two things: a **delete is itself an event and the
+  prior rows survive it** (the View cell just goes blank), and updates repeat (one purchase had six).
+  - ⚠️ **What this closes:** §25 put real gates on every action, so a cashier now *cannot* delete a
+    sale — but the gates answer *"may they?"*, never *"did they, and which record?"*. Until now, **nothing
+    recorded who deleted a sale or edited a purchase.** For a shop with more than one login that is the
+    difference between a suspicion and a fact.
+  - **Settled with the user, and deliberately broader than the reference:** we log **everything that
+    mutates** — the money/stock documents *and* master-data edits (products, categories, brands, units,
+    colours, customers, suppliers, groups) *and* the security-sensitive admin events (settings, users,
+    roles). Only **reads** are not logged. **History is kept in full** — no 60-day window (a trail that
+    self-erases means a loss found months later has no history). New **`activity.view`** permission,
+    granted to Admin and grantable to a manager role, **never** to the Cashier.
+  - **One append-only table, one write helper.** `ActivityLog` holds a **loose** pointer to its document
+    (`docType` + `docId`, *never* a foreign key) and a **copied-in `userName`**, so a deleted document
+    keeps its whole history and a deleted user still reads. `logActivity(tx, …)` **rides inside the same
+    transaction** as the write it records — a log line cannot survive a rolled-back sale, nor a sale
+    escape without its line — mirroring the one-guard-helper rule of §25. **~40 call sites** across all
+    **20 action files** now log; the vocabulary lives in one client-safe constants module so the filter
+    dropdowns and the server share it.
+  - **Admin-only page** (`/activity`) with the reference's columns in our own layout, **filters in the
+    URL** (user · module · action · date range · free-text search), pagination, a **View** link that is
+    absent once the document is gone, and **CSV / Excel / Print** export (reusing the reports exporter,
+    so a download is exactly the filtered log on screen). Added to the sidebar under `activity.view`.
+
+  **Browser-verified end to end.** A brand created → `Brand 'Tracewell' created` (no link, correct). A
+  POS sale → `Sale INV-00005 created — 1 item(s), 9.00` with **View → /sales/9**. **The delete-survival
+  claim proven live:** deleting that sale added `Sale INV-00005 deleted` *and* **left the "created" row
+  standing** — the log has no FK to cascade. Filters checked (module=Brand, module=Sale, action=Created);
+  **CSV export** returned the three rows with BOM + proper quoting. **The whole point proven:** a
+  **cashier** rang up a sale and the log recorded it under **"Cashier"**, an admin's under
+  "Administrator" — a second login is now auditable, not merely gated. **The gate holds three ways:** the
+  cashier's sidebar has **no** Activity Log link, `/activity` **redirects** them, and the export API
+  returns **403** (`{"error":"Not allowed."}`). Typecheck + lint clean; `check-reports.ts` still
+  reconciles (Cash back at 1,000.80).
+  - **Dev-data note:** verification created two brands and two sales; all were deleted through the app's
+    own reversal paths (cash and stock returned to where they were), and the `ActivityLog` table was
+    then **truncated** — the seed writes no activity rows, so an empty log is the coherent starting
+    point (§5 baseline unchanged).
+  - **Known minor:** a *Created/Updated* row whose document was **later deleted** still renders a View
+    link that 404s (only *Deleted*-action rows suppress the link). Checking per-row existence would cost
+    a query per row; left as-is. Not a correctness issue — the row's history is intact.
+
 ---
 
 ## 5. Current state
@@ -1229,6 +1277,14 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   **seven forged server-action replays** from a cashier session against a production build — every
   destructive one refused, zero rows written — and a hand-built Manager role proven to take effect.
   Self-lockout is impossible (last admin, own account, Admin role all protected).
+- ✅ **Activity log done** (`BLUEPRINT.md` §29) — an **append-only** audit trail of **every mutating
+  write** (money/stock documents, master-data edits, and admin events: settings, users, roles), kept in
+  full. One helper (`src/lib/activity.ts`) writes each row **inside the same transaction** as the work
+  it records; ~40 call sites across all 20 action files log through it. The row holds a **loose** doc
+  pointer (no FK), so a **deleted document keeps its history** — proven live. Admin-only `/activity`
+  page (`activity.view`, grantable to a manager, never the cashier) with user/module/action/date/search
+  filters in the URL and CSV/Excel/Print export. This is what makes a **second login auditable** rather
+  than merely gated: a cashier's sale is recorded under "Cashier", proven end to end.
 - ✅ **Employees & salary done** (`BLUEPRINT.md` §24) — the staff, and a **monthly salary sheet**
   (wage bill · paid · still owed) that derives each month's due from `monthlySalary − Σ paid for that
   month` rather than storing it. **A wage payment is an ordinary `Expense` of system type "Salary"**
@@ -1403,10 +1459,12 @@ could delete sales and bulk-import the catalogue. Fixed wholesale, plus a role e
      open onto nothing — the exact "door that only bounces you" problem §25 fixed. **The parent is
      derived from its visible children, never declared beside them.**
 
-2. **Activity log** (from the sweep above) — the only busy module the reference shop has that we lack,
-   and the thing that makes a second login auditable rather than merely gated.
+~~2. Activity log~~ — ✅ **DONE 2026-07-15** (`BLUEPRINT.md` §29). An append-only audit trail of every
+   mutating write — a second login is now auditable, not merely gated. Built broader than the reference
+   (master data + admin events too) and kept in full, not on their 60-day window. See the progress log.
 
 3. **Bad-debt write-off** — an afternoon; closes the "a due can never leave the books" hole in §22.
+   *(Now the top remaining START-HERE item, alongside nested sidebar navigation.)*
 
 *(Also still open, trivial: a sweeper for the one orphan upload an abandoned product edit can leave, §28.4.)*
 

@@ -967,3 +967,42 @@ model SalaryPayment {
   @@index([employeeId])
   @@index([year, month])
 }
+
+/// Who did what, and when (BLUEPRINT §29). An append-only audit trail: the app
+/// writes rows and never updates or deletes them, and history is kept forever
+/// (no rolling window — the reference app's 60-day cut is deliberately NOT copied).
+///
+/// It rides inside the same transaction as the write it records, so a log line
+/// cannot survive a rolled-back sale nor a sale escape without its line.
+///
+/// The document it describes is held by a LOOSE reference (`docType` + `docId`),
+/// never a foreign key. That is the whole point: when a purchase is deleted, its
+/// "Created", "Updated" and "Deleted" rows must all remain — a cascading FK would
+/// erase exactly the history an audit trail exists to keep. The `userName` is
+/// likewise COPIED in, so a row still reads after its user is gone.
+model ActivityLog {
+  id       Int      @id @default(autoincrement())
+  /// The login that did it. Nullable + copied name, so a deleted user leaves a
+  /// readable row rather than a dangling id.
+  userId   Int?
+  userName String
+  /// Our own module vocabulary (Sale, Purchase, Product, Settings, …).
+  module   String
+  /// Exactly one of "Created" | "Updated" | "Deleted".
+  action   String
+  /// A rendered sentence: "Sale IN-10001 created (3 items, 320.00)".
+  details  String
+  /// Loose pointer to the document, for the View link. `docType` is the route base
+  /// (e.g. "sales", "purchases"); `docId` is NOT a relation and survives a delete.
+  docType  String?
+  docNo    String?
+  docId    Int?
+  branchId Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([module])
+  @@index([action])
+}

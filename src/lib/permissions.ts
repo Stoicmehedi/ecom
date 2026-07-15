@@ -49,7 +49,8 @@ export type PermissionKey =
   | "reports.profit"
   // Admin
   | "settings.manage"
-  | "users.manage";
+  | "users.manage"
+  | "activity.view";
 
 export type PermissionGroup = {
   group: string;
@@ -146,6 +147,11 @@ export const PERMISSIONS: PermissionGroup[] = [
     items: [
       { key: "settings.manage", label: "Change shop settings" },
       { key: "users.manage", label: "Manage users and roles", hint: "The keys to the shop." },
+      {
+        key: "activity.view",
+        label: "See the activity log",
+        hint: "Who did what, and when. A trusted manager can hold this.",
+      },
     ],
   },
 ];

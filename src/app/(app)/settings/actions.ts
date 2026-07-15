@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { invoicePrefixError } from "@/lib/docno";
 import { deleteImage, isValidKey } from "@/lib/storage";
+import { logActivity } from "@/lib/activity";
 
 export type SettingsResult = { ok?: boolean; error?: string };
 
@@ -105,6 +106,12 @@ export async function saveSettings(input: SettingsInput): Promise<SettingsResult
     where: { id: 1 },
     update: row,
     create: { id: 1, ...row },
+  });
+
+  await logActivity(prisma, {
+    module: "Settings",
+    action: "Updated",
+    details: "Shop settings updated",
   });
 
   if (previousLogo && previousLogo !== (s.logoKey ?? null)) {

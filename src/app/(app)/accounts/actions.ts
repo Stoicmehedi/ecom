@@ -3,10 +3,10 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { requirePermission } from "@/lib/guard";
 import { round2 } from "@/lib/costing";
 import { writeCashMove, reverseCashMove } from "@/lib/accounts";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -76,9 +76,21 @@ export async function saveAccount(
         };
       }
       await prisma.account.update({ where: { id }, data: { ...data, balance } });
+      await logActivity(prisma, {
+        module: "Account",
+        action: "Updated",
+        details: `Account '${a.name}' updated`,
+        doc: { type: "accounts", id },
+      });
     } else {
-      await prisma.account.create({
+      const created = await prisma.account.create({
         data: { ...data, balance: data.openingBalance },
+      });
+      await logActivity(prisma, {
+        module: "Account",
+        action: "Created",
+        details: `Account '${a.name}' created`,
+        doc: { type: "accounts", id: created.id },
       });
     }
   } catch {
@@ -106,8 +118,18 @@ export async function deleteAccount(id: number): Promise<ActionResult> {
     };
   }
 
+  const account = await prisma.account.findUnique({
+    where: { id },
+    select: { name: true },
+  });
+
   try {
     await prisma.account.delete({ where: { id } });
+    await logActivity(prisma, {
+      module: "Account",
+      action: "Deleted",
+      details: `Account '${account?.name ?? `#${id}`}' deleted`,
+    });
   } catch {
     return { error: "Failed to delete the account." };
   }
@@ -155,6 +177,8 @@ export async function depositOrWithdraw(
     };
   }
 
+  const actor = await activityActor();
+
   try {
     await prisma.$transaction(async (tx) => {
       await writeCashMove(tx, direction, {
@@ -162,6 +186,13 @@ export async function depositOrWithdraw(
         amount: m.amount,
         date: new Date(m.date),
         note: m.note,
+      });
+      await logActivity(tx, {
+        module: "Account",
+        action: "Created",
+        details: `${direction === "IN" ? "Deposit" : "Withdraw"} ${m.amount.toFixed(2)} — ${account.name}`,
+        doc: { type: "accounts", id: m.accountId },
+        actor,
       });
     });
   } catch {
@@ -219,6 +250,8 @@ export async function saveTransfer(
     };
   }
 
+  const actor = await activityActor();
+
   try {
     await prisma.$transaction(async (tx) => {
       const amount = round2(t.amount);
@@ -254,6 +287,13 @@ export async function saveTransfer(
         where: { id: { in: [out, inn] } },
         data: { transferId: transfer.id },
       });
+
+      await logActivity(tx, {
+        module: "Account",
+        action: "Created",
+        details: `Transfer ${amount.toFixed(2)} from ${from.name} to ${to.name}`,
+        actor,
+      });
     });
   } catch {
     return { error: "Something went wrong recording the transfer." };
@@ -269,7 +309,11 @@ export async function deleteTransfer(id: number): Promise<ActionResult> {
 
   const transfer = await prisma.accountTransfer.findUnique({
     where: { id },
-    include: { payments: true, toAccount: { select: { name: true, balance: true } } },
+    include: {
+      payments: true,
+      toAccount: { select: { name: true, balance: true } },
+      fromAccount: { select: { name: true } },
+    },
   });
   if (!transfer) return { error: "That transfer no longer exists." };
 
@@ -283,6 +327,8 @@ export async function deleteTransfer(id: number): Promise<ActionResult> {
     };
   }
 
+  const actor = await activityActor();
+
   try {
     await prisma.$transaction(async (tx) => {
       // Reverse both legs, each against its own account.
@@ -290,6 +336,13 @@ export async function deleteTransfer(id: number): Promise<ActionResult> {
         await reverseCashMove(tx, p.id);
       }
       await tx.accountTransfer.delete({ where: { id } });
+
+      await logActivity(tx, {
+        module: "Account",
+        action: "Deleted",
+        details: `Transfer ${amount.toFixed(2)} from ${transfer.fromAccount.name} to ${transfer.toAccount.name} undone`,
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to undo the transfer." };
@@ -336,9 +389,18 @@ export async function deleteCashMove(paymentId: number): Promise<ActionResult> {
     };
   }
 
+  const actor = await activityActor();
+
   try {
     await prisma.$transaction(async (tx) => {
       await reverseCashMove(tx, p.id);
+
+      await logActivity(tx, {
+        module: "Account",
+        action: "Deleted",
+        details: `${p.direction === "IN" ? "Deposit" : "Withdrawal"} ${amount.toFixed(2)} — ${p.account?.name} undone`,
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to undo that." };

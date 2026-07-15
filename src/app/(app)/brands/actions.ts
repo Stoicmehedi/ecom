@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { isUniqueError, isFkError } from "@/lib/db-error";
 import { requirePermission } from "@/lib/guard";
+import { logActivity } from "@/lib/activity";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -34,6 +35,13 @@ export async function saveBrand(
     if (isUniqueError(e)) return { error: "A brand with this name already exists." };
     return { error: "Something went wrong. Please try again." };
   }
+
+  await logActivity(prisma, {
+    module: "Brand",
+    action: id ? "Updated" : "Created",
+    details: `Brand '${parsed.data.name}' ${id ? "updated" : "created"}`,
+  });
+
   revalidatePath("/brands");
   return { ok: true };
 }
@@ -42,12 +50,23 @@ export async function deleteBrand(id: number): Promise<ActionState> {
   const denied = await requirePermission("products.masters");
   if (denied) return { error: denied };
 
+  const doomed = await prisma.brand.findUnique({
+    where: { id },
+    select: { name: true },
+  });
   try {
     await prisma.brand.delete({ where: { id } });
   } catch (e) {
     if (isFkError(e)) return { error: "Cannot delete: this brand is used by products." };
     return { error: "Failed to delete brand." };
   }
+
+  await logActivity(prisma, {
+    module: "Brand",
+    action: "Deleted",
+    details: `Brand '${doomed?.name ?? ""}' deleted`,
+  });
+
   revalidatePath("/brands");
   return { ok: true };
 }

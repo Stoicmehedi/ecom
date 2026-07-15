@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { round2 } from "@/lib/costing";
 import { isUniqueError, isFkError } from "@/lib/db-error";
 import { requirePermission } from "@/lib/guard";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ActionState = { ok?: boolean; error?: string };
 
@@ -76,9 +77,21 @@ export async function saveCustomer(
         where: { id },
         data: { ...data, dueBalance: round2(Number(existing.dueBalance) + delta) },
       });
+      await logActivity(prisma, {
+        module: "Customer",
+        action: "Updated",
+        details: `Customer '${data.name}' updated`,
+        doc: { type: "customers", id },
+      });
     } else {
-      await prisma.contact.create({
+      const created = await prisma.contact.create({
         data: { ...data, type: "CUSTOMER", dueBalance: data.openingBalance },
+      });
+      await logActivity(prisma, {
+        module: "Customer",
+        action: "Created",
+        details: `Customer '${data.name}' created`,
+        doc: { type: "customers", id: created.id },
       });
     }
   } catch (e) {
@@ -96,7 +109,7 @@ export async function deleteCustomer(id: number): Promise<ActionState> {
 
   const customer = await prisma.contact.findUnique({
     where: { id },
-    select: { isWalkIn: true },
+    select: { isWalkIn: true, name: true },
   });
   if (!customer) return { error: "Customer not found." };
   if (customer.isWalkIn) {
@@ -110,6 +123,11 @@ export async function deleteCustomer(id: number): Promise<ActionState> {
 
   try {
     await prisma.contact.delete({ where: { id } });
+    await logActivity(prisma, {
+      module: "Customer",
+      action: "Deleted",
+      details: `Customer '${customer.name}' deleted`,
+    });
   } catch {
     return { error: "Failed to delete customer." };
   }
@@ -134,6 +152,12 @@ export async function quickAddCustomer(
         phone: p,
         name: name.trim() || `Customer ${p}`,
       },
+    });
+    await logActivity(prisma, {
+      module: "Customer",
+      action: "Created",
+      details: `Customer '${c.name}' created`,
+      doc: { type: "customers", id: c.id },
     });
     revalidatePath("/customers");
     return { id: c.id };
@@ -169,7 +193,7 @@ export async function receiveCustomerDue(
 
   const customer = await prisma.contact.findUnique({
     where: { id: customerId },
-    select: { dueBalance: true },
+    select: { dueBalance: true, name: true },
   });
   if (!customer) return { error: "Customer not found." };
 
@@ -177,6 +201,8 @@ export async function receiveCustomerDue(
   if (amount > due + 0.005) {
     return { error: `Amount exceeds the outstanding due (${due.toFixed(2)}).` };
   }
+
+  const actor = await activityActor();
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -213,6 +239,14 @@ export async function receiveCustomerDue(
           data: { balance: { increment: round2(amount) } },
         });
       }
+
+      await logActivity(tx, {
+        module: "Due Payment",
+        action: "Created",
+        details: `Received ${round2(amount).toFixed(2)} from '${customer.name}'`,
+        doc: { type: "customers", id: customerId },
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to record the payment." };
@@ -251,8 +285,18 @@ export async function saveCustomerGroup(
   try {
     if (id) {
       await prisma.customerGroup.update({ where: { id }, data: parsed.data });
+      await logActivity(prisma, {
+        module: "Customer Group",
+        action: "Updated",
+        details: `Customer group '${parsed.data.name}' updated`,
+      });
     } else {
       await prisma.customerGroup.create({ data: parsed.data });
+      await logActivity(prisma, {
+        module: "Customer Group",
+        action: "Created",
+        details: `Customer group '${parsed.data.name}' created`,
+      });
     }
   } catch (e) {
     if (isUniqueError(e)) return { error: "A group with this name already exists." };
@@ -277,7 +321,12 @@ export async function deleteCustomerGroup(id: number): Promise<ActionState> {
   }
 
   try {
-    await prisma.customerGroup.delete({ where: { id } });
+    const deleted = await prisma.customerGroup.delete({ where: { id } });
+    await logActivity(prisma, {
+      module: "Customer Group",
+      action: "Deleted",
+      details: `Customer group '${deleted.name}' deleted`,
+    });
   } catch (e) {
     if (isFkError(e)) return { error: "Cannot delete: this group is still in use." };
     return { error: "Failed to delete group." };

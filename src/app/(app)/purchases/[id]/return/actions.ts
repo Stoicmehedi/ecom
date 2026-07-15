@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { avgAfterReversal, round2, round3 } from "@/lib/costing";
 import type { Prisma } from "@/generated/prisma/client";
 import { requirePermission } from "@/lib/guard";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -97,6 +98,8 @@ export async function savePurchaseReturn(input: ReturnInput): Promise<ActionResu
   if (r.refunded > total + 0.005) {
     return { error: "Refund is more than the value of the returned goods." };
   }
+
+  const actor = await activityActor();
 
   try {
     const id = await prisma.$transaction(async (tx) => {
@@ -195,6 +198,13 @@ export async function savePurchaseReturn(input: ReturnInput): Promise<ActionResu
         }
       }
 
+      await logActivity(tx, {
+        module: "Purchase Return",
+        action: "Created",
+        details: `Purchase return ${ret.returnNo} against purchase ${purchase.purchaseNo}, total ${total.toFixed(2)}.`,
+        actor,
+      });
+
       return ret.id;
     });
 
@@ -217,6 +227,8 @@ export async function deletePurchaseReturn(id: number): Promise<ActionResult> {
     include: { items: true, payments: true },
   });
   if (!ret) return { error: "Return not found." };
+
+  const actor = await activityActor();
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -272,6 +284,12 @@ export async function deletePurchaseReturn(id: number): Promise<ActionResult> {
       }
 
       await tx.purchaseReturn.delete({ where: { id } });
+      await logActivity(tx, {
+        module: "Purchase Return",
+        action: "Deleted",
+        details: `Purchase return ${ret.returnNo} deleted`,
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to delete the return." };

@@ -24,6 +24,7 @@ import {
   validateReturnLines,
   writeSaleReturn,
 } from "@/lib/sale-return";
+import { logActivity, activityActor } from "@/lib/activity";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type CheckoutResult = { ok?: boolean; error?: string; saleId?: number };
@@ -391,6 +392,8 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
 
   const soldById = session?.user?.id ? Number(session.user.id) : null;
 
+  const actor = await activityActor();
+
   try {
     const saleId = await prisma.$transaction(async (tx) => {
       const branch = await tx.branch.findFirst({ select: { id: true } });
@@ -641,6 +644,24 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
             customerId: s.customerId ?? null,
             credit,
           },
+        });
+      }
+
+      if (ret && oldSale) {
+        await logActivity(tx, {
+          module: "Exchange",
+          action: "Created",
+          details: `Exchange on ${sale.invoiceNo} against ${oldSale.invoiceNo} — credit ${credit.toFixed(2)}`,
+          doc: { type: "sales", no: sale.invoiceNo, id: sale.id },
+          actor,
+        });
+      } else {
+        await logActivity(tx, {
+          module: "Sale",
+          action: "Created",
+          details: `Sale ${sale.invoiceNo} created — ${items.length} item(s), ${total.toFixed(2)}`,
+          doc: { type: "sales", no: sale.invoiceNo, id: sale.id },
+          actor,
         });
       }
 

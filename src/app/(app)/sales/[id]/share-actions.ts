@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
+import { logActivity } from "@/lib/activity";
 
 export type ShareResult = { ok?: boolean; error?: string; token?: string | null };
 
@@ -27,7 +28,7 @@ export async function createShareLink(saleId: number): Promise<ShareResult> {
 
   const sale = await prisma.sale.findUnique({
     where: { id: saleId },
-    select: { publicToken: true },
+    select: { publicToken: true, invoiceNo: true },
   });
   if (!sale) return { error: "That sale no longer exists." };
 
@@ -36,6 +37,13 @@ export async function createShareLink(saleId: number): Promise<ShareResult> {
 
   const token = randomBytes(32).toString("hex");
   await prisma.sale.update({ where: { id: saleId }, data: { publicToken: token } });
+
+  await logActivity(prisma, {
+    module: "Sale",
+    action: "Updated",
+    details: `Public link created for ${sale.invoiceNo}`,
+    doc: { type: "sales", no: sale.invoiceNo, id: saleId },
+  });
 
   revalidatePath(`/sales/${saleId}`);
   return { ok: true, token };
@@ -47,7 +55,17 @@ export async function revokeShareLink(saleId: number): Promise<ShareResult> {
     return { error: "You do not have permission to change this invoice." };
   }
 
-  await prisma.sale.update({ where: { id: saleId }, data: { publicToken: null } });
+  const sale = await prisma.sale.update({
+    where: { id: saleId },
+    data: { publicToken: null },
+  });
+
+  await logActivity(prisma, {
+    module: "Sale",
+    action: "Updated",
+    details: `Public link revoked for ${sale.invoiceNo}`,
+    doc: { type: "sales", no: sale.invoiceNo, id: saleId },
+  });
 
   revalidatePath(`/sales/${saleId}`);
   return { ok: true, token: null };

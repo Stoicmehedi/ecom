@@ -8,6 +8,7 @@ import { validateReturnLines, writeSaleReturn } from "@/lib/sale-return";
 import { getSettings } from "@/lib/settings";
 import { settleAgainstInvoices, unsettle } from "@/lib/settle";
 import { requirePermission } from "@/lib/guard";
+import { logActivity, activityActor } from "@/lib/activity";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
 
@@ -93,6 +94,8 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
   }
   const customerId = sale.customerId as number;
 
+  const actor = await activityActor();
+
   try {
     const id = await prisma.$transaction(async (tx) => {
       const ret = await writeSaleReturn(tx, {
@@ -126,6 +129,13 @@ export async function saveSaleReturn(input: SaleReturnInput): Promise<ActionResu
         data: { dueBalance: { decrement: credit } },
       });
 
+      await logActivity(tx, {
+        module: "Sale Return",
+        action: "Created",
+        details: `Return ${ret.returnNo} against ${sale.invoiceNo} — credit ${credit.toFixed(2)}`,
+        actor,
+      });
+
       return ret.id;
     });
 
@@ -156,6 +166,8 @@ export async function deleteSaleReturn(id: number): Promise<ActionResult> {
       error: "This return is part of an exchange — delete the exchange itself.",
     };
   }
+
+  const actor = await activityActor();
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -231,6 +243,13 @@ export async function deleteSaleReturn(id: number): Promise<ActionResult> {
       }
 
       await tx.saleReturn.delete({ where: { id } });
+
+      await logActivity(tx, {
+        module: "Sale Return",
+        action: "Deleted",
+        details: `Return ${ret.returnNo} deleted`,
+        actor,
+      });
     });
   } catch (e) {
     if (e instanceof Error && e.message === "stock-gone") {

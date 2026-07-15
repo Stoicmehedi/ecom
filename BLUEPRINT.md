@@ -2079,3 +2079,93 @@ So the form remembers **the keys it minted this session** and discards one the m
 The server refuses to discard a key that any record still references, so a discard can never take a
 live image with it. Abandoning the whole page (a browser closed mid-edit) still leaves one orphan —
 that is the residue we accept, and it is bounded by one file per abandoned edit.
+
+---
+
+## 29. Activity log — who did what, and when *(studied read-only 2026-07-15; nothing created, edited or submitted)*
+
+### 29.1 What the reference app actually does
+
+A single screen, `/activity/logs`, headed *"Activity logs of last 60 days"* — so their trail is a
+**rolling 60-day window**; older history is gone. Each row is:
+
+| Column | Content |
+|---|---|
+| User | the login that did it (`hansum`, `mahfuz`) |
+| Module | which kind of document |
+| Details | a rendered sentence — *"New Pos Sale Created with Invoice No #IN-10006550"*, *"Purchase Deleted with Invoice No #IN-390/5"* |
+| Action | exactly one of **Created · Updated · Deleted** |
+| Date | timestamp to the second |
+| View | a link to the document — **empty once the document is gone** |
+
+**Filters** (all carried in the URL query string, exactly like our reports): per-page, **user**,
+branch, from/to date, **module**, and a free-text **search** over the details. **Export** as PDF,
+Excel or Print.
+
+The module dropdown is the tell: **Sale, Purchase, Sale Return, Purchase Return, Quotation, Due
+Payment, Expense, Purchase Order, Stock Adjustment, Stock Transfer, Balance Transfer, Deposit,
+Withdraw, Asset.** Every one is a **transactional document** — a write that moves stock or money.
+There is **no Product, Category, Customer, Supplier, User, Role or Settings** in the list: the
+reference app logs *transactions*, not edits to master data or configuration.
+
+Two things their own data proved:
+- **A delete is itself an event, and the prior events survive it.** A deleted purchase shows *both*
+  its "Purchase Deleted" row *and*, further back, its "Created"/"Updated" rows — the View link on the
+  deleted one is simply blank. The log is **append-only and never cascades** with the document it
+  describes.
+- **Updates are logged and they repeat.** One purchase invoice carries six "Updated" rows across three
+  weeks — the log is a history, not a latest-state cache.
+
+### 29.2 What this closes at home
+
+`PROJECT_STATUS.md` named this *"the thing that makes a second login auditable rather than merely
+gated"*. §25 put real gates on every action — a cashier now **cannot** delete a sale. But the gates
+answer *"may they?"*, never *"did they, and which record?"*. Right now, if a sale is deleted or a
+purchase is edited, **nothing anywhere records who did it or when.** For a shop with more than one
+login that is the difference between a suspicion and a fact.
+
+### 29.3 Requirements
+
+- **An append-only `ActivityLog` table.** One row per logged write: **who** (userId + a copied-in
+  username, so the row still reads if the user is later deleted), **module**, **action**
+  (Created/Updated/Deleted), a **details** sentence, a **loose reference** to the document
+  (module + document number + nullable id — *not* a cascading FK, so a deleted document keeps its
+  history), a **branchId**, and a **timestamp**. Rows are **never updated and never deleted** by the
+  app — there is no edit or delete control anywhere, on the page or the server.
+- **Logging is a write that rides inside the same transaction as the thing it records** — if the sale
+  rolls back, its log line rolls back with it; a log that can disagree with what happened is worse than
+  none. One helper (`logActivity(tx, …)`) called from each gated action, so there is one way to write a
+  line, mirroring the one-guard-helper rule of §25.
+- **An admin-only page** (`/activity`), gated on a **new `activity.view` permission** (page *and* the
+  data query). List with the reference's columns in our own layout; **filters in the URL** (user,
+  module, action, date range, free-text search) so the view is linkable; a **View** link to the live
+  document that is absent once the document is gone.
+- **Export** consistent with our reports module (CSV + the existing print path at least; Excel if it
+  is free given `exceljs` is already in the tree).
+
+### 29.4 Not built (and why)
+
+- **No master-data / settings / user diffing.** We log the same transactional writes the reference
+  does (Sale, Sale Return, Exchange, Purchase, Purchase Return, Due Payment, Expense, Stock Adjustment,
+  Account deposit/withdraw/transfer, Salary) — *plus* whichever security-sensitive admin events §29.5
+  settles. We do not log reads (viewing a report or a cost figure is not an audit event and would bury
+  the trail).
+- **No per-row "before/after" value snapshot.** The details sentence names the document and the change;
+  a full field-level diff is a bigger feature the reference app does not have and the shop has never
+  asked for.
+
+### 29.5 Decisions *(settled with the user, 2026-07-15)*
+
+1. **Scope — everything.** Not just the reference app's transactional documents: MPoS logs **every
+   mutating write** — the money/stock documents *and* the security-sensitive admin events (settings,
+   roles/permissions, users) *and* master-data create/edit/delete (products, categories, brands, units,
+   colours, customers, suppliers, groups). The one thing we do **not** log is reads. The reference
+   app's trail is narrower; ours is deliberately broader because the whole point is that a second login
+   is fully accountable. (The noise risk this raises is answered by the **module + action filters** on
+   the page — a routine catalogue edit is one filter click away from being set aside.)
+2. **Retention — keep everything.** No rolling window, no auto-prune. Rows are tiny for one store, and a
+   trail that self-erases means a loss found months later has no history behind it. A pruner can be
+   added later if it ever matters; the reference app's 60-day window is *not* copied.
+3. **Permission — a new `activity.view` key.** Granted to **Admin** (via `*`) and offered in the role
+   editor so a shop can grant it to a trusted **manager** role. **Never** held by the Cashier. Gated on
+   the page *and* the data query, per §25.

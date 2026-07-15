@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { requirePermission } from "@/lib/guard";
 import { round2 } from "@/lib/costing";
 import { LOYALTY_EXPENSE_TYPE } from "@/lib/expenses";
+import { logActivity, activityActor } from "@/lib/activity";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type ActionResult = { ok?: boolean; error?: string; id?: number };
@@ -105,12 +106,17 @@ export async function saveExpense(input: ExpenseInput): Promise<ActionResult> {
   }
 
   const userId = await currentUserId();
+  const actor = await activityActor();
   const amount = round2(e.amount);
   const date = new Date(e.date);
 
   try {
     const id = await prisma.$transaction(async (tx) => {
       const branch = await tx.branch.findFirst({ select: { id: true } });
+      const type = await tx.expenseType.findUnique({
+        where: { id: e.expenseTypeId },
+        select: { name: true },
+      });
 
       const data = {
         date,
@@ -143,6 +149,13 @@ export async function saveExpense(input: ExpenseInput): Promise<ActionResult> {
         note: data.note,
       });
 
+      await logActivity(tx, {
+        module: "Expense",
+        action: e.id ? "Updated" : "Created",
+        details: `Expense ${e.id ? "updated" : "created"} — ${type?.name ?? "expense"}, ${amount.toFixed(2)}`,
+        actor,
+      });
+
       return expenseId;
     });
 
@@ -160,7 +173,7 @@ export async function deleteExpense(id: number): Promise<ActionResult> {
 
   const existing = await prisma.expense.findUnique({
     where: { id },
-    select: { saleId: true },
+    select: { saleId: true, amount: true, expenseType: { select: { name: true } } },
   });
   if (!existing) return { error: "That expense no longer exists." };
   if (isAutomatic(existing)) {
@@ -169,10 +182,19 @@ export async function deleteExpense(id: number): Promise<ActionResult> {
     };
   }
 
+  const actor = await activityActor();
+
   try {
     await prisma.$transaction(async (tx) => {
       await reverseExpense(tx, id);
       await tx.expense.delete({ where: { id } });
+
+      await logActivity(tx, {
+        module: "Expense",
+        action: "Deleted",
+        details: `Expense deleted — ${existing.expenseType?.name ?? "expense"}, ${Number(existing.amount).toFixed(2)}`,
+        actor,
+      });
     });
   } catch {
     return { error: "Failed to delete the expense." };
@@ -215,8 +237,18 @@ export async function saveExpenseType(input: z.input<typeof typeSchema>): Promis
   try {
     if (id) {
       await prisma.expenseType.update({ where: { id }, data: { name } });
+      await logActivity(prisma, {
+        module: "Expense",
+        action: "Updated",
+        details: `Expense type '${name}' updated`,
+      });
     } else {
       await prisma.expenseType.create({ data: { name } });
+      await logActivity(prisma, {
+        module: "Expense",
+        action: "Created",
+        details: `Expense type '${name}' created`,
+      });
     }
   } catch {
     return { error: "An expense type with that name already exists." };
@@ -232,7 +264,7 @@ export async function deleteExpenseType(id: number): Promise<ActionResult> {
 
   const type = await prisma.expenseType.findUnique({
     where: { id },
-    select: { isSystem: true, _count: { select: { expenses: true } } },
+    select: { name: true, isSystem: true, _count: { select: { expenses: true } } },
   });
   if (!type) return { error: "That type no longer exists." };
   if (type.isSystem) {
@@ -248,6 +280,11 @@ export async function deleteExpenseType(id: number): Promise<ActionResult> {
 
   try {
     await prisma.expenseType.delete({ where: { id } });
+    await logActivity(prisma, {
+      module: "Expense",
+      action: "Deleted",
+      details: `Expense type '${type.name}' deleted`,
+    });
   } catch {
     return { error: "Failed to delete the expense type." };
   }
