@@ -46,6 +46,19 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 **Toolchain:**
 - Node.js `v20.20.2`, npm `10.8.2` (upgraded from 18 via the NodeSource apt repo — Next.js 16 requires Node ≥20.9).
 - PostgreSQL 16 (installed via apt, runs as a service).
+- **Dependency currency (checked 2026-07-15):** ran `npm update` — refreshed 30 packages *within* their
+  existing semver ranges (lockfile only; every pin in `package.json` intact). Typecheck + build + lint +
+  a dashboard smoke test all clean. Deliberately **not** bumped, and why:
+  - `next` / `eslint-config-next` are **pinned exact** at `16.2.10` (the modified build AGENTS.md warns
+    about) — do not touch.
+  - `@types/node` stays on `^20` to **match the Node 20 runtime**, not the `26.x` "latest".
+  - `next-auth` stays on `^5.0.0-beta.31` — npm's "latest" is v4, which would be a **downgrade**.
+  - TypeScript `7.x` and ESLint `10.x` are **breaking majors** — left on `^5` / `^9`.
+  - **npm itself:** latest is `12.x`, but that needs **Node ≥22**; the right upgrade for Node 20 is
+    **npm 11** (`npm i -g npm@11`, needs sudo — run manually). Real lever is a **Node 20→22 LTS** bump,
+    which is a machine-level decision.
+  - **8 moderate audit findings** remain (`exceljs` → old `uuid`); no in-range fix exists (latest 4.x
+    still bundles it), and `--force` would break Excel export — left as-is, flagged.
 
 **Database (local dev):**
 - Connection string: `postgresql://ecom:ecom@localhost:5432/ecom`
