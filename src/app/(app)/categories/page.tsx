@@ -70,8 +70,9 @@ export default async function CategoriesPage() {
   }));
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
       <PageHeader
+        eyebrow="Catalogue"
         title="Categories"
         description="Organize products in up to 3 levels."
       >
@@ -79,7 +80,7 @@ export default async function CategoriesPage() {
       </PageHeader>
       <CatalogTabs />
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

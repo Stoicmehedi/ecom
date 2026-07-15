@@ -75,8 +75,9 @@ export default async function ExpensesPage({
   const breakdown = [...byType.entries()].sort((a, b) => b[1] - a[1]);
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Money"
         title="Expenses"
         description="What the shop spends. Gross profit only becomes real profit once this comes off it."
       >
@@ -92,7 +93,7 @@ export default async function ExpensesPage({
       <ExpenseFilters range={range} types={types} selectedType={typeId} />
 
       <div className="grid gap-4 sm:grid-cols-[1fr_280px]">
-        <div className="rounded-lg border">
+        <div className="overflow-hidden rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>

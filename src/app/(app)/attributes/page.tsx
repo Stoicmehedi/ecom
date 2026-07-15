@@ -30,8 +30,9 @@ export default async function AttributesPage() {
   const plainAxes = axes.map((a) => ({ id: a.id, name: a.name }));
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
       <PageHeader
+        eyebrow="Catalogue"
         title="Attributes & colours"
         description="The axes a product varies along. Cross them to generate its variants."
       />

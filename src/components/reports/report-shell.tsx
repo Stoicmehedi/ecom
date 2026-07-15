@@ -67,7 +67,7 @@ export function ReportShell({
         }
       `}</style>
 
-      <PageHeader title={title} description={description}>
+      <PageHeader eyebrow="Reports" title={title} description={description}>
         {exportKey && <ExportButtons report={exportKey} />}
       </PageHeader>
 
@@ -119,11 +119,13 @@ export function Stat({
   tone?: "default" | "good" | "bad" | "muted";
 }) {
   return (
-    <div className="rounded-lg border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
+    <div className="rounded-lg border bg-card px-3.5 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
       <p
         className={cn(
-          "mt-1 text-2xl font-semibold tabular-nums",
+          "mt-1 text-xl font-semibold tabular-nums",
           tone === "good" && "text-primary",
           tone === "bad" && "text-destructive",
           tone === "muted" && "text-muted-foreground",
@@ -131,7 +133,7 @@ export function Stat({
       >
         {value}
       </p>
-      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }

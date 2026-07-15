@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
+import { StatCard } from "@/components/app/stat-card";
 import { money, num, shortDate } from "@/lib/format";
 import {
   Table,
@@ -103,8 +104,9 @@ export default async function SupplierLedgerPage({
   const due = num(supplier.dueBalance);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
       <PageHeader
+        eyebrow="Buying"
         title={supplier.name}
         description={
           [supplier.businessName, supplier.phone].filter(Boolean).join(" · ") ||
@@ -115,19 +117,19 @@ export default async function SupplierLedgerPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Opening due" value={money(opening)} />
-        <Stat
+        <StatCard label="Opening due" value={money(opening)} />
+        <StatCard
           label="Total purchased"
           value={money(purchases.reduce((s, p) => s + num(p.total), 0))}
         />
-        <Stat
+        <StatCard
           label="Outstanding due"
           value={money(due)}
-          className={due > 0 ? "text-destructive" : "text-primary"}
+          tone={due > 0 ? "bad" : "good"}
         />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -186,23 +188,6 @@ export default async function SupplierLedgerPage({
           </TableBody>
         </Table>
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  className = "",
-}: {
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <div className="rounded-lg border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${className}`}>{value}</p>
     </div>
   );
 }

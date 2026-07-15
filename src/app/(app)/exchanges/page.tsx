@@ -21,13 +21,14 @@ export default async function ExchangesPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Selling"
         title="Exchanges"
         description="Goods swapped at the counter. Each one is a return and a sale, settled together."
       />
 
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
             <tr>

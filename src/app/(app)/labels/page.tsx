@@ -40,8 +40,9 @@ export default async function LabelsPage({
     : [];
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Catalogue"
         title="Barcode labels"
         description="Print shelf and price labels. Barcodes are EAN-13 and scan as they are."
       />

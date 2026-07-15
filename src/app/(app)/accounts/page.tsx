@@ -55,8 +55,9 @@ export default async function AccountsPage() {
   const options = accounts.map((a) => ({ id: a.id, name: a.name }));
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Money"
         title="Accounts"
         description="The shop's own money — what is in the till, and what has moved."
       >
@@ -68,7 +69,7 @@ export default async function AccountsPage() {
         </div>
       </PageHeader>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -131,7 +132,7 @@ export default async function AccountsPage() {
       {transfers.length > 0 && (
         <div className="space-y-2">
           <h2 className="text-sm font-medium text-muted-foreground">Recent transfers</h2>
-          <div className="rounded-lg border">
+          <div className="overflow-hidden rounded-lg border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
