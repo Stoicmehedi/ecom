@@ -1515,6 +1515,18 @@ could delete sales and bulk-import the catalogue. Fixed wholesale, plus a role e
    (local disk, outside `public/`), logo on every document, photos on the POS tile. It also uncovered
    §12.11: **no product could be edited at all**. See the progress log.
 
+**⏭️ NEXT SESSION (agreed 2026-07-15, deferred to "tomorrow"): Node 20 → 22 LTS upgrade.**
+Node 20 reached **end-of-life** (maintenance ended April 2026); **Node 22 is the current LTS** (to
+~April 2027). User approved the upgrade but chose to do it next session. Plan, cleanly, **no `--force`
+/ no `--legacy-peer-deps`**: install Node 22 via NodeSource apt (machine-wide) → `rm -rf node_modules
+package-lock.json .next` → `npm install` → `npx prisma generate` → `npx prisma validate` → `npm run
+dev` + `npm run build` to verify. Then bump global npm to **11** (`npm i -g npm@11`; npm 12 needs Node
+≥22 so it becomes available after) and, if wanted, move `@types/node` to `^22`.
+⚠️ **A checklist the user pasted assumed a Next 9→16 migration — that is NOT this project.** Verified
+2026-07-15: already Next 16.2.10 (App Router only, no `pages/`, no legacy data-fetching), Prisma trio
+all 7.8.0, `eslint-config-next` matched, adapter code correct, schema valid, build clean. The **only**
+real item from that list is the Node bump above; everything else was already done.
+
 **START HERE — agreed with the user 2026-07-14, to build next session.**
 
 ~~1. **Nested sidebar navigation.**~~ — ✅ **DONE 2026-07-15**, as part of the **UI refresh** (on the
