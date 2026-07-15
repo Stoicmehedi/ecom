@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, PanelLeft } from "lucide-react";
+import Link from "next/link";
+import { Menu, PanelLeft, ScanBarcode } from "lucide-react";
 import { SidebarContent } from "./sidebar";
 import { UserMenu } from "./user-menu";
 import { MposLogo } from "./mpos-logo";
@@ -35,6 +36,11 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
+  // The till is the one screen a cashier reaches for all day, so it lives in the
+  // header too — always one click away even when the sidebar is hidden. Gated on
+  // the same permission as its nav link (a Cashier has it; a stock-only role may not).
+  const canPos = permissions.includes("*") || permissions.includes("pos.access");
 
   function toggleSidebar() {
     setCollapsed((c) => {
@@ -103,6 +109,19 @@ export function AppShell({
           <PageBreadcrumb />
 
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            {canPos && (
+              <Button
+                asChild
+                size="sm"
+                className="gap-1.5 bg-primary/10 text-primary shadow-none hover:bg-primary/15 hover:text-primary"
+                variant="secondary"
+              >
+                <Link href="/pos">
+                  <ScanBarcode className="size-4" />
+                  <span className="hidden sm:inline">POS</span>
+                </Link>
+              </Button>
+            )}
             <div className="hidden items-center gap-2 rounded-full border bg-card px-2.5 py-1 shadow-sm sm:flex">
               <span className="size-1.5 rounded-full bg-primary shadow-[0_0_0_2px_var(--primary-glow)]" />
               <span className="text-[13px] font-medium">{storeName}</span>
