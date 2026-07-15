@@ -141,7 +141,7 @@ export default async function CustomerLedgerPage({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -204,7 +204,7 @@ export default async function CustomerLedgerPage({
               {money(pointsValue(customer.loyaltyPoints, settings))}
             </span>
           </div>
-          <div className="overflow-hidden rounded-lg border bg-card">
+          <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
             <Table>
               <TableHeader>
                 <TableRow>

@@ -149,7 +149,7 @@ export default async function DashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
         {/* Sales trend */}
-        <section className="rounded-lg border bg-card p-4">
+        <section className="rounded-lg border border-border/70 bg-card p-4 shadow-sm">
           <div className="mb-3 flex items-baseline justify-between">
             <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Sales · last 14 days
@@ -166,7 +166,7 @@ export default async function DashboardPage() {
         </section>
 
         {/* Low stock */}
-        <section className="rounded-lg border bg-card p-4">
+        <section className="rounded-lg border border-border/70 bg-card p-4 shadow-sm">
           <div className="mb-3 flex items-baseline justify-between">
             <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Low stock
@@ -204,7 +204,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Recent sales */}
-      <section className="overflow-hidden rounded-lg border bg-card">
+      <section className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <div className="flex items-center justify-between border-b px-4 py-2.5">
           <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Recent sales

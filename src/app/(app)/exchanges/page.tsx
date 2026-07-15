@@ -28,7 +28,7 @@ export default async function ExchangesPage() {
         description="Goods swapped at the counter. Each one is a return and a sale, settled together."
       />
 
-      <div className="overflow-x-auto rounded-lg border bg-card">
+      <div className="overflow-x-auto rounded-lg border border-border/70 bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
             <tr>

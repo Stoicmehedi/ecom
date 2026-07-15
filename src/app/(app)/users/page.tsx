@@ -64,7 +64,7 @@ export default async function UsersPage() {
 
       <div className="space-y-2">
         <h2 className="text-sm font-medium text-muted-foreground">Users</h2>
-        <div className="overflow-hidden rounded-lg border bg-card">
+        <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>
@@ -132,7 +132,7 @@ export default async function UsersPage() {
 
       <div className="space-y-2">
         <h2 className="text-sm font-medium text-muted-foreground">Roles</h2>
-        <div className="overflow-hidden rounded-lg border bg-card">
+        <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>

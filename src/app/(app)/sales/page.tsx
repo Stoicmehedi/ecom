@@ -62,7 +62,7 @@ export default async function SalesPage() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

@@ -59,7 +59,7 @@ export default async function CustomersPage() {
         </div>
       </PageHeader>
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

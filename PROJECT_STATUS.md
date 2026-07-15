@@ -1221,8 +1221,35 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
     first paint**, so a dark-mode user never sees a white flash on load; the one class rule lives in the
     component and the script both. System mode tracks the OS live. Verified: pick Dark → `.dark` on, saved,
     and it **survives a reload** with no flash.
-  - **Committed to the branch** (`349b70f` "UI sweep", atop `d307ec9` "UI proof"). **Not merged, not
-    pushed** — `main` stays as the one-command rollback until the user says to bring `ui-refresh` across.
+  - **Committed to the branch** (`349b70f` "UI sweep", atop `d307ec9` "UI proof"). Later brought across
+    to `main` on the user's word (merge `e6b3735`); the pre-refresh UI is preserved as tag
+    **`pre-ui-refresh`** (`2a3722f`) — the standing rollback point.
+
+- **UI modern pass — ON A BRANCH (`ui-modern`), off `main`.** The user asked for a **more
+  professional / stylish / modern** feel and a **hamburger that hides the side nav**. Decided (via
+  AskUserQuestion): sidebar **fully hides off-canvas** (not an icon rail); style is **refined polish**
+  (elevate what's there, low risk); **⌘K command palette deferred**.
+  - **Collapsible sidebar.** A `PanelLeft` button in the header hides/shows the desktop sidebar with a
+    300ms width animation; the content beside it reflows to full width. The state is **remembered in a
+    cookie** and **read on the server** (`(app)/layout.tsx` → `AppShell defaultCollapsed`), so a reload
+    paints the right width with **no flash**. Mobile keeps its slide-over. Verified both ways, and that
+    `sidebar_collapsed=1` survives a fresh server render (aside width 0) and flips back on toggle.
+    - ⚠️ **Gotcha worth remembering:** the cookie *key* constant was first exported from the
+      `"use client"` `app-shell.tsx` and imported into the server layout — where a plain const from a
+      client module reads back as **`undefined`**, so `cookies().get(undefined)` always missed and the
+      state never restored. Moved the constant to a plain module (**`src/lib/ui-prefs.ts`**) that both
+      sides import. (The value was fine all along; the key was the bug.)
+  - **Refined polish (presentation only).** Theme-aware elevation tokens in `globals.css` (one
+    cool-slate/near-black `--shadow-color` drives softer, layered `--shadow-*`), plus a `--primary-glow`
+    accent and a reduced-motion-aware `.hover-lift`. Sidebar active state is now an **emerald-tinted pill
+    with a short left accent bar** (was a flat solid fill); KPI tiles, dashboard panels, and **all ~29
+    table containers** got the soft `shadow-sm` lift with a lighter `border-border/70`; the header gained
+    a hairline shadow and the store chip a small emerald glow; `h1` tracking tightened. Verified light
+    and dark on the dashboard, products, and a sale detail.
+  - **POS always in reach.** Because hiding the sidebar also hides the pinned POS link, the till now
+    lives in the **header** too — an emerald `POS` button beside the store chip, on every page, gated on
+    the same `pos.access` permission as its nav link. Verified it stays and works with the sidebar hidden.
+  - Typecheck + build clean. **Not merged, not pushed** — `main` is the rollback for this pass.
 
 ---
 

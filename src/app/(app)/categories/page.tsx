@@ -80,7 +80,7 @@ export default async function CategoriesPage() {
       </PageHeader>
       <CatalogTabs />
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

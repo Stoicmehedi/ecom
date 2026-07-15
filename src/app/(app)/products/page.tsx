@@ -148,7 +148,7 @@ export default async function ProductsPage({
           : `${products.length} of ${total} products`}
       </p>
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
