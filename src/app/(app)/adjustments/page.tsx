@@ -62,7 +62,7 @@ export default async function AdjustmentsPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-[1fr_260px]">
-        <div className="overflow-hidden rounded-lg border bg-card">
+        <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>

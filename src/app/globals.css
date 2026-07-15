@@ -33,6 +33,12 @@
   --input: oklch(0.922 0 0);
   --ring: oklch(0.596 0.145 163.225); /* emerald focus ring */
 
+  /* Depth: one cool-slate shadow colour drives every elevation, so cards lift
+     off the canvas with a soft, consistent shadow rather than a harsh grey box.
+     The emerald glow is the identity accent — used sparingly on live signals. */
+  --shadow-color: oklch(0.42 0.04 245);
+  --primary-glow: color-mix(in oklch, var(--primary) 35%, transparent);
+
   --chart-1: oklch(0.696 0.17 162.48); /* emerald */
   --chart-2: oklch(0.6 0.118 184.704); /* teal */
   --chart-3: oklch(0.398 0.07 227.392); /* blue-slate */
@@ -88,6 +94,10 @@
   --sidebar-accent-foreground: oklch(0.905 0.06 165);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.696 0.17 162.48);
+
+  /* On a dark canvas, depth comes from near-black shadows under lighter cards. */
+  --shadow-color: oklch(0 0 0);
+  --primary-glow: color-mix(in oklch, var(--primary) 45%, transparent);
 }
 
 @theme inline {
@@ -130,6 +140,19 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Refined elevation — softer and more layered than the stock greys, tuned so a
+     card reads as "lifted a little" rather than "outlined in a box". Theme-aware
+     via --shadow-color, so dark surfaces get depth instead of a white halo. */
+  --shadow-2xs: 0 1px 2px 0 color-mix(in oklch, var(--shadow-color) 5%, transparent);
+  --shadow-xs: 0 1px 2px 0 color-mix(in oklch, var(--shadow-color) 6%, transparent);
+  --shadow-sm: 0 1px 2px -1px color-mix(in oklch, var(--shadow-color) 8%, transparent),
+    0 2px 5px -2px color-mix(in oklch, var(--shadow-color) 6%, transparent);
+  --shadow: var(--shadow-sm);
+  --shadow-md: 0 4px 10px -3px color-mix(in oklch, var(--shadow-color) 11%, transparent),
+    0 2px 4px -2px color-mix(in oklch, var(--shadow-color) 7%, transparent);
+  --shadow-lg: 0 10px 22px -5px color-mix(in oklch, var(--shadow-color) 13%, transparent),
+    0 4px 8px -4px color-mix(in oklch, var(--shadow-color) 8%, transparent);
 }
 
 @layer base {
@@ -151,6 +174,9 @@
   h1, h2, h3, h4 {
     letter-spacing: -0.01em;
   }
+  h1 {
+    letter-spacing: -0.02em;
+  }
 
   /* Figures line up in columns — the single most "professional" typographic
      move for a POS: money and quantities never jitter between rows. */
@@ -162,6 +188,25 @@
 }
 
 @layer utilities {
+  /* A restrained lift for clickable cards and rows: a hair of rise and a
+     deeper shadow on hover. Enough to feel responsive, not enough to bounce.
+     Respects reduced-motion by dropping the translate. */
+  .hover-lift {
+    transition:
+      box-shadow 150ms ease,
+      transform 150ms ease,
+      border-color 150ms ease;
+  }
+  .hover-lift:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hover-lift:hover {
+      transform: none;
+    }
+  }
+
   /* An emerald selection and a thin, unobtrusive scrollbar — small signals that
      the whole surface was tuned, not left at defaults. */
   ::selection {

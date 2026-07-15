@@ -119,7 +119,7 @@ export function Stat({
   tone?: "default" | "good" | "bad" | "muted";
 }) {
   return (
-    <div className="rounded-lg border bg-card px-3.5 py-3">
+    <div className="rounded-lg border border-border/70 bg-card px-3.5 py-3 shadow-xs">
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </p>

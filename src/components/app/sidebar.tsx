@@ -89,13 +89,15 @@ function PinnedRow({
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium transition-colors",
+        "relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium transition-colors",
+        // Active reads as an emerald-tinted pill with a short accent bar on the
+        // left edge — present, not shouting, and it keeps the label legible.
         active
-          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+          ? "bg-primary/10 text-primary before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-r-full before:bg-primary"
           : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       )}
     >
-      <Icon className="size-4 shrink-0" />
+      <Icon className={cn("size-4 shrink-0", active && "text-primary")} />
       {link.label}
     </Link>
   );
@@ -140,7 +142,7 @@ function Group({
                   className={cn(
                     "flex h-7 items-center rounded-md px-2.5 text-[13px] transition-colors",
                     isActive
-                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                      ? "bg-primary/10 font-medium text-primary"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
                   )}
                 >

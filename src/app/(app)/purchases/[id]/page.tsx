@@ -81,7 +81,7 @@ export default async function PurchaseDetailPage({
         <StatCard label="Status" value={purchase.status} />
       </div>
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -122,7 +122,7 @@ export default async function PurchaseDetailPage({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border bg-card p-4">
+        <div className="rounded-lg border border-border/70 bg-card p-4 shadow-sm">
           <h3 className="mb-3 font-medium">Payments</h3>
           {purchase.payments.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -159,7 +159,7 @@ export default async function PurchaseDetailPage({
           )}
         </div>
 
-        <div className="rounded-lg border bg-card p-4">
+        <div className="rounded-lg border border-border/70 bg-card p-4 shadow-sm">
           <h3 className="mb-3 font-medium">Summary</h3>
           <SumRow label="Subtotal" value={money(purchase.subtotal)} />
           <SumRow

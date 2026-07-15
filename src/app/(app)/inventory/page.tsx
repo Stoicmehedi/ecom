@@ -126,7 +126,7 @@ export default async function InventoryPage({
         <StatCard label="Stock value at selling price" value={money(totalSell)} />
       </div>
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

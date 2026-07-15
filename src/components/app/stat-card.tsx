@@ -19,7 +19,12 @@ export function StatCard({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-lg border bg-card px-3.5 py-3", className)}>
+    <div
+      className={cn(
+        "rounded-lg border border-border/70 bg-card px-3.5 py-3 shadow-xs",
+        className,
+      )}
+    >
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </p>

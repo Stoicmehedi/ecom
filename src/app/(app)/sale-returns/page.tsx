@@ -50,7 +50,7 @@ export default async function SaleReturnsPage() {
         <StatCard label="Refunded in cash" value={money(totals.refunded)} />
       </div>
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

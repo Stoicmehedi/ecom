@@ -110,7 +110,7 @@ export default async function EmployeesPage({
         <StatCard label="Still owed" value={totals.due.toFixed(2)} tone="bad" />
       </div>
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -210,7 +210,7 @@ export default async function EmployeesPage({
           <h2 className="text-sm font-medium text-muted-foreground">
             Paid for {MONTHS[month - 1]} {year}
           </h2>
-          <div className="overflow-hidden rounded-lg border bg-card">
+          <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
             <Table>
               <TableHeader>
                 <TableRow>
