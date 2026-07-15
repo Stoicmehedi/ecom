@@ -52,6 +52,7 @@ export default async function UsersPage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-8">
       <PageHeader
+        eyebrow="Admin"
         title="Users & roles"
         description="Who can sign in, and what each of them is allowed to do."
       >
@@ -63,7 +64,7 @@ export default async function UsersPage() {
 
       <div className="space-y-2">
         <h2 className="text-sm font-medium text-muted-foreground">Users</h2>
-        <div className="rounded-lg border">
+        <div className="overflow-hidden rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -131,7 +132,7 @@ export default async function UsersPage() {
 
       <div className="space-y-2">
         <h2 className="text-sm font-medium text-muted-foreground">Roles</h2>
-        <div className="rounded-lg border">
+        <div className="overflow-hidden rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>

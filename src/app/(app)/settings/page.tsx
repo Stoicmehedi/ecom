@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { getSettings } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
+import { PageHeader } from "@/components/app/page-header";
 import { SettingsForm } from "./settings-form";
 
 export default async function SettingsPage() {
@@ -22,13 +23,12 @@ export default async function SettingsPage() {
   });
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Shop-wide rules. These take effect on the next sale.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        eyebrow="Admin"
+        title="Settings"
+        description="Shop-wide rules. These take effect on the next sale."
+      />
       <SettingsForm settings={settings} lastInvoiceNo={lastSale?.invoiceNo ?? null} />
     </div>
   );

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
+import { StatCard } from "@/components/app/stat-card";
 import { money, num, qty, shortDate } from "@/lib/format";
 import { parseRange } from "@/lib/reports/range";
 import { Badge } from "@/components/ui/badge";
@@ -48,8 +49,9 @@ export default async function AdjustmentsPage({
   const totalLoss = adjustments.reduce((s, a) => s + num(a.lossValue), 0);
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Stock"
         title="Stock adjustments"
         description="Damage, loss and miscounts — the only way stock moves without being bought, sold or returned."
       >
@@ -60,7 +62,7 @@ export default async function AdjustmentsPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-[1fr_260px]">
-        <div className="rounded-lg border">
+        <div className="overflow-hidden rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -116,14 +118,11 @@ export default async function AdjustmentsPage({
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-lg border p-4">
-            <p className="text-sm text-muted-foreground">Lost at cost — {range.label}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums">{money(totalLoss)}</p>
-            <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
-              Posted to the P&amp;L as a <strong>Stock loss</strong> expense. No cash moved —
-              the shop lost goods, not money.
-            </p>
-          </div>
+          <StatCard label={`Lost at cost — ${range.label}`} value={money(totalLoss)} />
+          <p className="text-xs text-muted-foreground">
+            Posted to the P&amp;L as a <strong>Stock loss</strong> expense. No cash moved —
+            the shop lost goods, not money.
+          </p>
         </div>
       </div>
     </div>

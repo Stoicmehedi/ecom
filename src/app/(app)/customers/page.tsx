@@ -45,8 +45,9 @@ export default async function CustomersPage() {
   const totalDue = customers.reduce((s, c) => s + num(c.dueBalance), 0);
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Customers"
         title="Customers"
         description="Who you sell to, and what they owe you."
       >
@@ -58,7 +59,7 @@ export default async function CustomersPage() {
         </div>
       </PageHeader>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

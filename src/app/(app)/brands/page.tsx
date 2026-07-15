@@ -23,13 +23,13 @@ export default async function BrandsPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6">
-      <PageHeader title="Brands" description="Manage product brands.">
+    <div className="mx-auto w-full max-w-4xl space-y-4">
+      <PageHeader eyebrow="Catalogue" title="Brands" description="Manage product brands.">
         <AddBrandButton />
       </PageHeader>
       <CatalogTabs />
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

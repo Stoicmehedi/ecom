@@ -45,7 +45,7 @@ export function ReportTableView({
   const { columns, rows, totals } = table;
 
   return (
-    <div className="report-surface overflow-x-auto rounded-lg border">
+    <div className="report-surface overflow-x-auto rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow>

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
+import { StatCard } from "@/components/app/stat-card";
 import { getSettings } from "@/lib/settings";
 import { pointsValue } from "@/lib/loyalty";
 import { Badge } from "@/components/ui/badge";
@@ -99,8 +100,9 @@ export default async function CustomerLedgerPage({
   const due = num(customer.dueBalance);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
       <PageHeader
+        eyebrow="Customers"
         title={customer.name}
         description={
           [customer.businessName, customer.phone].filter(Boolean).join(" · ") || "Customer"
@@ -110,18 +112,20 @@ export default async function CustomerLedgerPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-4">
-        <Stat label="Opening due" value={money(opening)} />
-        <Stat
+        <StatCard label="Opening due" value={money(opening)} />
+        <StatCard
           label="Total sold"
           value={money(sales.reduce((s, x) => s + num(x.total), 0))}
         />
-        <Stat
+        <StatCard
           label="Outstanding due"
           value={money(due)}
-          className={due > 0 ? "text-destructive" : "text-primary"}
+          tone={due > 0 ? "bad" : "good"}
         />
-        <div className="rounded-lg border p-4">
-          <p className="text-sm text-muted-foreground">Group / points</p>
+        <div className="rounded-lg border bg-card px-3.5 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Group / points
+          </p>
           <p className="mt-1 flex items-center gap-2">
             {customer.customerGroup ? (
               <Badge variant="outline">
@@ -137,7 +141,7 @@ export default async function CustomerLedgerPage({
         </div>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -200,7 +204,7 @@ export default async function CustomerLedgerPage({
               {money(pointsValue(customer.loyaltyPoints, settings))}
             </span>
           </div>
-          <div className="rounded-lg border">
+          <div className="overflow-hidden rounded-lg border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -233,23 +237,6 @@ export default async function CustomerLedgerPage({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  className = "",
-}: {
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <div className="rounded-lg border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${className}`}>{value}</p>
     </div>
   );
 }

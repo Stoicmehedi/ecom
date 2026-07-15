@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
+import { StatCard } from "@/components/app/stat-card";
 import { money, num, shortDate } from "@/lib/format";
 import {
   Table,
@@ -36,19 +37,20 @@ export default async function SaleReturnsPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Selling"
         title="Sale Returns"
         description="Goods customers brought back."
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Returns" value={String(returns.length)} />
-        <Stat label="Value returned" value={money(totals.value)} />
-        <Stat label="Refunded in cash" value={money(totals.refunded)} />
+        <StatCard label="Returns" value={String(returns.length)} />
+        <StatCard label="Value returned" value={money(totals.value)} />
+        <StatCard label="Refunded in cash" value={money(totals.refunded)} />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -105,15 +107,6 @@ export default async function SaleReturnsPage() {
           </TableBody>
         </Table>
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

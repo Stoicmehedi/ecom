@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { getSettings } from "@/lib/settings";
 import { PageHeader } from "@/components/app/page-header";
+import { StatCard } from "@/components/app/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { money, num, qty } from "@/lib/format";
 import {
@@ -94,8 +95,9 @@ export default async function InventoryPage({
   const totalSell = rows.reduce((s, r) => s + r.valueSell, 0);
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-4">
       <PageHeader
+        eyebrow="Stock"
         title="Inventory"
         description={
           canSeeCost
@@ -117,14 +119,14 @@ export default async function InventoryPage({
           canSeeCost ? "sm:grid-cols-3" : "sm:grid-cols-2",
         )}
       >
-        <Stat label="Variants in view" value={String(rows.length)} />
+        <StatCard label="Variants in view" value={String(rows.length)} />
         {canSeeCost && (
-          <Stat label="Stock value at cost" value={money(totalCost)} />
+          <StatCard label="Stock value at cost" value={money(totalCost)} />
         )}
-        <Stat label="Stock value at selling price" value={money(totalSell)} />
+        <StatCard label="Stock value at selling price" value={money(totalSell)} />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -205,15 +207,6 @@ export default async function InventoryPage({
           </TableBody>
         </Table>
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

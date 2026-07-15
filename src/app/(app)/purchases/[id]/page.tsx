@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { Pencil, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
+import { StatCard } from "@/components/app/stat-card";
 import { Button } from "@/components/ui/button";
 import { money, num, qty, shortDate } from "@/lib/format";
 import {
@@ -48,8 +49,9 @@ export default async function PurchaseDetailPage({
   if (!purchase) notFound();
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
       <PageHeader
+        eyebrow="Buying"
         title={purchase.purchaseNo}
         description={`${purchase.supplier?.name ?? "—"} · ${shortDate(purchase.date)}`}
       >
@@ -70,16 +72,16 @@ export default async function PurchaseDetailPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Fact label="Supplier invoice" value={purchase.supplierInvoiceNo ?? "—"} />
-        <Fact
+        <StatCard label="Supplier invoice" value={purchase.supplierInvoiceNo ?? "—"} />
+        <StatCard
           label="Payment due"
           value={purchase.dueDate ? shortDate(purchase.dueDate) : "—"}
         />
-        <Fact label="Reference" value={purchase.reference ?? "—"} />
-        <Fact label="Status" value={purchase.status} />
+        <StatCard label="Reference" value={purchase.reference ?? "—"} />
+        <StatCard label="Status" value={purchase.status} />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -120,7 +122,7 @@ export default async function PurchaseDetailPage({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border p-4">
+        <div className="rounded-lg border bg-card p-4">
           <h3 className="mb-3 font-medium">Payments</h3>
           {purchase.payments.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -157,7 +159,7 @@ export default async function PurchaseDetailPage({
           )}
         </div>
 
-        <div className="rounded-lg border p-4">
+        <div className="rounded-lg border bg-card p-4">
           <h3 className="mb-3 font-medium">Summary</h3>
           <SumRow label="Subtotal" value={money(purchase.subtotal)} />
           <SumRow
@@ -185,15 +187,6 @@ export default async function PurchaseDetailPage({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 font-medium">{value}</p>
     </div>
   );
 }

@@ -1188,6 +1188,42 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
     link that 404s (only *Deleted*-action rows suppress the link). Checking per-row existence would cost
     a query per row; left as-is. Not a correctness issue — the row's history is intact.
 
+- **UI refresh — ON A BRANCH (`ui-refresh`), main untouched as the rollback.** The user asked to make the
+  app "professional, compact" and explicitly **not** to reference the POS app for UI (researched
+  general dense-app patterns instead — Linear/Stripe-grade density — and kept our own emerald identity;
+  original UI, hard rule 1). Done as **proof-first, then sweep**, on a branch so `main` is a one-command
+  rollback (`git checkout main`).
+  - **Two commits so far on the branch.** `d307ec9` "UI proof" laid the foundation: **design tokens**
+    (cooler gray canvas, `--radius` 0.375rem, 13.5px base, tabular numerals on tables); **denser
+    primitives** (Table h-9/11px uppercase heads + px-3/py-2 cells, Button h-8, Input/Select h-8);
+    **the nested, permission-derived sidebar** (pinned Dashboard/POS + collapsible Catalogue/Buying/
+    Selling/Stock/Customers/Money/Reports/Admin groups, a parent renders only if it has a visible child
+    — the §25 "no door onto nothing" rule); **breadcrumbs + a store chip** in a slimmer header; and new
+    shared pieces — `StatCard`, `StatusBadge`, and an **inline-SVG** `MiniBarChart` (no charting
+    dependency, same ethos as drawing barcodes as SVG). The **dashboard** was rebuilt on these with real
+    queries (KPI strip · 14-day sales bars · low-stock · recent sales), and **POS + Sales** were the two
+    proof pages.
+  - **The sweep (this session, uncommitted on the branch)** carried the same language across **every
+    remaining screen** — all list/master pages (products, categories, brands, units, attributes, labels,
+    purchases, purchase-returns, suppliers, inventory, adjustments, sale-returns, exchanges, customers,
+    customer-groups, expenses, accounts, employees, users, activity), all five **detail** pages
+    (sales/purchases/customers/suppliers/accounts `[id]`), and the shared **Reports** shell/table. Each
+    got an eyebrow section label, `space-y-4`, `bg-card` table containers, and `StatCard`/`StatusBadge`
+    where a page had KPI tiles or status pills. **Presentation only — no query, permission, prop or logic
+    touched** (the parallel restyle agents were scoped to markup, and typecheck confirms it).
+  - **Verified:** `tsc --noEmit` clean, `npm run build` compiles (all routes emit), lint clean except
+    the **two pre-existing** `react-hooks/immutability` false-positives on the customers/suppliers
+    running-balance ledger loops (present on the committed version too, not from this work).
+    Browser-checked the dashboard (**light and dark**), a sale detail, and the products list — dense,
+    professional, emerald identity intact, dark palette holds.
+  - **Theme toggle added.** A compact **Light / Dark / System** switch in the header (`ThemeToggle`),
+    persisted to `localStorage`. A tiny inline script in the root `<head>` applies the choice **before
+    first paint**, so a dark-mode user never sees a white flash on load; the one class rule lives in the
+    component and the script both. System mode tracks the OS live. Verified: pick Dark → `.dark` on, saved,
+    and it **survives a reload** with no flash.
+  - **Committed to the branch** (`349b70f` "UI sweep", atop `d307ec9` "UI proof"). **Not merged, not
+    pushed** — `main` stays as the one-command rollback until the user says to bring `ui-refresh` across.
+
 ---
 
 ## 5. Current state
@@ -1285,6 +1321,12 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   page (`activity.view`, grantable to a manager, never the cashier) with user/module/action/date/search
   filters in the URL and CSV/Excel/Print export. This is what makes a **second login auditable** rather
   than merely gated: a cashier's sale is recorded under "Cashier", proven end to end.
+- 🟡 **UI refresh — on the `ui-refresh` branch** (main is the rollback). A denser, professional surface
+  with our own emerald identity: design tokens, compact table/button/input primitives, a **nested
+  permission-derived sidebar** (this delivered the long-planned nested-nav item, and gives the 7
+  link-less pages a home), breadcrumbs, `StatCard`/`StatusBadge`/inline-SVG `MiniBarChart`, a rebuilt
+  dashboard, a **Light/Dark/System theme toggle** (no-flash, persisted), and the same language swept
+  across every screen. Presentation only; typecheck + build clean; verified light and dark.
 - ✅ **Employees & salary done** (`BLUEPRINT.md` §24) — the staff, and a **monthly salary sheet**
   (wage bill · paid · still owed) that derives each month's due from `monthlySalary − Σ paid for that
   month` rather than storing it. **A wage payment is an ordinary `Expense` of system type "Salary"**
@@ -1433,6 +1475,12 @@ could delete sales and bulk-import the catalogue. Fixed wholesale, plus a role e
    §12.11: **no product could be edited at all**. See the progress log.
 
 **START HERE — agreed with the user 2026-07-14, to build next session.**
+
+~~1. **Nested sidebar navigation.**~~ — ✅ **DONE 2026-07-15**, as part of the **UI refresh** (on the
+   `ui-refresh` branch, see the progress log). The sidebar is now pinned Dashboard/POS + collapsible,
+   **permission-derived** groups; a parent renders only if it has a visible child, and the 7 link-less
+   pages finally have a home. Suppliers→Buying and Employees→Money as agreed below. *Everything under
+   this heading is the original design note, kept for the record:*
 
 1. **Nested sidebar navigation.** The sidebar is **18 flat links**, and **7 pages have no link at all**
    (categories, brands, units, attributes, labels, customer-groups) — they are reachable only through

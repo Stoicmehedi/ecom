@@ -30,13 +30,14 @@ export default async function PurchaseReturnsPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Buying"
         title="Purchase Returns"
         description="Goods sent back to suppliers."
       />
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

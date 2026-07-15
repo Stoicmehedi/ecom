@@ -39,7 +39,7 @@ export default async function ReportsOverviewPage({
       tabs={reportTabs(canSeeProfit)}
       range={range}
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           label="Net sales"
           value={money(pl.netSales)}
@@ -76,7 +76,7 @@ export default async function ReportsOverviewPage({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Cash in" value={money(pl.cashIn)} hint="all money received" />
         <Stat label="Cash out" value={money(pl.cashOut)} hint="all money paid out" />
         <Stat
@@ -93,7 +93,7 @@ export default async function ReportsOverviewPage({
         />
       </div>
 
-      <div className="report-surface rounded-lg border p-5">
+      <div className="report-surface rounded-lg border bg-card p-5">
         <div className="flex items-center justify-between">
           <h2 className="font-medium">Net sales by day</h2>
           <Link

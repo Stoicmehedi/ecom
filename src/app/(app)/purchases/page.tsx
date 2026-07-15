@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { money, num, shortDate } from "@/lib/format";
 import {
@@ -17,12 +18,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PurchaseRowActions } from "./purchase-row-actions";
-
-const statusStyles: Record<string, string> = {
-  PAID: "bg-primary/10 text-primary hover:bg-primary/10",
-  PARTIAL: "bg-amber-500/10 text-amber-600 hover:bg-amber-500/10",
-  DUE: "bg-destructive/10 text-destructive hover:bg-destructive/10",
-};
 
 export default async function PurchasesPage() {
   const session = await auth();
@@ -38,8 +33,9 @@ export default async function PurchasesPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Buying"
         title="Purchases"
         description="Stock received from suppliers."
       >
@@ -53,7 +49,7 @@ export default async function PurchasesPage() {
         )}
       </PageHeader>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -119,7 +115,7 @@ export default async function PurchasesPage() {
                   {money(p.due)}
                 </TableCell>
                 <TableCell>
-                  <Badge className={statusStyles[p.status]}>{p.status}</Badge>
+                  <StatusBadge status={p.status} />
                   {p._count.returns > 0 && (
                     <Badge variant="outline" className="ml-1">
                       Returned

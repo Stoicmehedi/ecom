@@ -73,6 +73,7 @@ export default async function ActivityLogPage({
       `}</style>
 
       <PageHeader
+        eyebrow="Admin"
         title="Activity log"
         description="Who did what, and when. Every write is here; history is kept in full."
       >
@@ -90,7 +91,7 @@ export default async function ActivityLogPage({
         perPage={perPage}
       />
 
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

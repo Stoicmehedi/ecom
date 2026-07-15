@@ -25,8 +25,9 @@ export default async function CustomerGroupsPage() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6">
+    <div className="mx-auto w-full max-w-4xl space-y-4">
       <PageHeader
+        eyebrow="Customers"
         title="Customer Groups"
         description="Give a group of customers a standing discount."
       >
@@ -38,7 +39,7 @@ export default async function CustomerGroupsPage() {
         </div>
       </PageHeader>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

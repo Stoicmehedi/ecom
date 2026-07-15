@@ -30,15 +30,16 @@ export default async function SuppliersPage() {
   const totalDue = suppliers.reduce((s, c) => s + num(c.dueBalance), 0);
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Buying"
         title="Suppliers"
         description="Who you buy from, and what you owe them."
       >
         <AddSupplierButton />
       </PageHeader>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

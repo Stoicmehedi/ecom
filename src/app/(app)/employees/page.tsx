@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { PageHeader } from "@/components/app/page-header";
+import { StatCard } from "@/components/app/stat-card";
 import { money, num, shortDate } from "@/lib/format";
 import { round2 } from "@/lib/costing";
 import { Badge } from "@/components/ui/badge";
@@ -88,8 +89,9 @@ export default async function EmployeesPage({
   }));
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageHeader
+        eyebrow="Money"
         title="Employees"
         description="The staff, and what each is owed for the month you are looking at."
       >
@@ -100,27 +102,15 @@ export default async function EmployeesPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border p-4">
-          <p className="text-xs text-muted-foreground">
-            Wage bill — {MONTHS[month - 1]} {year}
-          </p>
-          <p className="mt-1 text-xl font-semibold tabular-nums">{money(totals.salary)}</p>
-        </div>
-        <div className="rounded-lg border p-4">
-          <p className="text-xs text-muted-foreground">Paid</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-primary">
-            {totals.paid.toFixed(2)}
-          </p>
-        </div>
-        <div className="rounded-lg border p-4">
-          <p className="text-xs text-muted-foreground">Still owed</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-destructive">
-            {totals.due.toFixed(2)}
-          </p>
-        </div>
+        <StatCard
+          label={`Wage bill — ${MONTHS[month - 1]} ${year}`}
+          value={money(totals.salary)}
+        />
+        <StatCard label="Paid" value={totals.paid.toFixed(2)} tone="good" />
+        <StatCard label="Still owed" value={totals.due.toFixed(2)} tone="bad" />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -220,7 +210,7 @@ export default async function EmployeesPage({
           <h2 className="text-sm font-medium text-muted-foreground">
             Paid for {MONTHS[month - 1]} {year}
           </h2>
-          <div className="rounded-lg border">
+          <div className="overflow-hidden rounded-lg border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>

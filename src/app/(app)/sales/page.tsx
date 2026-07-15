@@ -5,7 +5,8 @@ import { hasPermission } from "@/lib/permissions";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
-import { Badge } from "@/components/ui/badge";
+import { StatCard } from "@/components/app/stat-card";
+import { StatusBadge } from "@/components/app/status-badge";
 import { Button } from "@/components/ui/button";
 import { money, num, shortDate } from "@/lib/format";
 import {
@@ -17,12 +18,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SaleRowActions } from "./sale-row-actions";
-
-const statusStyles: Record<string, string> = {
-  PAID: "bg-primary/10 text-primary hover:bg-primary/10",
-  PARTIAL: "bg-amber-500/10 text-amber-600 hover:bg-amber-500/10",
-  DUE: "bg-destructive/10 text-destructive hover:bg-destructive/10",
-};
 
 export default async function SalesPage() {
   const session = await auth();
@@ -47,8 +42,8 @@ export default async function SalesPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <PageHeader title="Sales" description="Everything you've rung up.">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
+      <PageHeader eyebrow="Selling" title="Sales" description="Everything you've rung up.">
         <Button asChild>
           <Link href="/pos">
             <Plus className="size-4" />
@@ -57,17 +52,17 @@ export default async function SalesPage() {
         </Button>
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Sales" value={String(sales.length)} />
-        <Stat label="Total sold" value={money(totals.total)} />
-        <Stat
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatCard label="Sales" value={String(sales.length)} />
+        <StatCard label="Total sold" value={money(totals.total)} />
+        <StatCard
           label="Outstanding due"
           value={money(totals.due)}
-          className={totals.due > 0 ? "text-destructive" : ""}
+          tone={totals.due > 0 ? "bad" : "default"}
         />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -127,7 +122,7 @@ export default async function SalesPage() {
                   {money(s.due)}
                 </TableCell>
                 <TableCell>
-                  <Badge className={statusStyles[s.status]}>{s.status}</Badge>
+                  <StatusBadge status={s.status} />
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {s.soldBy?.name ?? "—"}
@@ -145,23 +140,6 @@ export default async function SalesPage() {
           </TableBody>
         </Table>
       </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  className = "",
-}: {
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <div className="rounded-lg border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${className}`}>{value}</p>
     </div>
   );
 }

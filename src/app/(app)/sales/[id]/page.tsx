@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { FileText, Printer, Undo2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/app/page-header";
+import { StatCard } from "@/components/app/stat-card";
 import { Button } from "@/components/ui/button";
 import { money, num, qty, shortDate } from "@/lib/format";
 import {
@@ -53,8 +54,9 @@ export default async function SaleDetailPage({
   const profit = revenue - num(sale.discount) - cost;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
       <PageHeader
+        eyebrow="Selling"
         title={sale.invoiceNo}
         description={`${sale.customer?.name ?? "Walk-in"} · ${shortDate(sale.date)}${
           sale.soldBy ? ` · sold by ${sale.soldBy.name}` : ""
@@ -83,14 +85,14 @@ export default async function SaleDetailPage({
       </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-4">
-        <Fact label="Status" value={sale.status} />
-        <Fact label="Cost of goods" value={money(cost)} />
-        <Fact
+        <StatCard label="Status" value={sale.status} />
+        <StatCard label="Cost of goods" value={money(cost)} />
+        <StatCard
           label="Profit"
           value={money(profit)}
-          className={profit >= 0 ? "text-primary" : "text-destructive"}
+          tone={profit >= 0 ? "good" : "bad"}
         />
-        <Fact
+        <StatCard
           label="Due date"
           value={sale.dueDate ? shortDate(sale.dueDate) : "—"}
         />
@@ -103,7 +105,7 @@ export default async function SaleDetailPage({
         </div>
       )}
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -147,7 +149,7 @@ export default async function SaleDetailPage({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border p-4">
+        <div className="rounded-lg border bg-card p-4">
           <h3 className="mb-3 font-medium">Payments</h3>
           {sale.payments.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -168,7 +170,7 @@ export default async function SaleDetailPage({
           )}
         </div>
 
-        <div className="rounded-lg border p-4">
+        <div className="rounded-lg border bg-card p-4">
           <h3 className="mb-3 font-medium">Summary</h3>
           <SumRow label="Subtotal" value={money(sale.subtotal)} />
           <SumRow
@@ -191,23 +193,6 @@ export default async function SaleDetailPage({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Fact({
-  label,
-  value,
-  className = "",
-}: {
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <div className="rounded-lg border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`mt-1 font-medium tabular-nums ${className}`}>{value}</p>
     </div>
   );
 }
