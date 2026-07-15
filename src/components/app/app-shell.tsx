@@ -6,6 +6,7 @@ import { SidebarContent } from "./sidebar";
 import { UserMenu } from "./user-menu";
 import { MposLogo } from "./mpos-logo";
 import { PageBreadcrumb } from "./page-breadcrumb";
+import { ThemeToggle } from "./theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -71,6 +72,7 @@ export function AppShell({
               <span className="size-1.5 rounded-full bg-primary" />
               <span className="text-[13px] font-medium">{storeName}</span>
             </div>
+            <ThemeToggle />
             <Separator orientation="vertical" className="hidden !h-5 sm:block" />
             <UserMenu name={userName} role={userRole} />
           </div>

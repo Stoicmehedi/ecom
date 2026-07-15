@@ -1215,8 +1215,12 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
     the **two pre-existing** `react-hooks/immutability` false-positives on the customers/suppliers
     running-balance ledger loops (present on the committed version too, not from this work).
     Browser-checked the dashboard (**light and dark**), a sale detail, and the products list — dense,
-    professional, emerald identity intact, dark palette holds. (Dark is a `.dark` class variant; there is
-    no in-app theme toggle yet — a possible follow-up.)
+    professional, emerald identity intact, dark palette holds.
+  - **Theme toggle added.** A compact **Light / Dark / System** switch in the header (`ThemeToggle`),
+    persisted to `localStorage`. A tiny inline script in the root `<head>` applies the choice **before
+    first paint**, so a dark-mode user never sees a white flash on load; the one class rule lives in the
+    component and the script both. System mode tracks the OS live. Verified: pick Dark → `.dark` on, saved,
+    and it **survives a reload** with no flash.
   - **Committed to the branch** (`349b70f` "UI sweep", atop `d307ec9` "UI proof"). **Not merged, not
     pushed** — `main` stays as the one-command rollback until the user says to bring `ui-refresh` across.
 
@@ -1321,8 +1325,8 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   with our own emerald identity: design tokens, compact table/button/input primitives, a **nested
   permission-derived sidebar** (this delivered the long-planned nested-nav item, and gives the 7
   link-less pages a home), breadcrumbs, `StatCard`/`StatusBadge`/inline-SVG `MiniBarChart`, a rebuilt
-  dashboard, and the same language swept across every screen. Presentation only; typecheck + build
-  clean; verified light and dark. **Not yet merged to main.**
+  dashboard, a **Light/Dark/System theme toggle** (no-flash, persisted), and the same language swept
+  across every screen. Presentation only; typecheck + build clean; verified light and dark.
 - ✅ **Employees & salary done** (`BLUEPRINT.md` §24) — the staff, and a **monthly salary sheet**
   (wage bill · paid · still owed) that derives each month's due from `monthlySalary − Σ paid for that
   month` rather than storing it. **A wage payment is an ordinary `Expense` of system type "Salary"**
