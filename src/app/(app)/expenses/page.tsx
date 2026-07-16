@@ -81,7 +81,7 @@ export default async function ExpensesPage({
         title="Expenses"
         description="What the shop spends. Gross profit only becomes real profit once this comes off it."
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <ExpenseTypesButton types={types} />
           <AddExpenseButton
             types={types.filter((t) => !t.isSystem)}

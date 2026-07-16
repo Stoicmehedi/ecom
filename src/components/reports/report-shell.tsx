@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
+import { TabStrip } from "@/components/app/tab-strip";
 import { RangePicker } from "./range-picker";
 import { ExportButtons } from "./export-buttons";
 import type { DateRange } from "@/lib/reports/range";
@@ -71,28 +71,27 @@ export function ReportShell({
         {exportKey && <ExportButtons report={exportKey} />}
       </PageHeader>
 
-      <nav className="no-print flex flex-wrap gap-1 border-b">
-        {tabs.map((t) => (
-          <Link
-            key={t.key}
-            href={t.href}
-            aria-current={t.key === active ? "page" : undefined}
-            className={cn(
-              "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-              t.key === active
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </nav>
+      <TabStrip
+        tabs={tabs.map((t) => ({
+          label: t.label,
+          href: t.href,
+          active: t.key === active,
+        }))}
+      />
 
       {(range || toolbar) && (
+        // min-w-0 so the picker inside may shrink: a flex child defaults to
+        // min-width:auto and will otherwise push the whole page wider than the
+        // phone it is on.
         <div className="flex flex-wrap items-end justify-between gap-3">
-          {range ? <RangePicker range={range} /> : <span />}
-          {toolbar}
+          {range ? (
+            <div className="min-w-0">
+              <RangePicker range={range} />
+            </div>
+          ) : (
+            <span />
+          )}
+          {toolbar && <div className="min-w-0">{toolbar}</div>}
         </div>
       )}
 

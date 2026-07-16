@@ -51,7 +51,7 @@ export default async function CustomersPage() {
         title="Customers"
         description="Who you sell to, and what they owe you."
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
             <Link href="/customer-groups">Groups</Link>
           </Button>

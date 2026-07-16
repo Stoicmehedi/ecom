@@ -455,11 +455,11 @@ export function PurchaseForm({
 
       {/* Totals + payment */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-3 rounded-lg border p-4">
+        <div className="min-w-0 space-y-3 rounded-lg border p-4">
           <h3 className="font-medium">Payment</h3>
           {payments.map((p, i) => (
-            <div key={i} className="flex items-end gap-2">
-              <div className="flex-1 space-y-1">
+            <div key={i} className="flex flex-wrap items-end gap-2">
+              <div className="min-w-0 flex-1 space-y-1">
                 <Label className="text-xs">Method</Label>
                 <Select
                   value={p.method}
@@ -481,7 +481,7 @@ export function PurchaseForm({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex-1 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <Label className="text-xs">Account</Label>
                 <Select
                   value={p.accountId ? String(p.accountId) : undefined}
@@ -566,18 +566,21 @@ export function PurchaseForm({
           </div>
         </div>
 
-        <div className="space-y-2 rounded-lg border p-4">
+        <div className="min-w-0 space-y-2 rounded-lg border p-4">
           <h3 className="font-medium">Summary</h3>
           <Row label="Subtotal" value={subtotal.toFixed(2)} />
 
-          <div className="flex items-center justify-between gap-2 py-1">
+          {/* The label plus these three fixed-width controls need ~372px on one
+              line, which is wider than a phone once the panel's padding is paid
+              for — so the controls drop onto their own line when they must. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 py-1">
             <span className="text-sm text-muted-foreground">Discount</span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Select
                 value={discountType}
                 onValueChange={(v) => setDiscountType(v as "AMOUNT" | "PERCENT")}
               >
-                <SelectTrigger className="w-28">
+                <SelectTrigger className="w-24 sm:w-28">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -589,11 +592,11 @@ export function PurchaseForm({
                 type="number"
                 step="0.01"
                 min="0"
-                className="w-24 text-right"
+                className="w-20 text-right sm:w-24"
                 value={discountValue}
                 onChange={(e) => setDiscountValue(Number(e.target.value))}
               />
-              <span className="w-20 text-right text-sm tabular-nums">
+              <span className="w-16 text-right text-sm tabular-nums sm:w-20">
                 −{discount.toFixed(2)}
               </span>
             </div>

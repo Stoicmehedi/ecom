@@ -62,7 +62,7 @@ export default async function SaleDetailPage({
           sale.soldBy ? ` · sold by ${sale.soldBy.name}` : ""
         }`}
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
             <Link href={`/sales/${sale.id}/return`}>
               <Undo2 className="size-4" />

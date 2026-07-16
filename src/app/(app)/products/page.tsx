@@ -103,7 +103,7 @@ export default async function ProductsPage({
   return (
     <div className="mx-auto w-full max-w-7xl space-y-4">
       <PageHeader eyebrow="Catalogue" title="Products" description="Your catalog of products and variants.">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {/* A control that only bounces you is worse than no control — it advertises a
               door you cannot open. The server refuses these regardless (§25.3); hiding
               them is the courtesy that stops a cashier from finding out the hard way. */}

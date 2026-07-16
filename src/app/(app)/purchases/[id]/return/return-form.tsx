@@ -222,7 +222,7 @@ export function ReturnForm({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-3 rounded-lg border p-4">
+        <div className="min-w-0 space-y-3 rounded-lg border p-4">
           <h3 className="font-medium">Refund received</h3>
           <p className="text-sm text-muted-foreground">
             Leave at zero if the supplier is crediting your account instead of
@@ -277,7 +277,7 @@ export function ReturnForm({
           </div>
         </div>
 
-        <div className="space-y-2 rounded-lg border p-4">
+        <div className="min-w-0 space-y-2 rounded-lg border p-4">
           <h3 className="font-medium">Summary</h3>
           <div className="flex justify-between py-1 text-sm">
             <span className="text-muted-foreground">Against</span>

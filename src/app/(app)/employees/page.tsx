@@ -95,7 +95,7 @@ export default async function EmployeesPage({
         title="Employees"
         description="The staff, and what each is owed for the month you are looking at."
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <MonthPicker month={month} year={year} />
           <AddEmployeeButton />
         </div>

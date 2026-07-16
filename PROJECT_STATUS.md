@@ -1377,6 +1377,47 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
 
   Typecheck, lint (**zero new findings**) and production build all clean.
 
+- **Responsive — BUILT (`BLUEPRINT.md` §30).** The user asked to make the whole app work at any screen
+  size, right after the camera scanner put a **phone at the counter**. UI work, so hard rule 1 applies:
+  our own design, reference app not opened.
+  - **Decided with the user:** a data table **scrolls sideways inside its own card** (every column
+    stays reachable, one markup, a narrow view can never disagree with the wide one about a row —
+    the rejected card-per-row would have meant a second rendering of all 27 tables). Scope: **whole
+    app, POS phone-first**.
+  - 🔑 **Almost none of it was a table problem.** `Table` already wrapped itself in `overflow-x-auto`
+    and the shell already had `min-w-0`. It came down to **one CSS rule**: a **grid/flex child defaults
+    to `min-width: auto`** and refuses to shrink below its contents, so the widest thing dragged the
+    page — and the tables, being `w-full`, merely inherited that width and *looked* cut off.
+    **The tables were the symptom; the containers were the cause.** Fixing ~6 containers fixed 43 pages.
+  - **What was actually broken** (measured by driving a browser, not guessed): the **catalogue tabs**
+    made `/products` **500px wide on a 390px phone**; the **POS tile grid** forced the till to 436px and
+    **pushed the Scan button off the screen** — the control the shop had just started relying on; the
+    Hold/Exchange/Clear/Charge row needs ~390px on one unbreakable line; fixed `w-28`/`w-24`/`w-20`
+    money controls; and **`md:` collides with the sidebar** — it appears at 768px and eats 256px, so a
+    `md:grid-cols-3` form asked for three columns inside ~512px (**media queries measure the viewport;
+    the content area is viewport minus sidebar**).
+  - **The two tab strips were one thing in two files** — consolidated into `TabStrip`, which also made
+    them scroll rather than wrap or shove.
+  - **POS is phone-first:** order is now **search → cart → browse**, because a scan must land where the
+    eye already is (the cart sat below a screenful of tiles, so you scanned and saw nothing happen).
+    **Charge is a full-width, thumb-sized button** on a phone. At `lg` the two-column till is unchanged —
+    verified by screenshot, not assumed.
+
+  **Verified by driving every screen, not by sampling.** **All 43 routes × 6 widths (320/360/390/414/
+  768/1280) = 258 checks, all green**, with `[id]` routes resolved to real rows. Dialogs a page sweep
+  never opens (payment, variant picker, add customer, add expense) checked at 320 **and** 390 — all fit.
+  320px is in the matrix on purpose: it is the narrowest phone in real use and where fixed-width money
+  columns break first. Typecheck clean, **lint unchanged at the pre-existing baseline**, production
+  build passes.
+  - ⚠️ **A 14-page sample said "5 pages broken"; sweeping all 43 found the worst ones it had missed** —
+    `/accounts` (488px at *every* phone width) and `/purchases/new` (419). Sampling would have shipped
+    them.
+  - **Known, deliberate:** a scrolling table shows **no visual hint that it scrolls** (the user chose
+    swipe-in-place knowing this; an edge fade is the obvious next polish). And breakpoints remain
+    **viewport-based**; the honest fix for the sidebar collision is **container queries** (`@container`,
+    native in Tailwind v4) — it would also make hiding the sidebar *widen* the grids, which it cannot do
+    today. Not taken: it touches every grid and the win is latent, not a live defect. See §30.5.
+
 ---
 
 ## 5. Current state
@@ -1404,6 +1445,10 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
   walk-in customer seeded for POS. Browser-verified; build passes.
 - ✅ **POS + Sales done** — POS terminal (scan → cart → discount → split payment → change → receipt),
   Hold/park, sales list & detail with profit, 80mm receipt. Browser-verified; build passes.
+- ✅ **Responsive done** (`BLUEPRINT.md` §30) — all **43 screens fit at 320–1280px** (258 checks) plus
+  the dialogs; tables scroll inside their own card rather than dragging the page sideways; the **POS is
+  phone-first** (search → cart → browse, full-width Charge) while the desktop till is unchanged. The
+  root cause throughout was grid/flex children defaulting to `min-width: auto`, not the tables.
 - ✅ **Camera barcode scanning done** (`BLUEPRINT.md` §13.7a) — a **Scan** button beside the POS search
   box reads the phone's camera: native `BarcodeDetector` on Android, a **lazily-loaded** ZXing fallback
   on iOS (proven by network to be absent on Android). It feeds the **same** search box a hardware

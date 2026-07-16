@@ -55,7 +55,7 @@ export default async function AdjustmentsPage({
         title="Stock adjustments"
         description="Damage, loss and miscounts — the only way stock moves without being bought, sold or returned."
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <AdjustmentTypesButton types={types} />
           <NewAdjustmentButton types={types} />
         </div>

@@ -101,7 +101,11 @@ export function A4Invoice({ doc }: { doc: InvoiceDoc }) {
         </div>
       </div>
 
-      <table className="w-full border-collapse text-sm">
+      {/* On a narrow screen the item table scrolls inside its own box rather
+          than dragging the whole invoice sideways. Print is untouched: there
+          the page is A4 and the columns have room. */}
+      <div className="overflow-x-auto print:overflow-visible">
+        <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-y bg-neutral-50 text-left">
             <th className="p-2 font-semibold">#</th>
@@ -188,7 +192,8 @@ export function A4Invoice({ doc }: { doc: InvoiceDoc }) {
             </tr>
           )}
         </tfoot>
-      </table>
+        </table>
+      </div>
 
       {/* Digits can be altered with a pen; a sentence cannot. That is what this is for. */}
       {shop.showInWords && (

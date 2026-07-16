@@ -55,7 +55,7 @@ export default async function PurchaseDetailPage({
         title={purchase.purchaseNo}
         description={`${purchase.supplier?.name ?? "—"} · ${shortDate(purchase.date)}`}
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
             <Link href={`/purchases/${purchase.id}/return`}>
               <Undo2 className="size-4" />

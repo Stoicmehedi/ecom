@@ -40,8 +40,12 @@ function RangeInputs({ range }: { range: DateRange }) {
   }
 
   return (
-    <div className="no-print flex flex-wrap items-end gap-2">
-      <div className="flex flex-wrap gap-1">
+    // `min-w-0` lets these blocks shrink: a flex item defaults to
+    // min-width:auto, and the custom-range row below is what set the floor —
+    // two fixed-width date inputs plus "to" and Apply on one unbreakable line
+    // came to ~392px, which pushed every report page sideways on a phone.
+    <div className="no-print flex w-full min-w-0 flex-wrap items-end gap-2">
+      <div className="flex min-w-0 flex-wrap gap-1">
         {PRESETS.map((p) => (
           <Button
             key={p.value}
@@ -57,7 +61,7 @@ function RangeInputs({ range }: { range: DateRange }) {
 
       <div
         className={cn(
-          "flex items-end gap-1 rounded-md border p-1",
+          "flex min-w-0 flex-wrap items-end gap-1 rounded-md border p-1",
           range.preset === "custom" && "border-primary",
         )}
       >
@@ -67,7 +71,7 @@ function RangeInputs({ range }: { range: DateRange }) {
           value={from}
           max={to}
           onChange={(e) => setFrom(e.target.value)}
-          className="h-8 w-[9.5rem] border-0 shadow-none focus-visible:ring-0"
+          className="h-8 w-[8.5rem] min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0 sm:w-[9.5rem] sm:flex-none"
         />
         <span className="pb-2 text-xs text-muted-foreground">to</span>
         <Input
@@ -76,7 +80,7 @@ function RangeInputs({ range }: { range: DateRange }) {
           value={to}
           min={from}
           onChange={(e) => setTo(e.target.value)}
-          className="h-8 w-[9.5rem] border-0 shadow-none focus-visible:ring-0"
+          className="h-8 w-[8.5rem] min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0 sm:w-[9.5rem] sm:flex-none"
         />
         <Button
           type="button"

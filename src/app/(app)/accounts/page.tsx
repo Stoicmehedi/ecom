@@ -61,7 +61,7 @@ export default async function AccountsPage() {
         title="Accounts"
         description="The shop's own money — what is in the till, and what has moved."
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <CashMoveButton direction="IN" accounts={options} />
           <CashMoveButton direction="OUT" accounts={options} />
           <TransferButton accounts={options} />

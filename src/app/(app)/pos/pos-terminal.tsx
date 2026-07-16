@@ -467,11 +467,22 @@ export function PosTerminal({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
-      {/* Left: find products */}
-      <div className="space-y-4">
+    <div className="grid gap-4 lg:grid-cols-[1fr_420px] lg:items-start">
+      {/*
+        Phone-first order: search → cart → browse (BLUEPRINT §30.2). A scan has
+        to land where the eye already is; the cart used to sit below a screenful
+        of tiles, so on a phone you scanned and saw nothing happen. Each block is
+        placed explicitly at `lg`, which restores the two-column till and makes
+        the mobile `order` irrelevant there.
+
+        `min-w-0` on every child is load-bearing, not decoration: a grid child
+        defaults to min-width:auto and refuses to shrink below its contents, so
+        without it the tile grid pushed this page to 436px on a 390px phone and
+        shoved the Scan button off the screen entirely.
+      */}
+      <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
         <div className="flex gap-2">
-          <div className="relative flex-1">
+          <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchRef}
@@ -490,7 +501,10 @@ export function PosTerminal({
           */}
           <BarcodeScanner onScan={(code) => setQuery(code)} />
         </div>
+      </div>
 
+      {/* Browse: under the cart on a phone, under the search box on a desktop. */}
+      <div className="order-3 min-w-0 space-y-4 lg:col-start-1 lg:row-start-2">
         {/* Browsing filters. A scan still finds anything, filter or no filter. */}
         <div className="flex flex-wrap items-center gap-2">
           <Select
@@ -643,8 +657,8 @@ export function PosTerminal({
         }}
       />
 
-      {/* Right: the cart */}
-      <div className="flex h-fit flex-col gap-3 rounded-lg border bg-card p-3 shadow-sm lg:sticky lg:top-4">
+      {/* The cart: second on a phone, the right-hand column on a desktop. */}
+      <div className="order-2 flex h-fit min-w-0 flex-col gap-3 rounded-lg border bg-card p-3 shadow-sm lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:row-span-2">
         <div className="flex items-center justify-between">
           <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Cart
@@ -683,9 +697,15 @@ export function PosTerminal({
           </Button>
         </div>
 
-        <div className="min-h-40 divide-y">
+        {/*
+          The empty cart reserves height so the desktop panel does not jump as
+          lines arrive — but on a phone the cart sits *above* the products, so
+          that same reserved space pushed the whole grid below the fold. Keep it
+          tall only where it earns its keep.
+        */}
+        <div className="min-h-16 divide-y lg:min-h-40">
           {lines.length === 0 && (
-            <p className="py-12 text-center text-sm text-muted-foreground">
+            <p className="py-4 text-center text-sm text-muted-foreground lg:py-12">
               Scan or tap a product to start.
             </p>
           )}
@@ -817,9 +837,11 @@ export function PosTerminal({
             label={autoDiscount > 0 ? "Subtotal (after auto discount)" : "Subtotal"}
             value={subtotal.toFixed(2)}
           />
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-muted-foreground">Manual discount</span>
-            <div className="flex items-center gap-1">
+            {/* Wraps rather than overflows: label, controls and figure need more
+                than a 320px phone can give the cart in one line. */}
+            <div className="flex flex-wrap items-center justify-end gap-1">
               <Select
                 value={discountType}
                 onValueChange={(v) => setDiscountType(v as "AMOUNT" | "PERCENT")}
@@ -840,7 +862,7 @@ export function PosTerminal({
                 value={discountValue}
                 onChange={(e) => setDiscountValue(Number(e.target.value))}
               />
-              <span className="w-20 text-right text-sm tabular-nums">
+              <span className="w-16 text-right text-sm tabular-nums sm:w-20">
                 −{discount.toFixed(2)}
               </span>
             </div>
@@ -1003,7 +1025,14 @@ export function PosTerminal({
           </div>
         )}
 
-        <div className="flex gap-2">
+        {/*
+          These four buttons all refuse to wrap their own labels, so on one
+          unbreakable line their combined minimum (~390px) was wider than a
+          phone — which is what stopped the whole till from fitting. They wrap
+          now, and Charge takes a full line of its own on a phone: it is the
+          primary action and deserves a thumb-sized target.
+        */}
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             className="flex-1"
@@ -1032,7 +1061,7 @@ export function PosTerminal({
             Clear
           </Button>
           <Button
-            className="flex-[2]"
+            className="h-11 w-full sm:h-9 sm:w-auto sm:flex-[2]"
             disabled={lines.length === 0}
             onClick={openPayment}
           >

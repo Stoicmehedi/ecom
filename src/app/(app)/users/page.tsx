@@ -56,7 +56,7 @@ export default async function UsersPage() {
         title="Users & roles"
         description="Who can sign in, and what each of them is allowed to do."
       >
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <AddRoleButton />
           <AddUserButton roles={roleOptions} />
         </div>

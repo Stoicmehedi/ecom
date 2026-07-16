@@ -347,8 +347,8 @@ export function ProductForm({
       {/* ---------------------------------------------------------- basics */}
       <section className="rounded-lg border p-5">
         <h2 className="mb-4 font-medium">Product</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="space-y-2 md:col-span-2">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="space-y-2 sm:col-span-2 xl:col-span-2">
             <Label htmlFor="name">Name</Label>
             <Input
               id="name"
@@ -368,7 +368,7 @@ export function ProductForm({
             />
           </div>
 
-          <div className="space-y-2 md:col-span-3">
+          <div className="space-y-2 sm:col-span-2 xl:col-span-3">
             <Label>Category</Label>
             <CategoryCascade
               categories={categories}
@@ -469,7 +469,7 @@ export function ProductForm({
             />
           </div>
 
-          <div className="space-y-2 md:col-span-3">
+          <div className="space-y-2 sm:col-span-2 xl:col-span-3">
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"

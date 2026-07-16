@@ -11,8 +11,11 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
+    // `min-w-0` on the title block: a flex child defaults to min-width:auto, so
+    // a long description would otherwise hold the header open wider than the
+    // phone it is on rather than wrapping inside it.
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <div className="space-y-0.5">
+      <div className="min-w-0 space-y-0.5">
         {eyebrow && (
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {eyebrow}

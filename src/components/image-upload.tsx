@@ -69,7 +69,10 @@ export function ImageUpload({
     <div className="space-y-2">
       <p className="text-sm font-medium">{label}</p>
 
-      <div className="flex items-center gap-3">
+      {/* The preview is a fixed 80px, so the text column beside it must be
+          allowed to shrink (min-w-0) or the hint's longest line holds this row
+          open and pushes the form wider than its column. */}
+      <div className="flex flex-wrap items-center gap-3">
         <div className="relative size-20 shrink-0 overflow-hidden rounded-md border bg-muted/40">
           {src ? (
             <Image
@@ -87,7 +90,7 @@ export function ImageUpload({
           )}
         </div>
 
-        <div className="space-y-2">
+        <div className="min-w-0 flex-1 space-y-2">
           <input
             ref={input}
             type="file"
@@ -95,7 +98,7 @@ export function ImageUpload({
             className="hidden"
             onChange={(e) => pick(e.target.files?.[0])}
           />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="outline"

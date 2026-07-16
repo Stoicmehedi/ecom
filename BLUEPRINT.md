@@ -2207,3 +2207,72 @@ login that is the difference between a suspicion and a fact.
 3. **Permission — a new `activity.view` key.** Granted to **Admin** (via `*`) and offered in the role
    editor so a shop can grant it to a trusted **manager** role. **Never** held by the Cashier. Gated on
    the page *and* the data query, per §25.
+
+---
+
+## 30. Responsive — the app on any screen *(built 2026-07-16; our own design, no reference app)*
+
+This is **UI**, so hard rule 1 applies: it is ours, and the reference app was not opened for it.
+The shop now reaches MPoS over a Cloudflare tunnel and scans with a phone at the counter (§13.7a),
+so "works on a phone" stopped being a nicety.
+
+### 30.1 The rule: the page never scrolls sideways; a *table* may
+
+Settled with the user 2026-07-16. A data table on a phone **scrolls horizontally inside its own
+card** — every column stays reachable, there is one markup, and a narrow view can never disagree
+with the wide one about what a row says. The rejected alternative (a stacked card per row) would
+have meant a second rendering of all 27 tables, i.e. two things to keep true; and hiding columns
+would silently drop figures from a screen someone is checking money on.
+
+**Its corollary is the actual rule: nothing else may push the page sideways.** A page that scrolls
+horizontally hides the right-hand edge of every screen at once.
+
+### 30.2 What was actually wrong (measured, not guessed)
+
+Almost nothing was a table problem. `Table` already wrapped itself in `overflow-x-auto`, and the app
+shell already carried `min-w-0`. Everything came down to **one CSS rule**: a **grid or flex child
+defaults to `min-width: auto`**, so it refuses to shrink below its own contents and pushes the page
+out from under itself. Whatever was widest then dragged the page — and the tables, being `w-full`,
+merely inherited that width and *looked* cut off. **The tables were the symptom; the containers
+around them were the cause.**
+
+Concretely, and each one proven by driving a browser at 320–1280px:
+- **The catalogue tabs** (six of them) made `/products` **500px wide on a 390px phone**. Tabs now
+  **scroll** in one strip (`TabStrip`, shared with the reports nav — they were two copies of the same
+  thing, and are now one).
+- **The POS tile grid** forced the till to **436px**, which pushed the **Scan button off the screen**
+  entirely — the one control the shop had just started relying on.
+- **A row of buttons that will not wrap**: Hold + Exchange + Clear + "Charge 0.00" need ~390px on one
+  unbreakable line. They wrap now, and **Charge takes a full line on a phone** — it is the primary
+  action and deserves a thumb.
+- **Fixed-width controls in a money row**: a `w-28` select + `w-24` input + `w-20` figure + a label
+  is ~372px before padding (the purchase discount row, the POS manual-discount row).
+- **`md:` collides with the sidebar.** The sidebar appears at `md` (768px) and takes 256px, so a
+  `md:grid-cols-3` form asks for three columns inside ~512px of content. **Media queries measure the
+  viewport; the content area is the viewport minus the sidebar.** The product form's 3-up moved to
+  `xl:`.
+
+### 30.3 The POS is phone-first, the rest is merely correct
+
+Agreed with the user. On a phone the POS order is **search → cart → browse**: a scan must land where
+the eye already is, and the cart used to sit below a screenful of tiles, so you scanned and saw
+nothing happen. At `lg` each block is placed explicitly and the two-column till returns unchanged.
+The empty cart's reserved height is `lg:`-only, since on a phone it sits *above* the products and
+that reserved space pushed the whole grid below the fold.
+
+### 30.4 What "done" means here
+
+**Every one of the 43 screens fits at 320 / 360 / 390 / 414 / 768 / 1280 px — 258 checks, all
+green** — plus the dialogs a page sweep never opens (payment, variant picker, add customer, add
+expense) at 320 and 390. 320px is included on purpose: it is the narrowest phone still in real use,
+and it is where fixed-width money columns break first.
+
+### 30.5 Known, deliberate
+
+- **A scrolling table has no visual hint that it scrolls.** The user chose swipe-in-place knowing
+  this; a fade or shadow at the edge is the obvious next polish.
+- **Breakpoints are still viewport-based, not container-based.** The honest fix for §30.2's last
+  bullet is **container queries** (`@container` on `<main>`), which Tailwind v4 supports natively:
+  the content area would then size its own grids, and hiding the sidebar would *widen* them —
+  something the collapsible sidebar cannot do today. Not taken now: it touches every grid in the app
+  and the win is latent, not a live defect.
