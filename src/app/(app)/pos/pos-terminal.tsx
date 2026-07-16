@@ -23,6 +23,7 @@ import { fileUrl } from "@/lib/files";
 import { selectId } from "@/lib/select";
 import { browsePos, searchPos, type PosHit, type PosProduct } from "./search";
 import { VariantPicker, needsPicker } from "./variant-picker";
+import { BarcodeScanner } from "./barcode-scanner";
 import { ExchangeDialog, type ExchangePick } from "./exchange-panel";
 import { quickAddCustomer } from "../customers/actions";
 import { Button } from "@/components/ui/button";
@@ -469,17 +470,25 @@ export function PosTerminal({
     <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
       {/* Left: find products */}
       <div className="space-y-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchRef}
-            className="h-12 pl-9 text-base"
-            placeholder="Scan a barcode, or search by name / SKU…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            autoFocus
-            autoComplete="off"
-          />
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={searchRef}
+              className="h-12 pl-9 text-base"
+              placeholder="Scan a barcode, or search by name / SKU…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoFocus
+              autoComplete="off"
+            />
+          </div>
+          {/*
+            The camera is just another way of typing into the box beside it: it
+            sets the same `query`, so a decoded barcode takes the identical
+            exact-match path a hardware scanner's keystrokes take (§13.7a.1).
+          */}
+          <BarcodeScanner onScan={(code) => setQuery(code)} />
         </div>
 
         {/* Browsing filters. A scan still finds anything, filter or no filter. */}

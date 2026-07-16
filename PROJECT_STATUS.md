@@ -1328,6 +1328,55 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
   - **Not done, on purpose:** global npm 11 (needs `sudo npm i -g`, outside our scoped sudoers; npm
     10.9.8 is Node 22's own and is fine — not a security item).
 
+- **Camera barcode scanning — BUILT (`BLUEPRINT.md` §13.7a).** The user is putting MPoS on the
+  internet behind a **Cloudflare tunnel**, which supplies the HTTPS that §13.7 had been waiting for
+  since 2026-07-11. (Worth knowing: `http://localhost` was *already* a secure context — the blocker
+  was never the dev machine, it was reaching the app **from a phone over the LAN**.)
+  - **The camera is only another way of typing into the search box.** A decoded barcode is pushed
+    through the **identical** path a hardware scanner's keystrokes take — `setQuery(code)` → the
+    existing debounce → `searchPos()` → an `exact` hit → straight into the cart. **No server surface,
+    no pricing path, no new permission**: the server still prices the bill from `variantId + qty`
+    alone (§12.7a), and scanning is gated by `pos.access` like the till around it. A camera that
+    could name its own price would be a hole in the till; this one names only a barcode.
+  - **Native first, fallback only where needed** (decided with the user). Android Chrome uses the
+    browser's own `BarcodeDetector` — zero bytes, no dependency. iOS has none (every iOS browser is
+    WebKit), so a **ZXing decoder lazy-loads in its own chunk**. Both decoders read the
+    `HTMLVideoElement` directly, so there is **one frame loop and no hand-rolled canvas copy**.
+  - ⚠️ **`engine-strict` (added this morning) earned its keep within the hour:** `@zxing/library@0.23`
+    declares **Node ≥24** and npm **refused the install outright** instead of letting it in to fail
+    later. `0.21.3` is the last line that supports Node 22, and it still ships its own browser reader —
+    so it is **one** dependency, not two, and `^0.21.3` cannot drift into the Node-24 versions.
+  - **The only place a dependency is justified:** *drawing* a barcode is a lookup table (ours, §12.9);
+    *decoding* one from a moving camera frame is not.
+
+  **🐛 A money bug, found by test and fixed.** The first cut deduplicated with a per-code **cooldown**.
+  Driving it with a camera that never blinks exposed it at once: **one shirt held under the lens for
+  five seconds went into the cart as five** — the cooldown re-fired every 1.2s while the item just sat
+  there. It now counts **presentations**: the barcode must *leave the view* before the same code
+  counts again (a count of barcode-free frames, **not** a timeout — a timeout is only as good as the
+  slowest decode). Re-tested: a 5-second hold → **qty 1**; the same shirt blinked in and out 3× →
+  **qty 3**. Both halves matter, and only a moving camera could tell them apart.
+  - Also fixed while building: the frame loop captured `accept` from the render that opened the dialog,
+    so a changed `onScan` prop would have reached a **stale handler** — lint caught it, and it was
+    fixed with a ref rather than silenced.
+
+  **Verified by driving a real camera, not by trusting the code.** Chromium was fed a **fake camera
+  playing a Y4M generated from the app's own `ean13Bits()`** — so what the lens "sees" is exactly what
+  MPoS prints — showing a **real seeded barcode** (`2000000000015`, Classic Tee S/Red), against a
+  **production build** so the code-splitting was authoritative:
+  - **iOS path** (no `BarcodeDetector`): the fallback loaded on demand, **decoded the barcode**, and
+    "Classic Tee" landed in the cart — screen reading *Added 2000000000015 · Compatibility reader*.
+  - **Android path** (native detector stubbed in): *Fast reader*, and the **404K ZXing chunk was never
+    requested** — not on page load, not after opening the scanner. Lazy-loading proven by network, not
+    by assumption. *(A first run reported this as failing; the test was wrong — it matched the POS page
+    chunk, which merely mentions `BrowserMultiFormatReader` because our own source names it.)*
+  - **No camera → no button** (§25's "no door onto nothing"), checked with a browser that genuinely
+    has none.
+  - **The DB was untouched by all of it** — 4 sales, Cash **1,000.80**, unchanged: a POS cart is
+    client-side until checkout.
+
+  Typecheck, lint (**zero new findings**) and production build all clean.
+
 ---
 
 ## 5. Current state
@@ -1355,6 +1404,12 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
   walk-in customer seeded for POS. Browser-verified; build passes.
 - ✅ **POS + Sales done** — POS terminal (scan → cart → discount → split payment → change → receipt),
   Hold/park, sales list & detail with profit, 80mm receipt. Browser-verified; build passes.
+- ✅ **Camera barcode scanning done** (`BLUEPRINT.md` §13.7a) — a **Scan** button beside the POS search
+  box reads the phone's camera: native `BarcodeDetector` on Android, a **lazily-loaded** ZXing fallback
+  on iOS (proven by network to be absent on Android). It feeds the **same** search box a hardware
+  scanner types into, so it adds no server or pricing surface. One presentation = one cart line.
+  Needs HTTPS — i.e. the Cloudflare tunnel address, not a LAN IP. Verified by driving a **fake camera**
+  playing a barcode rendered from the app's own encoder.
 - ✅ **Sale Returns done** — return off any sale, restocked at `costAtSale`, refund or credit;
   walk-ins refunded in full. Browser-verified.
 - ✅ **Exchange done** — swap goods at the POS against the invoice they went out on. A return and a
@@ -1624,6 +1679,25 @@ real item from that list was the Node bump, now done.
    mutating write — a second login is now auditable, not merely gated. Built broader than the reference
    (master data + admin events too) and kept in full, not on their 60-day window. See the progress log.
 
+**🔴 DO THIS BEFORE THE CLOUDFLARE TUNNEL CARRIES REAL TRADE — auth hardening.**
+Raised 2026-07-16 when the user said they are exposing MPoS to the internet via a Cloudflare tunnel;
+they chose *"camera first, harden after"*, so it is **deliberately deferred, not dismissed**. It is now
+the single biggest risk in the project. Today, on a public URL:
+- The shop's logins are still the **seeded dev passwords** — `admin`/`admin123`, `cashier`/`cashier123`
+  (§5, and `prisma/seed.ts` lays them down). Anyone who finds the URL owns the till, the cash ledger,
+  every customer's phone number, and `sales.free_issue`.
+- **There is no rate limiting anywhere** (grep: no throttle/lockout/attempt logic) — the login form
+  accepts unlimited guesses at machine speed. The §25 gates answer *"may this user?"*; they do not slow
+  an attacker down at the door.
+- No `middleware.ts` (below) — the guards are on the page and the action, which held up under forged
+  payloads, but there is no edge-level defence.
+The work: **force a real password on first login** (or at minimum change the seeds and stop seeding
+fixed ones outside dev), **rate-limit `authorize()`** per username+IP with a lockout, and consider
+**Cloudflare Access** in front of the tunnel — the cheapest mitigation, since it means unauthenticated
+traffic never reaches Next.js at all. `AUTH_SECRET` should also be rotated, as it has only ever been a
+dev value. The activity log (§29) already records *who* did what, which is what makes a shared,
+internet-facing till auditable — but only once the logins are real.
+
 3. **Bad-debt write-off** — an afternoon; closes the "a due can never leave the books" hole in §22.
    *(Now the top remaining START-HERE item, alongside nested sidebar navigation.)*
 
@@ -1644,8 +1718,10 @@ names**; a **Product Groups** master.
 (ask: do they sell to resellers?), delivery charge, cheque details, back-dated sale date.
 **Dropped** — the shop's own data killed it: line price/discount override with a manager password.
 **Skip** — wholesale/grocery ideas, not clothing: instalments, carton selling.
-**Deferred, needs HTTPS:** in-POS camera barcode scanning (§13.7). A phone paired as a Bluetooth
-keyboard already types into the search box today and needs no code.
+~~**Deferred, needs HTTPS:** in-POS camera barcode scanning (§13.7)~~ — ✅ **DONE 2026-07-16**
+(`BLUEPRINT.md` §13.7a), unblocked by the Cloudflare tunnel's HTTPS. A phone paired as a Bluetooth
+keyboard still types into the search box and needs no code — the two coexist, because the camera feeds
+that same box.
 
 *(Loyalty points, Settings, and Free issue & sale remark — all done 2026-07-13. Exchange, Products
 round 2, Reports, Sale returns, POS, Customers, Purchases — all done 2026-07-11. Reports were

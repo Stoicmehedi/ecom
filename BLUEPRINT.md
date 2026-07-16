@@ -863,15 +863,53 @@ loaded, tapping through to a product without a filter gets slow.
   discount box, which stacks with a per-line discount — exactly the accident §12.7a exists to prevent.
 - **The size × colour picker** (§12.10) beats a flat variant list.
 
-### 13.7 Barcode scanning without a scanner *(decided 2026-07-11)*
+### 13.7 Barcode scanning without a scanner *(decided 2026-07-11 · camera built 2026-07-16)*
 
 The search box already accepts a hardware scanner, because a scanner is just a keyboard that types
 fast. Until one is bought, a phone paired as a **Bluetooth keyboard** (a scanner-keyboard app) types
 into the same box and needs no code from us.
 
-**Deferred: an in-POS camera scanner.** Reading a barcode from the phone's camera needs
-`getUserMedia`, which browsers only grant on **HTTPS** — and we have no HTTPS yet. When we deploy,
-build it: `BarcodeDetector` on Android Chrome, a ZXing fallback for iOS Safari. Not before.
+**The in-POS camera scanner** was deferred because `getUserMedia` is only granted in a **secure
+context**. That is now unblocked: the shop reaches MPoS over a **Cloudflare tunnel**, so the phone
+loads it over HTTPS. (Note `http://localhost` is *already* a secure context — the blocker was never
+the dev machine, it was reaching the app **from a phone over the LAN**.)
+
+**13.7a — Requirements**
+
+1. **The camera is only another way of typing into the search box.** A decoded barcode is pushed
+   through the **exact same path** a hardware scanner takes — `searchPos()` → an `exact` hit →
+   straight into the cart, no click (§9.2). It adds **no server surface and no pricing path**: the
+   server still prices the bill from `variantId + qty` alone (§12.7a). A camera that could name its
+   own price would be a hole in the till; this one cannot name anything but a barcode.
+2. **Decode on-device, never over the network.** The video frames never leave the phone. A POS that
+   uploaded pictures of the counter to decode them would be both slow and a privacy problem.
+3. **Native first, fallback only where needed** *(decided 2026-07-16)*. Use the browser's built-in
+   `BarcodeDetector` where it exists (Android Chrome — hardware-accelerated, zero bytes, no
+   dependency). Only where it is missing (**iOS: every browser is WebKit, and WebKit has no
+   `BarcodeDetector`**) do we **lazily** load a ZXing decoder, in its own chunk, so an Android till
+   never downloads it. This is the one place a dependency is justified: *drawing* a barcode is a
+   lookup table (§12.9, ours in `barcode.ts`), but *decoding* one from a moving camera frame is not.
+4. **One presentation is one cart line** *(corrected 2026-07-16, by test)*. The camera reports the
+   same code ~8×/second for as long as it is held, so a scan counts once per **presentation**: the
+   barcode must leave the view before the same one counts again; a *different* code is taken at once,
+   so a basket goes as fast as the hands can move. Deliberately a count of **barcode-free frames, not
+   a timeout** — a cooldown re-fires while the item is still sitting under the lens (the first cut
+   did exactly that: **one shirt held for five seconds billed as five**), and any time-based guard is
+   only ever as good as the slowest decode. Presenting the same shirt twice still bills twice: that
+   is a real second item, and the difference between the two cases is whether the code went away.
+5. **The camera stays open.** A cashier scans a basket, not an item. Each hit gives feedback and the
+   viewfinder keeps running; it stops only when dismissed or the page goes away — and it **must**
+   release the camera then (a POS that holds the lens open drains the phone and blocks other apps).
+6. **Feedback without assets** — a short WebAudio beep and a `navigator.vibrate` tick, both generated,
+   plus a visible flash. No sound files to host, same ethos as the SVG barcode and the SVG chart.
+7. **It reads what we print, and what arrives on the goods.** EAN-13 is ours (§12.9); also accept
+   EAN-8, UPC-A/E and Code 128/39, because a supplier's own barcode is worth reading too.
+8. **Every refusal explains itself.** Insecure context (say *why*: it needs the HTTPS address, not the
+   LAN IP), permission denied, no camera, decoder unavailable — each states the cause and the fix. A
+   dead viewfinder with no message is the worst outcome at a counter.
+9. **No door onto nothing** (§25) — the button does not render when the device has no camera at all.
+10. **Not a new permission.** Scanning *is* selling; it is gated by `pos.access` like the till around
+    it. A separate key would only be a key that can disagree with the door it sits beside.
 
 ---
 
