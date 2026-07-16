@@ -4,7 +4,7 @@
 > account — can understand the full state without relying on private notes. **Update this file after
 > every task.**
 
-**Last updated:** 2026-07-15
+**Last updated:** 2026-07-16
 **Repo:** https://github.com/Stoicmehedi/ecom (private)
 **App name:** MPoS
 
@@ -44,21 +44,43 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
 **Platform:** WSL2 (Ubuntu 24.04) on Windows.
 
 **Toolchain:**
-- Node.js `v20.20.2`, npm `10.8.2` (upgraded from 18 via the NodeSource apt repo — Next.js 16 requires Node ≥20.9).
+- Node.js `v22.23.1` **LTS**, npm `10.9.8` (bundled with Node 22). Installed via the NodeSource apt repo.
 - PostgreSQL 16 (installed via apt, runs as a service).
-- **Dependency currency (checked 2026-07-15):** ran `npm update` — refreshed 30 packages *within* their
-  existing semver ranges (lockfile only; every pin in `package.json` intact). Typecheck + build + lint +
-  a dashboard smoke test all clean. Deliberately **not** bumped, and why:
-  - `next` / `eslint-config-next` are **pinned exact** at `16.2.10` (the modified build AGENTS.md warns
-    about) — do not touch.
-  - `@types/node` stays on `^20` to **match the Node 20 runtime**, not the `26.x` "latest".
-  - `next-auth` stays on `^5.0.0-beta.31` — npm's "latest" is v4, which would be a **downgrade**.
-  - TypeScript `7.x` and ESLint `10.x` are **breaking majors** — left on `^5` / `^9`.
-  - **npm itself:** latest is `12.x`, but that needs **Node ≥22**; the right upgrade for Node 20 is
-    **npm 11** (`npm i -g npm@11`, needs sudo — run manually). Real lever is a **Node 20→22 LTS** bump,
-    which is a machine-level decision.
-  - **8 moderate audit findings** remain (`exceljs` → old `uuid`); no in-range fix exists (latest 4.x
-    still bundles it), and `--force` would break Excel export — left as-is, flagged.
+
+**🔒 The required Node version is declared in the repo — do not rely on memory or on this file.**
+Three files enforce it, added 2026-07-16 after a fresh clone on another machine failed with a
+version-mismatch error that never mentioned Node:
+- **`package.json` → `engines`**: `node: ">=22 <23"`, `npm: ">=10"`.
+- **`.nvmrc`**: `22` — so `nvm use` selects the right runtime automatically.
+- **`.npmrc`**: `engine-strict=true` — **this is the load-bearing one.** On its own, `engines` is only a
+  warning npm prints and ignores; with `engine-strict`, a wrong Node version is a **hard `EBADENGINE`
+  error at install time** naming both required and actual versions, instead of a mystery crash later at
+  build/run time. Proven by test, not assumed (see the 2026-07-16 log).
+- **Set a new machine up with `npm ci`, not `npm install`** — `ci` installs the committed lockfile
+  exactly; `install` may re-resolve and rewrite it.
+- The `node: "<23"` upper bound is deliberate: moving to a new Node major should be a **decision**, not
+  silent drift. Bump `engines`, `.nvmrc` and `@types/node` together when you take it.
+
+**Dependency currency (re-checked 2026-07-16, on the Node 22 upgrade):** `node_modules`, the lockfile
+and `.next` were deleted and rebuilt from scratch. **Only 2 of 866 packages moved** — `@types/node`
+(`^20`→`^22`, intentional, to match the runtime) and `caniuse-lite` (browser data). A from-scratch
+resolve reproducing the identical tree is good evidence the build is reproducible. Deliberately **not**
+bumped, and why:
+- `next` / `eslint-config-next` are **pinned exact** at `16.2.10` (the modified build AGENTS.md warns
+  about) — do not touch.
+- `next-auth` stays on `^5.0.0-beta.31` — npm's "latest" is v4, which would be a **downgrade**.
+- TypeScript `7.x` and ESLint `10.x` are **breaking majors** — left on `^5` / `^9`.
+- **npm 11/12 not taken.** npm `10.9.8` is what Node 22 LTS ships with and is fine; a global bump needs
+  `sudo npm i -g npm@11` (outside our scoped sudoers — run by hand if wanted). Not security-relevant.
+
+**⚠️ The 8 moderate `npm audit` findings are known, assessed, and deliberately left. NEVER run
+`npm audit fix --force` on this repo — it installs `next@9.3.3` and `prisma@6`, destroying the app to
+silence a warning about build tooling.** None is reachable at runtime, and none has an in-range fix:
+| Finding | Reached via | Why it can't bite |
+|---|---|---|
+| `postcss` XSS (`<8.5.10`) | `next` | Build-time CSS tooling; needs hostile CSS fed into our own build. |
+| `uuid` bounds check (`<11.1.1`) | `exceljs` | Only fires when a `buf` arg is passed; our Excel export passes none. |
+| `@hono/node-server` bypass | `@prisma/dev` | Prisma's local dev server; never ships to production. |
 
 **Database (local dev):**
 - Connection string: `postgresql://ecom:ecom@localhost:5432/ecom`
@@ -1265,6 +1287,47 @@ Full product spec (data model, modules, roadmap): see [`BLUEPRINT.md`](./BLUEPRI
   - Typecheck + build clean. **Merged to `main` and pushed** (merge `de6ff62`); `pre-ui-refresh`
     (`2a3722f`) remains the deep rollback tag.
 
+### 2026-07-16
+
+- **Node 20 → 22 LTS — DONE, and the version-mismatch class of bug is closed for good.** The user's
+  concern was **security**, plus a **version-mismatch error hit when installing on another machine**.
+  Both are now answered, and they turned out to be different problems with different fixes.
+  - **Security: Node was the only real item.** Node 20 reached **end-of-life in April 2026** — it will
+    never get another security patch, so any future CVE in Node itself stays open forever. Node
+    **22.23.1** is the current LTS (to ~April 2027). Repointed the NodeSource apt repo (which was still
+    pinned to `node_20.x`, which is *why* nothing ever offered 22) and installed machine-wide.
+    npm came with it at `10.9.8`.
+  - ⚠️ **The audit findings are noise, and the "fix" is a trap** — re-checked and written into §3 with
+    the reasoning: all 8 are moderate, transitive, and unreachable at runtime (`postcss` via `next` is
+    build-time; `uuid` via `exceljs` needs a `buf` arg we never pass; `@hono/node-server` via
+    `@prisma/dev` never ships). `npm audit fix --force` would install **`next@9.3.3`** and **`prisma@6`**.
+    Left alone, deliberately.
+  - 🔑 **The real find: nothing in the repo said which Node version it needed.** No `engines`, no
+    `.nvmrc`, no `.node-version` — the requirement lived only in *this file*. So the other machine
+    installed cleanly against whatever Node it had and only fell over later, with an error that never
+    mentioned Node. That is the whole mismatch story. Fixed with `engines` + `.nvmrc` +
+    **`.npmrc engine-strict=true`** (§3) — the last being the one that converts a silent wrong-version
+    install into a named error.
+  - **The guard was proven, not assumed.** A scratch package declaring `node: ">=23 <24"` was installed
+    with our `.npmrc`: npm **refused** with `EBADENGINE`, exit **1**, printing
+    `Required: {"node":">=23 <24"} / Actual: {"node":"v22.23.1"}`. That is exactly the failure the other
+    machine should have got instead of a mystery crash.
+
+  **Verified end to end on the new runtime.** Clean rebuild (`rm -rf node_modules package-lock.json
+  .next` → `npm install`) with **no `--force`, no `--legacy-peer-deps`**, no peer conflicts. `prisma
+  generate` ✅, `prisma validate` ✅, `tsc --noEmit` **clean under `@types/node@22`**, `npm run build`
+  compiles with every route emitting, dev server **ready in 206ms**, `/login` 200 and `/dashboard`
+  **307** (the auth guard still holds). `check-reports.ts` **reconciles** — Cash **1,000.80**, unchanged.
+  **Browser-verified:** logged in as admin → dashboard renders live data matching §5 exactly (Cash
+  1,000.80, dues 12.00, INV-00001…4), with the UI-modern features intact (hide-sidebar, header POS,
+  theme toggle, nested nav). Lint output is **byte-identical to `main`** — no source file was touched,
+  and `eslint` did not move.
+  - **Reproducibility, measured:** the from-scratch lockfile re-resolve moved **2 of 866** packages
+    (`@types/node` by intent, `caniuse-lite` browser data). The previous `npm update` had already taken
+    everything to the top of its ranges.
+  - **Not done, on purpose:** global npm 11 (needs `sudo npm i -g`, outside our scoped sudoers; npm
+    10.9.8 is Node 22's own and is fine — not a security item).
+
 ---
 
 ## 5. Current state
@@ -1515,17 +1578,14 @@ could delete sales and bulk-import the catalogue. Fixed wholesale, plus a role e
    (local disk, outside `public/`), logo on every document, photos on the POS tile. It also uncovered
    §12.11: **no product could be edited at all**. See the progress log.
 
-**⏭️ NEXT SESSION (agreed 2026-07-15, deferred to "tomorrow"): Node 20 → 22 LTS upgrade.**
-Node 20 reached **end-of-life** (maintenance ended April 2026); **Node 22 is the current LTS** (to
-~April 2027). User approved the upgrade but chose to do it next session. Plan, cleanly, **no `--force`
-/ no `--legacy-peer-deps`**: install Node 22 via NodeSource apt (machine-wide) → `rm -rf node_modules
-package-lock.json .next` → `npm install` → `npx prisma generate` → `npx prisma validate` → `npm run
-dev` + `npm run build` to verify. Then bump global npm to **11** (`npm i -g npm@11`; npm 12 needs Node
-≥22 so it becomes available after) and, if wanted, move `@types/node` to `^22`.
+~~**Node 20 → 22 LTS upgrade**~~ — ✅ **DONE 2026-07-16**, together with the fix for the
+version-mismatch error hit on another machine (the repo never declared its Node requirement — now
+`engines` + `.nvmrc` + `.npmrc engine-strict=true`, see §3 and the progress log). `@types/node` moved to
+`^22` with it. Global npm 11 deliberately skipped (needs manual sudo; not security-relevant).
 ⚠️ **A checklist the user pasted assumed a Next 9→16 migration — that is NOT this project.** Verified
 2026-07-15: already Next 16.2.10 (App Router only, no `pages/`, no legacy data-fetching), Prisma trio
 all 7.8.0, `eslint-config-next` matched, adapter code correct, schema valid, build clean. The **only**
-real item from that list is the Node bump above; everything else was already done.
+real item from that list was the Node bump, now done.
 
 **START HERE — agreed with the user 2026-07-14, to build next session.**
 
@@ -1599,11 +1659,23 @@ reviewed and hardened by a multi-agent review.)*
 ## 7. How to run
 
 ```bash
+# 0. Node 22 LTS is REQUIRED (see §3). Check first — this is the step whose absence
+#    caused the version-mismatch error on a second machine:
+node -v                # must be v22.x
+nvm use                # if you use nvm — reads .nvmrc
+#    If it's wrong, `npm ci` below will now REFUSE with a named EBADENGINE error
+#    (.npmrc sets engine-strict=true) rather than failing mysteriously later.
+#    Install via NodeSource apt:
+#      echo 'deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main' \
+#        | sudo tee /etc/apt/sources.list.d/nodesource.list
+#      sudo apt-get update && sudo apt-get install -y nodejs
+
 # 1. Ensure Postgres is running (WSL has no auto-start unless systemd is on)
 sudo service postgresql start
 
-# 2. Install deps
-npm install
+# 2. Install deps — `ci` installs the committed lockfile EXACTLY.
+#    Use `npm install` only when deliberately changing a dependency.
+npm ci
 
 # 3. Apply migrations + generate the Prisma client
 npx prisma migrate dev
