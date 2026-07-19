@@ -1531,6 +1531,23 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
     for either Simple or Variable products; `min-w-[46rem]` keeps phone scroll. Browser-verified both
     layouts; typecheck, lint (no new findings), and build pass.
 
+- **Logout worked only on localhost — fixed.** The user menu signed out with the client
+  `next-auth/react` `signOut({ callbackUrl: "/login" })`, whose **default `redirect: true`** makes
+  next-auth/react navigate to a URL the **server** builds from the request host — that server-computed
+  redirect is what fell over once the app was reached on anything but localhost. Login never hit this
+  because it already used `signIn(..., { redirect: false })` and then a client `router.push`. Logout now
+  mirrors login: `await signOut({ redirect: false })` then `router.push("/login")` + `router.refresh()`
+  (`src/components/app/user-menu.tsx`). Host-agnostic, no server-derived redirect.
+  - **Browser-verified on localhost:** Log out → lands on `/login`, and hitting `/dashboard` afterwards
+    redirects back to `/login` (session cookie genuinely cleared, not just navigated away). Typecheck +
+    build pass. (Couldn't exercise the non-localhost path end-to-end here: dev-mode HMR websockets don't
+    survive the WSL IP, so the page won't hydrate over it in this harness — a dev-only artifact, gone in
+    a production build. The fix is the same code path as the working login, which the user confirmed
+    works off-localhost.)
+  - ⚠️ **Noticed while testing (separate, not fixed):** if the login page's JS fails to hydrate, its form
+    falls back to a **native GET submit that puts the password in the URL** (`/login?username=…&password=…`).
+    Harmless when JS runs; worth hardening later (server action / `method="post"`).
+
 ---
 
 ## 5. Current state

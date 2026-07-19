@@ -1,6 +1,7 @@
 "use client";
 
 import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { LogOut, User as UserIcon } from "lucide-react";
 import {
   DropdownMenu,
@@ -31,6 +32,22 @@ export function UserMenu({
   name: string;
   role?: string | null;
 }) {
+  const router = useRouter();
+
+  // Mirror the login flow: sign out WITHOUT the built-in redirect, then navigate
+  // client-side. The default `redirect: true` makes next-auth/react follow a URL
+  // the server builds from the request host, which fails once the app is reached
+  // on anything but localhost. Signing in already avoids this with redirect:false;
+  // signing out now does too.
+  async function logout() {
+    try {
+      await signOut({ redirect: false });
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -62,7 +79,7 @@ export function UserMenu({
           variant="destructive"
           onSelect={(e) => {
             e.preventDefault();
-            void signOut({ callbackUrl: "/login" });
+            void logout();
           }}
         >
           <LogOut />
