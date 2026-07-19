@@ -1513,9 +1513,13 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
     lint (no new findings), and `npm run build` all pass.
   - **Follow-up (per user):** the **Discount** column is a two-part control (type selector + value), so
     its header is now **left-aligned** — the title reads over the `%`/`−` selector where the control
-    starts, not over the value box. The selector+value group is left-aligned to match; browser-measured
-    the "Discount" header and the selector both at left=513. The other numeric headers stay right-aligned
-    over their single boxes.
+    starts, not over the value box.
+  - **Follow-up 2 (per user):** made the whole Price & stock grid **uniformly left-aligned** — Cost,
+    Selling, Sells at, Wholesale, at qty and Opening were still right-aligned (inconsistent next to the
+    now-left Discount/SKU/Barcode). Header, box and the number inside each box now all start at the
+    column's left edge (browser-measured header-left = box-left, delta 0 for all nine columns), and the
+    per-cell right padding went `pr-2`→`pr-4` for clear space between boxes. Still no horizontal scroll
+    with the sidebar open (table 886px in a 958px column).
 
 ---
 

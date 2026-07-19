@@ -697,21 +697,21 @@ export function ProductForm({
           <table className="min-w-[44rem] text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
-                {isVariable && <th className="pb-2 pr-2 font-medium">Variant</th>}
-                <th className="pb-2 pr-2 font-medium">SKU</th>
-                <th className="pb-2 pr-2 font-medium">Barcode</th>
-                <th className="pb-2 pr-2 text-right font-medium">Cost</th>
-                <th className="pb-2 pr-2 text-right font-medium">
+                {isVariable && <th className="pb-2 pr-4 font-medium">Variant</th>}
+                <th className="pb-2 pr-4 font-medium">SKU</th>
+                <th className="pb-2 pr-4 font-medium">Barcode</th>
+                <th className="pb-2 pr-4 font-medium">Cost</th>
+                <th className="pb-2 pr-4 font-medium">
                   Selling <span className="text-destructive">*</span>
                 </th>
                 {/* Left-aligned, unlike the other numeric headers: Discount is a
                     two-part control (type + value), so its title reads over the
                     "%" selector where the control begins, not the value box. */}
-                <th className="pb-2 pr-2 text-left font-medium">Discount</th>
-                <th className="pb-2 pr-2 text-right font-medium">Sells at</th>
-                <th className="pb-2 pr-2 text-right font-medium">Wholesale</th>
-                <th className="pb-2 pr-2 text-right font-medium">at qty</th>
-                <th className="pb-2 pr-2 text-right font-medium">Opening</th>
+                <th className="pb-2 pr-4 text-left font-medium">Discount</th>
+                <th className="pb-2 pr-4 font-medium">Sells at</th>
+                <th className="pb-2 pr-4 font-medium">Wholesale</th>
+                <th className="pb-2 pr-4 font-medium">at qty</th>
+                <th className="pb-2 pr-4 font-medium">Opening</th>
                 {isVariable && <th className="pb-2" />}
               </tr>
             </thead>
@@ -727,7 +727,7 @@ export function ProductForm({
                 return (
                   <tr key={r.key} className="border-b last:border-0">
                     {isVariable && (
-                      <td className="py-2 pr-2">
+                      <td className="py-2 pr-4">
                         <Input
                           value={r.label}
                           onChange={(e) => updateRow(r.key, { label: e.target.value })}
@@ -736,7 +736,7 @@ export function ProductForm({
                         />
                       </td>
                     )}
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-4">
                       <Input
                         value={r.sku}
                         onChange={(e) => updateRow(r.key, { sku: e.target.value })}
@@ -744,7 +744,7 @@ export function ProductForm({
                         className="h-8 w-24"
                       />
                     </td>
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-4">
                       <Input
                         value={r.barcode}
                         onChange={(e) => updateRow(r.key, { barcode: e.target.value })}
@@ -752,20 +752,20 @@ export function ProductForm({
                         className="h-8 w-28"
                       />
                     </td>
-                    <td className="py-2 pr-2 text-right">
+                    <td className="py-2 pr-4">
                       <NumBox
                         value={r.purchasePrice}
                         onChange={(v) => updateRow(r.key, { purchasePrice: v })}
                       />
                     </td>
-                    <td className="py-2 pr-2 text-right">
+                    <td className="py-2 pr-4">
                       <NumBox
                         value={r.sellingPrice}
                         onChange={(v) => updateRow(r.key, { sellingPrice: v })}
                         invalid={showErrors && !(numOf(r.sellingPrice) > 0)}
                       />
                     </td>
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-4">
                       <div className="flex gap-1">
                         <select
                           value={r.discountType}
@@ -788,7 +788,7 @@ export function ProductForm({
                     </td>
                     <td
                       className={cn(
-                        "py-2 pr-2 text-right tabular-nums",
+                        "py-2 pr-4 tabular-nums",
                         p.belowMin && "font-medium text-destructive",
                       )}
                       title={
@@ -799,23 +799,23 @@ export function ProductForm({
                     >
                       {p.price.toFixed(2)}
                     </td>
-                    <td className="py-2 pr-2 text-right">
+                    <td className="py-2 pr-4">
                       <NumBox
                         value={r.wholesalePrice}
                         onChange={(v) => updateRow(r.key, { wholesalePrice: v })}
                       />
                     </td>
-                    <td className="py-2 pr-2 text-right">
+                    <td className="py-2 pr-4">
                       <NumBox
                         value={r.wholesaleQty}
                         onChange={(v) => updateRow(r.key, { wholesaleQty: v })}
                         className="w-16"
                       />
                     </td>
-                    <td className="py-2 pr-2 text-right">
+                    <td className="py-2 pr-4">
                       {r.locked ? (
                         <div
-                          className="flex items-center justify-end gap-1 text-xs text-muted-foreground"
+                          className="flex items-center gap-1 text-xs text-muted-foreground"
                           title="Stock moves through purchases, sales and returns — not by editing it here."
                         >
                           <Lock className="size-3" />
@@ -930,9 +930,7 @@ function NumBox({
       onChange={(e) => onChange(e.target.value)}
       placeholder="0"
       className={cn(
-        // inline-flex (not the base full-width flex) so a right-aligned cell can
-        // push the box under its right-aligned header.
-        "inline-flex h-8 w-20 text-right",
+        "h-8 w-20",
         invalid && "border-destructive focus-visible:ring-destructive/30",
         className,
       )}
