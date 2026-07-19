@@ -1511,6 +1511,11 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
     rail shows all icons, Catalogue/Reports flyouts open with the right children, navigating from a
     flyout works (Reports → Sales → `/reports/sales`), and Expand restores the 240px sidebar. Typecheck,
     lint (no new findings), and `npm run build` all pass.
+  - **Follow-up (per user):** the **Discount** column is a two-part control (type selector + value), so
+    its header is now **left-aligned** — the title reads over the `%`/`−` selector where the control
+    starts, not over the value box. The selector+value group is left-aligned to match; browser-measured
+    the "Discount" header and the selector both at left=513. The other numeric headers stay right-aligned
+    over their single boxes.
 
 ---
 

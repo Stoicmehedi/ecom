@@ -704,7 +704,10 @@ export function ProductForm({
                 <th className="pb-2 pr-2 text-right font-medium">
                   Selling <span className="text-destructive">*</span>
                 </th>
-                <th className="pb-2 pr-2 text-right font-medium">Discount</th>
+                {/* Left-aligned, unlike the other numeric headers: Discount is a
+                    two-part control (type + value), so its title reads over the
+                    "%" selector where the control begins, not the value box. */}
+                <th className="pb-2 pr-2 text-left font-medium">Discount</th>
                 <th className="pb-2 pr-2 text-right font-medium">Sells at</th>
                 <th className="pb-2 pr-2 text-right font-medium">Wholesale</th>
                 <th className="pb-2 pr-2 text-right font-medium">at qty</th>
@@ -763,7 +766,7 @@ export function ProductForm({
                       />
                     </td>
                     <td className="py-2 pr-2">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex gap-1">
                         <select
                           value={r.discountType}
                           onChange={(e) =>
