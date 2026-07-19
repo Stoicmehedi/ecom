@@ -694,7 +694,7 @@ export function ProductForm({
         )}
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[70rem] text-sm">
+          <table className="min-w-[44rem] text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 {isVariable && <th className="pb-2 pr-2 font-medium">Variant</th>}
@@ -737,8 +737,8 @@ export function ProductForm({
                       <Input
                         value={r.sku}
                         onChange={(e) => updateRow(r.key, { sku: e.target.value })}
-                        placeholder="auto-generated"
-                        className="h-8 w-36"
+                        placeholder="auto"
+                        className="h-8 w-24"
                       />
                     </td>
                     <td className="py-2 pr-2">
@@ -746,16 +746,16 @@ export function ProductForm({
                         value={r.barcode}
                         onChange={(e) => updateRow(r.key, { barcode: e.target.value })}
                         placeholder="auto EAN-13"
-                        className="h-8 w-36"
+                        className="h-8 w-28"
                       />
                     </td>
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-2 text-right">
                       <NumBox
                         value={r.purchasePrice}
                         onChange={(v) => updateRow(r.key, { purchasePrice: v })}
                       />
                     </td>
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-2 text-right">
                       <NumBox
                         value={r.sellingPrice}
                         onChange={(v) => updateRow(r.key, { sellingPrice: v })}
@@ -796,20 +796,20 @@ export function ProductForm({
                     >
                       {p.price.toFixed(2)}
                     </td>
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-2 text-right">
                       <NumBox
                         value={r.wholesalePrice}
                         onChange={(v) => updateRow(r.key, { wholesalePrice: v })}
                       />
                     </td>
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-2 text-right">
                       <NumBox
                         value={r.wholesaleQty}
                         onChange={(v) => updateRow(r.key, { wholesaleQty: v })}
                         className="w-16"
                       />
                     </td>
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-2 text-right">
                       {r.locked ? (
                         <div
                           className="flex items-center justify-end gap-1 text-xs text-muted-foreground"
@@ -927,7 +927,9 @@ function NumBox({
       onChange={(e) => onChange(e.target.value)}
       placeholder="0"
       className={cn(
-        "h-8 w-20 text-right",
+        // inline-flex (not the base full-width flex) so a right-aligned cell can
+        // push the box under its right-aligned header.
+        "inline-flex h-8 w-20 text-right",
         invalid && "border-destructive focus-visible:ring-destructive/30",
         className,
       )}

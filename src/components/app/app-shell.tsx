@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Menu, PanelLeft, ScanBarcode } from "lucide-react";
 import { SidebarContent } from "./sidebar";
+import { SidebarRail } from "./sidebar-rail";
 import { UserMenu } from "./user-menu";
 import { MposLogo } from "./mpos-logo";
 import { PageBreadcrumb } from "./page-breadcrumb";
@@ -54,16 +55,21 @@ export function AppShell({
 
   return (
     <div className="flex min-h-svh w-full">
-      {/* Desktop sidebar — slides fully out of the way when hidden, and the
-          content beside it reflows to the full width. */}
+      {/* Desktop sidebar — collapses to a slim icon rail (not nothing), so the
+          whole nav stays one click away, and the content beside it reflows to
+          take the width the labels gave up. */}
       <aside
         className={cn(
-          "hidden shrink-0 overflow-hidden border-sidebar-border transition-[width] duration-300 ease-in-out md:block",
-          collapsed ? "w-0 border-r-0" : "w-60 border-r",
+          "hidden shrink-0 overflow-hidden border-r border-sidebar-border transition-[width] duration-300 ease-in-out md:block",
+          collapsed ? "w-14" : "w-60",
         )}
       >
-        <div className="sticky top-0 h-svh w-60">
-          <SidebarContent permissions={permissions} />
+        <div className={cn("sticky top-0 h-svh", collapsed ? "w-14" : "w-60")}>
+          {collapsed ? (
+            <SidebarRail permissions={permissions} />
+          ) : (
+            <SidebarContent permissions={permissions} />
+          )}
         </div>
       </aside>
 
@@ -75,7 +81,7 @@ export function AppShell({
             variant="ghost"
             size="icon"
             className="hidden md:inline-flex"
-            aria-label={collapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-pressed={!collapsed}
             onClick={toggleSidebar}
           >

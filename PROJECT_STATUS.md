@@ -1487,6 +1487,31 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
     250.00 (test product then removed). Typecheck, lint (no new findings — the 1 pre-existing
     ref-in-render warning predates this), and `npm run build` all pass.
 
+- **Product form table + sidebar collapse — UI fixes (per user feedback).**
+  - **Price & stock table no longer scrolls on desktop.** It carried `min-w-[70rem]` (1120px) inside a
+    ~958px content column, forcing a horizontal scrollbar. The auto-generated **SKU/Barcode inputs were
+    the widest cells** (144px each) despite being optional overrides — shrunk to 96/112px — and the
+    `min-w` dropped to `44rem`. The table is now ~814px and fits without scrolling (measured).
+  - **Column headers now align with their input boxes.** The right-aligned numeric headers (Cost,
+    Selling, Wholesale…) sat above boxes that hugged the *left* of each cell (fixed `w-20`), so the
+    header floated ~30px right of its box. The numeric cells are now `text-right` and `NumBox` is
+    `inline-flex`, so each box's right edge lines up under its header. (This is the "title should align
+    with the box" fix.)
+  - **Collapsed sidebar is now a slim icon rail, not nothing.** Hiding the sidebar used to set it to
+    `w-0` — every icon gone. New `sidebar-rail.tsx`: a 56px rail with the logo, the pinned link icons
+    (hover tooltip for the label) and one icon per group; **clicking a group icon opens its children in
+    a flyout to the right** (Radix dropdown, `side="right"`), with the active item highlighted. Same
+    longest-prefix active rule as the full sidebar, so they agree. Toggle relabelled Collapse/Expand.
+  - **On the "is the app using the full space when collapsed?" question:** it already was — the main
+    column is `flex-1`, so content reflows to the freed width up to each page's readability max-width
+    (the product form went ~1000→1152px when collapsed). The rail costs 56px of that back, by design,
+    to keep the nav reachable. No page fails to expand; the only unused space is the deliberate gutter
+    beyond a page's `max-w-*`.
+  - **Browser-verified** at 1280px: table fits with no scroll and headers sit above their boxes; the
+    rail shows all icons, Catalogue/Reports flyouts open with the right children, navigating from a
+    flyout works (Reports → Sales → `/reports/sales`), and Expand restores the 240px sidebar. Typecheck,
+    lint (no new findings), and `npm run build` all pass.
+
 ---
 
 ## 5. Current state
