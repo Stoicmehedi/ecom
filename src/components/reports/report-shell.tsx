@@ -83,7 +83,7 @@ export function ReportShell({
         // min-w-0 so the picker inside may shrink: a flex child defaults to
         // min-width:auto and will otherwise push the whole page wider than the
         // phone it is on.
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           {range ? (
             <div className="min-w-0">
               <RangePicker range={range} />

@@ -127,6 +127,15 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const p = parsed.data;
 
+  // Mandatory fields for our application (confirmed against the reference app,
+  // 2026-07-19): name (enforced by the schema above), category, unit, and a
+  // selling price on every variant. Kept as explicit guards rather than schema
+  // rules so each one names exactly what is missing, and so the same server that
+  // everything else trusts is the one enforcing them — a required marker the
+  // browser could strip is not a rule.
+  if (!p.categoryId) return { error: "Choose a category — it is required." };
+  if (!p.unitId) return { error: "Choose a unit — it is required." };
+
   // A SIMPLE product is exactly one variant, and varies along nothing.
   const isSimple = p.type === "SIMPLE";
   const variants = isSimple ? p.variants.slice(0, 1) : p.variants;
@@ -135,6 +144,12 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
     if (v.barcode && !isValidEan13(v.barcode) && !/^\d{6,14}$/.test(v.barcode)) {
       return {
         error: `"${v.barcode}" isn't a usable barcode — leave it blank and we'll generate one.`,
+      };
+    }
+    if (!(v.sellingPrice > 0)) {
+      const which = v.sku?.trim() || v.label?.trim();
+      return {
+        error: `Enter a selling price above 0${which ? ` for "${which}"` : ""}.`,
       };
     }
   }

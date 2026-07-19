@@ -144,6 +144,9 @@ export function ProductForm({
   const [alertQty, setAlertQty] = useState(product?.alertQty ?? "");
   const [minSalePrice, setMinSalePrice] = useState(product?.minSalePrice ?? "");
   const [error, setError] = useState<string | null>(null);
+  // Flip on the first failed submit, so required-field warnings appear only
+  // after someone tries to save — not while they are still filling the form in.
+  const [showErrors, setShowErrors] = useState(false);
 
   // --- the axes this product varies along
   const [axisId, setAxisId] = useState<number | null>(
@@ -294,6 +297,24 @@ export function ProductForm({
     e.preventDefault();
     setError(null);
 
+    // Required for our application: name, category, unit, and a selling price on
+    // every variant. Blocked here for an instant, specific message; the server
+    // re-checks all four, so this is a courtesy, not the guarantee.
+    const fail = (m: string) => {
+      setShowErrors(true);
+      setError(m);
+      toast.error(m);
+    };
+    if (!name.trim()) return fail("Enter a product name.");
+    if (categoryId == null) return fail("Choose a category.");
+    if (unitId === "none") return fail("Choose a unit.");
+    const priceless = rows.find((r) => !(numOf(r.sellingPrice) > 0));
+    if (priceless) {
+      return fail(
+        `Enter a selling price${priceless.label ? ` for ${priceless.label}` : ""}.`,
+      );
+    }
+
     const payload: ProductInput = {
       id: product?.id,
       name,
@@ -349,7 +370,9 @@ export function ProductForm({
         <h2 className="mb-4 font-medium">Product</h2>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <div className="space-y-2 sm:col-span-2 xl:col-span-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">
+              Name <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="name"
               value={name}
@@ -369,12 +392,17 @@ export function ProductForm({
           </div>
 
           <div className="space-y-2 sm:col-span-2 xl:col-span-3">
-            <Label>Category</Label>
+            <Label>
+              Category <span className="text-destructive">*</span>
+            </Label>
             <CategoryCascade
               categories={categories}
               value={categoryId}
               onChange={setCategoryId}
             />
+            {showErrors && categoryId == null && (
+              <p className="text-xs text-destructive">Pick a category.</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -395,13 +423,18 @@ export function ProductForm({
           </div>
 
           <div className="space-y-2">
-            <Label>Unit</Label>
+            <Label>
+              Unit <span className="text-destructive">*</span>
+            </Label>
             <Select value={unitId} onValueChange={(v) => v && setUnitId(v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="None" />
+              <SelectTrigger
+                className={cn(
+                  showErrors && unitId === "none" && "border-destructive",
+                )}
+              >
+                <SelectValue placeholder="Select a unit" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None</SelectItem>
                 {units.map((u) => (
                   <SelectItem key={u.id} value={String(u.id)}>
                     {u.name}
@@ -409,6 +442,9 @@ export function ProductForm({
                 ))}
               </SelectContent>
             </Select>
+            {showErrors && unitId === "none" && (
+              <p className="text-xs text-destructive">Pick a unit.</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -665,7 +701,9 @@ export function ProductForm({
                 <th className="pb-2 pr-2 font-medium">SKU</th>
                 <th className="pb-2 pr-2 font-medium">Barcode</th>
                 <th className="pb-2 pr-2 text-right font-medium">Cost</th>
-                <th className="pb-2 pr-2 text-right font-medium">Selling</th>
+                <th className="pb-2 pr-2 text-right font-medium">
+                  Selling <span className="text-destructive">*</span>
+                </th>
                 <th className="pb-2 pr-2 text-right font-medium">Discount</th>
                 <th className="pb-2 pr-2 text-right font-medium">Sells at</th>
                 <th className="pb-2 pr-2 text-right font-medium">Wholesale</th>
@@ -721,6 +759,7 @@ export function ProductForm({
                       <NumBox
                         value={r.sellingPrice}
                         onChange={(v) => updateRow(r.key, { sellingPrice: v })}
+                        invalid={showErrors && !(numOf(r.sellingPrice) > 0)}
                       />
                     </td>
                     <td className="py-2 pr-2">
@@ -872,10 +911,12 @@ function NumBox({
   value,
   onChange,
   className,
+  invalid,
 }: {
   value: string;
   onChange: (v: string) => void;
   className?: string;
+  invalid?: boolean;
 }) {
   return (
     <Input
@@ -885,7 +926,11 @@ function NumBox({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder="0"
-      className={cn("h-8 w-20 text-right", className)}
+      className={cn(
+        "h-8 w-20 text-right",
+        invalid && "border-destructive focus-visible:ring-destructive/30",
+        className,
+      )}
     />
   );
 }

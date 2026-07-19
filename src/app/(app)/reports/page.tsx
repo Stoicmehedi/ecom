@@ -5,8 +5,9 @@ import { hasPermission } from "@/lib/permissions";
 import { money, qty } from "@/lib/format";
 import { parseRange } from "@/lib/reports/range";
 import { reportAccess } from "@/lib/reports/access";
-import { dueTotals, profitLoss, salesByDay } from "@/lib/reports/queries";
+import { dueTotals, parseBucket, profitLoss, salesSeries } from "@/lib/reports/queries";
 import { ReportShell, Stat, reportTabs } from "@/components/reports/report-shell";
+import { ChartGranularity } from "@/components/reports/chart-granularity";
 import { Forbidden } from "@/components/reports/forbidden";
 
 export default async function ReportsOverviewPage({
@@ -22,14 +23,17 @@ export default async function ReportsOverviewPage({
   const params = await searchParams;
   const range = parseRange(params);
 
-  const [pl, days, dues] = await Promise.all([
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const bucket = parseBucket(one(params.bucket), range);
+
+  const [pl, series, dues] = await Promise.all([
     profitLoss(range),
-    salesByDay(range),
+    salesSeries(range, bucket),
     dueTotals(),
   ]);
 
   const avgSale = pl.invoices === 0 ? 0 : pl.netSales / pl.invoices;
-  const peak = Math.max(...days.map((d) => d.total), 0);
+  const peak = Math.max(...series.map((s) => s.total), 0);
 
   return (
     <ReportShell
@@ -94,14 +98,17 @@ export default async function ReportsOverviewPage({
       </div>
 
       <div className="report-surface rounded-lg border bg-card p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="font-medium">Net sales by day</h2>
-          <Link
-            href="/reports/sales?groupBy=day"
-            className="no-print text-sm text-primary hover:underline"
-          >
-            See the breakdown
-          </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-medium">Net sales by {bucket}</h2>
+          <div className="no-print flex items-center gap-3">
+            <ChartGranularity bucket={bucket} />
+            <Link
+              href={`/reports/sales?groupBy=${bucket === "month" ? "month" : "day"}`}
+              className="text-sm text-primary hover:underline"
+            >
+              See the breakdown
+            </Link>
+          </div>
         </div>
 
         {peak === 0 ? (
@@ -110,11 +117,11 @@ export default async function ReportsOverviewPage({
           </p>
         ) : (
           <div className="mt-5 flex h-40 gap-1">
-            {days.map((d) => (
+            {series.map((s) => (
               <div
-                key={d.day}
+                key={s.key}
                 className="group flex flex-1 flex-col"
-                title={`${d.day} · ${money(d.total)}`}
+                title={`${s.title} · ${money(s.total)}`}
               >
                 {/* flex-1 gives this column a resolved height, so the bar's
                     percentage height has something real to measure against. */}
@@ -122,13 +129,13 @@ export default async function ReportsOverviewPage({
                   <div
                     className="w-full rounded-t bg-primary/80 transition-colors group-hover:bg-primary"
                     style={{
-                      height: `${Math.max((d.total / peak) * 100, d.total > 0 ? 2 : 0)}%`,
+                      height: `${Math.max((s.total / peak) * 100, s.total > 0 ? 2 : 0)}%`,
                     }}
                   />
                 </div>
-                {days.length <= 31 && (
+                {series.length <= 31 && (
                   <span className="mt-1 text-center text-[10px] text-muted-foreground">
-                    {d.day.slice(8)}
+                    {s.label}
                   </span>
                 )}
               </div>

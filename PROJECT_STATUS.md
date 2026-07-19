@@ -4,7 +4,7 @@
 > account — can understand the full state without relying on private notes. **Update this file after
 > every task.**
 
-**Last updated:** 2026-07-16
+**Last updated:** 2026-07-19
 **Repo:** https://github.com/Stoicmehedi/ecom (private)
 **App name:** MPoS
 
@@ -1417,6 +1417,75 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
     **viewport-based**; the honest fix for the sidebar collision is **container queries** (`@container`,
     native in Tailwind v4) — it would also make hiding the sidebar *widen* the grids, which it cannot do
     today. Not taken: it touches every grid and the win is latent, not a live defect. See §30.5.
+
+### 2026-07-19
+
+- **Reports filter bar — trimmed and aligned (per user feedback).** Two small UI fixes across every
+  report tab, both in shared chrome so they landed everywhere at once.
+  - **Only "Today" remains as a quick preset.** The row used to carry six buttons
+    (Today / Yesterday / This week / This month / Last month / This year); the five spans other than
+    Today duplicate what the custom **from–to** box right beside them already does, so they were
+    redundant chrome. `PRESETS` in `src/lib/reports/range.ts` now lists only Today. **The other spans
+    still resolve from the URL** — a bookmarked or hand-typed `?preset=month` is honoured and labelled
+    "This month" — because `parseRange` now validates against a full `VALID_PRESETS`/`PRESET_LABELS`
+    table rather than the (now single-entry) button list. Browser-checked: `?preset=month` →
+    *"Showing This month · Jul 01 – Jul 19, 2026"*.
+  - **The filter controls now sit on one line.** The date inputs and Apply were `h-8` (32px) but the
+    preset button and the report's own selects (Group-by / status, category / brand) were `h-7` (28px,
+    `size="sm"`), and the row was `items-end`, so the bordered custom-range box's padding dropped the
+    selects ~5px below the date inputs. Every control is now `h-8` and the three alignment containers
+    (the range picker row, its custom-range box, and the shell's filter row) are `items-center`, so the
+    taller bordered box centres cleanly with its neighbours. **Measured after the fix:** Today button,
+    both date inputs, Apply, and both selects all report top 235 / bottom 267 / centre 251 — pixel-exact.
+  - Touched: `range.ts`, `range-picker.tsx`, `report-shell.tsx`, and the `filters.tsx` for Sales and
+    Product profit. Verified on the Sales, Product profit and Overview tabs (screenshots); Dues has no
+    date range so it was unaffected. Typecheck + lint clean.
+
+- **Overview chart — day / week / month granularity (per user request).** Asked which filters the
+  Overview could gain; the honest finding is that the Overview is a **whole-shop snapshot** stitched
+  from three independent aggregates (sales/profit tiles, cash tiles, and a live dues snapshot), so a
+  *dimension* slicer (category, customer, cashier) would only touch the sales tiles and leave the
+  cash/dues tiles unfiltered — misleading. The addition that fits the whole page is a **chart
+  granularity control**; that is what the user chose to build.
+  - `salesByDay` generalised to **`salesSeries(range, bucket)`** in `src/lib/reports/queries.ts`,
+    bucketing net sales (sales − returns, the same arithmetic the P&L uses, so the bar strip still
+    reconciles) by **day / week / month**. Weeks run Mon–Sun, matching the preset week logic.
+  - **The choice lives in the URL** (`?bucket=`), like every other report control, so the view is
+    linkable. `parseBucket` **auto-picks a sane default from the range span** (≤31 days → day,
+    ≤92 → week, else month) so a long custom range never draws hundreds of hairline bars; an explicit
+    `?bucket=` always wins. New client control `src/components/reports/chart-granularity.tsx` (h-8,
+    matching the aligned filter bar). Chart title and the "See the breakdown" link track the bucket.
+  - **Browser-verified:** a 49-day range (Jun 01 – Jul 19) auto-defaulted to **By week** — seven
+    week-start buckets, all sales landing in the *Week of Jul 13* bar whose hover read
+    **1,329.60**, matching the Net-sales tile to the cent; switching the control to **By month** put
+    the URL to `?bucket=month` and collapsed the strip to Jun (empty) + Jul. Typecheck, lint, and
+    **`npm run build` all pass.**
+
+- **Product form — mandatory fields (per user request).** The Add/Edit product form enforced almost
+  nothing: only **name** (server) and **at least one variant**; **`sellingPrice` defaulted to 0**, so a
+  priceless product saved, and the UI had **no required markers or validation** at all.
+  - **Studied the reference app read-only first** (opened an *existing* product's edit page — no
+    create-form buttons, per the tightened protocol) and read its mandatory `*` markers straight from
+    the DOM. Reference requires: **Name, Product Type, Product Image, Category, Unit** (+ Attribute/
+    Colour for variant products) and, per line, **Barcode, Purchase price, Selling price**.
+  - **Settled with the user** which of those apply to *our* architecture: **Name + Selling price +
+    Category + Unit**. Three of the reference's required fields are deliberate divergences we keep
+    optional because we handle them differently — **image** (§12.7, an e-commerce concern), **barcode**
+    (auto-generated EAN-13, §12.7), and **purchase cost** (enters via purchases in our weighted-average
+    model, not at product creation).
+  - **Enforced on both layers.** Server (`products/actions.ts`, `saveProduct`): explicit guards that
+    each *name* what is missing — category, unit, and a selling price **> 0 on every variant** (named by
+    SKU/label) — so the same server everything else trusts is the one enforcing them, not a marker the
+    browser could strip. Client (`product-form.tsx`): red `*` on Name / Category / Unit / Selling;
+    the **Unit picker dropped its "None" option** (so "no unit" is no longer selectable); a submit guard
+    that blocks with a specific message and reveals inline warnings + a red selling-price box **only
+    after the first failed save** (`showErrors`), never while the form is still being filled.
+  - **Browser-verified end to end** as admin: empty submit → *"Enter a product name."* + inline
+    "Pick a category / unit"; name-only → category error; then unit error; then *"Enter a selling
+    price."* with the box highlighted red — each blocked, no navigation. Filling **Name + Apparel +
+    Piece + 250** saved and the row landed in the DB with `categoryId`, `unitId` and `sellingPrice`
+    250.00 (test product then removed). Typecheck, lint (no new findings — the 1 pre-existing
+    ref-in-render warning predates this), and `npm run build` all pass.
 
 ---
 

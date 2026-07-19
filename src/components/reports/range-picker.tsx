@@ -44,7 +44,11 @@ function RangeInputs({ range }: { range: DateRange }) {
     // min-width:auto, and the custom-range row below is what set the floor —
     // two fixed-width date inputs plus "to" and Apply on one unbreakable line
     // came to ~392px, which pushed every report page sideways on a phone.
-    <div className="no-print flex w-full min-w-0 flex-wrap items-end gap-2">
+    // items-center (not -end): the custom-range box is taller than a bare
+    // button, so centering is what keeps the Today button, the date inputs and
+    // the report's own filters all sitting on one line. Every control is h-8 so
+    // their centres coincide.
+    <div className="no-print flex w-full min-w-0 flex-wrap items-center gap-2">
       <div className="flex min-w-0 flex-wrap gap-1">
         {PRESETS.map((p) => (
           <Button
@@ -52,6 +56,7 @@ function RangeInputs({ range }: { range: DateRange }) {
             type="button"
             size="sm"
             variant={range.preset === p.value ? "default" : "outline"}
+            className="h-8"
             onClick={() => go({ preset: p.value, from: null, to: null })}
           >
             {p.label}
@@ -61,7 +66,7 @@ function RangeInputs({ range }: { range: DateRange }) {
 
       <div
         className={cn(
-          "flex min-w-0 flex-wrap items-end gap-1 rounded-md border p-1",
+          "flex min-w-0 flex-wrap items-center gap-1 rounded-md border p-1",
           range.preset === "custom" && "border-primary",
         )}
       >
@@ -73,7 +78,7 @@ function RangeInputs({ range }: { range: DateRange }) {
           onChange={(e) => setFrom(e.target.value)}
           className="h-8 w-[8.5rem] min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0 sm:w-[9.5rem] sm:flex-none"
         />
-        <span className="pb-2 text-xs text-muted-foreground">to</span>
+        <span className="text-xs text-muted-foreground">to</span>
         <Input
           type="date"
           aria-label="To date"

@@ -41,7 +41,7 @@ export function ProductFilters({
         value={categoryId ? String(categoryId) : ALL}
         onValueChange={(v) => set("categoryId", v)}
       >
-        <SelectTrigger size="sm" className="w-[11rem]">
+        <SelectTrigger className="h-8 w-[11rem]">
           <SelectValue placeholder="All categories" />
         </SelectTrigger>
         <SelectContent>
@@ -58,7 +58,7 @@ export function ProductFilters({
         value={brandId ? String(brandId) : ALL}
         onValueChange={(v) => set("brandId", v)}
       >
-        <SelectTrigger size="sm" className="w-[11rem]">
+        <SelectTrigger className="h-8 w-[11rem]">
           <SelectValue placeholder="All brands" />
         </SelectTrigger>
         <SelectContent>

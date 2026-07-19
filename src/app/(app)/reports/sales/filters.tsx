@@ -32,7 +32,7 @@ export function SalesFilters({
   return (
     <div className="no-print flex flex-wrap items-center gap-2">
       <Select value={groupBy} onValueChange={(v) => set("groupBy", v)}>
-        <SelectTrigger size="sm" className="w-[10rem]">
+        <SelectTrigger className="h-8 w-[10rem]">
           <SelectValue placeholder="Group by" />
         </SelectTrigger>
         <SelectContent>
@@ -43,7 +43,7 @@ export function SalesFilters({
       </Select>
 
       <Select value={status ?? ALL} onValueChange={(v) => set("status", v)}>
-        <SelectTrigger size="sm" className="w-[10rem]">
+        <SelectTrigger className="h-8 w-[10rem]">
           <SelectValue placeholder="Any status" />
         </SelectTrigger>
         <SelectContent>

@@ -33,14 +33,27 @@ export type DateRange = {
  */
 export const MAX_RANGE_DAYS = 366;
 
+// Only "Today" is offered as a quick button — the custom date range below
+// covers every other span, so the yesterday/week/month/last-month/year presets
+// were redundant chrome. The other Preset values still resolve if they arrive
+// in a hand-typed or bookmarked URL (see VALID_PRESETS / presetRange); they
+// just have no button.
 export const PRESETS: { value: Preset; label: string }[] = [
   { value: "today", label: "Today" },
-  { value: "yesterday", label: "Yesterday" },
-  { value: "week", label: "This week" },
-  { value: "month", label: "This month" },
-  { value: "last-month", label: "Last month" },
-  { value: "year", label: "This year" },
 ];
+
+/** Human labels for every preset, buttoned or not — used by rangeLabel. */
+const PRESET_LABELS: Record<Exclude<Preset, "custom">, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
+  week: "This week",
+  month: "This month",
+  "last-month": "Last month",
+  year: "This year",
+};
+
+/** Every preset the URL will accept, whether or not it has a button. */
+const VALID_PRESETS = Object.keys(PRESET_LABELS) as Preset[];
 
 const startOfDay = (d: Date) =>
   new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
@@ -115,7 +128,7 @@ export function parseRange(
     to = toParam ?? fromParam!;
   } else {
     preset =
-      presetParam && PRESETS.some((p) => p.value === presetParam)
+      presetParam && VALID_PRESETS.includes(presetParam)
         ? presetParam
         : "today";
     ({ from, to } = presetRange(preset, now));
@@ -148,7 +161,7 @@ export function parseRange(
 }
 
 function rangeLabel(from: Date, to: Date, preset: Preset): string {
-  const known = PRESETS.find((p) => p.value === preset);
+  const known = preset === "custom" ? undefined : PRESET_LABELS[preset];
   const fmt = (d: Date) =>
     d.toLocaleDateString(undefined, {
       day: "2-digit",
@@ -156,5 +169,5 @@ function rangeLabel(from: Date, to: Date, preset: Preset): string {
       year: "numeric",
     });
   const span = toDateStr(from) === toDateStr(to) ? fmt(from) : `${fmt(from)} – ${fmt(to)}`;
-  return known ? `${known.label} · ${span}` : span;
+  return known ? `${known} · ${span}` : span;
 }

@@ -17,6 +17,12 @@ const pad = (v: number) => String(v).padStart(2, "0");
 const dayKey = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const monthKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+/** The Monday that starts d's week — weeks run Mon–Sun, matching the presets. */
+const weekKey = (d: Date) => {
+  const m = new Date(d);
+  m.setDate(m.getDate() - ((m.getDay() + 6) % 7));
+  return dayKey(m);
+};
 
 // ---------------------------------------------------------------- Sales
 
@@ -648,13 +654,66 @@ export async function duesReport(side: DueSide): Promise<ReportTable> {
 
 // -------------------------------------------------------------- Overview
 
+export type SeriesBucket = "day" | "week" | "month";
+const SERIES_BUCKETS: SeriesBucket[] = ["day", "week", "month"];
+
+export type SeriesPoint = {
+  /** Bucket key (sort- and dedupe-safe); never shown to the user. */
+  key: string;
+  /** Compact axis label (e.g. "19", "14 Jul", "Jul"). */
+  label: string;
+  /** Full label for the hover tooltip (e.g. "19 Jul 2026", "Jul 2026"). */
+  title: string;
+  total: number;
+};
+
 /**
- * Net sales per day across the range — sales that day less returns that day,
- * the same arithmetic the P&L does, so the bar strip and the P&L agree.
+ * Which bucket the overview chart uses. An explicit `?bucket=` wins; otherwise
+ * the default scales with the range so a long window never draws hundreds of
+ * hairline bars — a day view up to a month, weeks up to a quarter, months beyond.
  */
-export async function salesByDay(
+export function parseBucket(v: unknown, range: DateRange): SeriesBucket {
+  if (SERIES_BUCKETS.includes(v as SeriesBucket)) return v as SeriesBucket;
+  const spanDays =
+    Math.round((range.to.getTime() - range.from.getTime()) / 86_400_000) + 1;
+  if (spanDays <= 31) return "day";
+  if (spanDays <= 92) return "week";
+  return "month";
+}
+
+function seriesLabels(key: string, bucket: SeriesBucket): { label: string; title: string } {
+  const parts = key.split("-").map(Number);
+  if (bucket === "month") {
+    const date = new Date(parts[0], parts[1] - 1, 1);
+    return {
+      label: date.toLocaleDateString(undefined, { month: "short" }),
+      title: date.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+    };
+  }
+  const date = new Date(parts[0], parts[1] - 1, parts[2]);
+  const full = date.toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  if (bucket === "week") {
+    return {
+      label: date.toLocaleDateString(undefined, { day: "2-digit", month: "short" }),
+      title: `Week of ${full}`,
+    };
+  }
+  return { label: String(parts[2]), title: full };
+}
+
+/**
+ * Net sales across the range, bucketed by day / week / month — sales in the
+ * bucket less returns in the bucket, the same arithmetic the P&L does, so the
+ * bar strip and the P&L agree.
+ */
+export async function salesSeries(
   range: DateRange,
-): Promise<{ day: string; total: number }[]> {
+  bucket: SeriesBucket,
+): Promise<SeriesPoint[]> {
   const [sales, returns] = await Promise.all([
     prisma.sale.findMany({
       where: { date: { gte: range.from, lte: range.to } },
@@ -666,22 +725,31 @@ export async function salesByDay(
     }),
   ]);
 
-  const byDay = new Map<string, number>();
+  const keyOf =
+    bucket === "day" ? dayKey : bucket === "month" ? monthKey : weekKey;
+
+  const totals = new Map<string, number>();
   for (const s of sales) {
-    const k = dayKey(s.date);
-    byDay.set(k, (byDay.get(k) ?? 0) + num(s.total));
+    const k = keyOf(s.date);
+    totals.set(k, (totals.get(k) ?? 0) + num(s.total));
   }
   for (const r of returns) {
-    const k = dayKey(r.date);
-    byDay.set(k, (byDay.get(k) ?? 0) - num(r.total));
+    const k = keyOf(r.date);
+    totals.set(k, (totals.get(k) ?? 0) - num(r.total));
   }
 
-  // Every day in the range, including the ones with no sales — a gap is a fact.
-  const out: { day: string; total: number }[] = [];
+  // Every bucket in the range, including empty ones — a gap is a fact. Walking
+  // day by day and deduping keys keeps the buckets in chronological order.
+  const out: SeriesPoint[] = [];
+  const seen = new Set<string>();
   const cur = new Date(range.from);
   while (cur <= range.to) {
-    const k = dayKey(cur);
-    out.push({ day: k, total: round2(byDay.get(k) ?? 0) });
+    const k = keyOf(cur);
+    if (!seen.has(k)) {
+      seen.add(k);
+      const { label, title } = seriesLabels(k, bucket);
+      out.push({ key: k, label, title, total: round2(totals.get(k) ?? 0) });
+    }
     cur.setDate(cur.getDate() + 1);
   }
   return out;
