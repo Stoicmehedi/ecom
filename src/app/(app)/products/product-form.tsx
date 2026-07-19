@@ -693,29 +693,29 @@ export function ProductForm({
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          <table className="min-w-[44rem] text-sm">
+        {/* A spreadsheet-style grid: bordered cells, a header band, and fields
+            that fill their cell (their own borders removed) so each value reads
+            in its own box. `divide-*` draws the single lines between cells. */}
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[46rem] border-collapse text-sm">
             <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                {isVariable && <th className="pb-2 pr-4 font-medium">Variant</th>}
-                <th className="pb-2 pr-4 font-medium">SKU</th>
-                <th className="pb-2 pr-4 font-medium">Barcode</th>
-                <th className="pb-2 pr-4 font-medium">Cost</th>
-                <th className="pb-2 pr-4 font-medium">
+              <tr className="border-b bg-muted/40 text-left text-xs font-medium text-muted-foreground [&>th]:whitespace-nowrap [&>th]:border-r [&>th]:px-3 [&>th]:py-2.5 [&>th:last-child]:border-r-0">
+                {isVariable && <th>Variant</th>}
+                <th>SKU</th>
+                <th>Barcode</th>
+                <th>Cost</th>
+                <th>
                   Selling <span className="text-destructive">*</span>
                 </th>
-                {/* Left-aligned, unlike the other numeric headers: Discount is a
-                    two-part control (type + value), so its title reads over the
-                    "%" selector where the control begins, not the value box. */}
-                <th className="pb-2 pr-4 text-left font-medium">Discount</th>
-                <th className="pb-2 pr-4 font-medium">Sells at</th>
-                <th className="pb-2 pr-4 font-medium">Wholesale</th>
-                <th className="pb-2 pr-4 font-medium">at qty</th>
-                <th className="pb-2 pr-4 font-medium">Opening</th>
-                {isVariable && <th className="pb-2" />}
+                <th>Discount</th>
+                <th>Sells at</th>
+                <th>Wholesale</th>
+                <th>at qty</th>
+                <th>Opening</th>
+                {isVariable && <th aria-label="Remove" />}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="[&>tr]:border-b [&>tr:last-child]:border-b-0">
               {rows.map((r) => {
                 const p = priceLine({
                   sellingPrice: numOf(r.sellingPrice),
@@ -725,48 +725,51 @@ export function ProductForm({
                   qty: 1,
                 });
                 return (
-                  <tr key={r.key} className="border-b last:border-0">
+                  <tr
+                    key={r.key}
+                    className="[&>td]:border-r [&>td:last-child]:border-r-0"
+                  >
                     {isVariable && (
-                      <td className="py-2 pr-4">
-                        <Input
+                      <td className="p-0">
+                        <input
                           value={r.label}
                           onChange={(e) => updateRow(r.key, { label: e.target.value })}
                           placeholder="e.g. Red / L"
-                          className="h-8 w-32"
+                          className={CELL_FIELD}
                         />
                       </td>
                     )}
-                    <td className="py-2 pr-4">
-                      <Input
+                    <td className="p-0">
+                      <input
                         value={r.sku}
                         onChange={(e) => updateRow(r.key, { sku: e.target.value })}
                         placeholder="auto"
-                        className="h-8 w-24"
+                        className={CELL_FIELD}
                       />
                     </td>
-                    <td className="py-2 pr-4">
-                      <Input
+                    <td className="p-0">
+                      <input
                         value={r.barcode}
                         onChange={(e) => updateRow(r.key, { barcode: e.target.value })}
                         placeholder="auto EAN-13"
-                        className="h-8 w-28"
+                        className={CELL_FIELD}
                       />
                     </td>
-                    <td className="py-2 pr-4">
+                    <td className="p-0">
                       <NumBox
                         value={r.purchasePrice}
                         onChange={(v) => updateRow(r.key, { purchasePrice: v })}
                       />
                     </td>
-                    <td className="py-2 pr-4">
+                    <td className="p-0">
                       <NumBox
                         value={r.sellingPrice}
                         onChange={(v) => updateRow(r.key, { sellingPrice: v })}
                         invalid={showErrors && !(numOf(r.sellingPrice) > 0)}
                       />
                     </td>
-                    <td className="py-2 pr-4">
-                      <div className="flex gap-1">
+                    <td className="p-0">
+                      <div className="flex h-10 items-stretch">
                         <select
                           value={r.discountType}
                           onChange={(e) =>
@@ -774,7 +777,8 @@ export function ProductForm({
                               discountType: e.target.value as "AMOUNT" | "PERCENT",
                             })
                           }
-                          className="h-8 rounded-md border bg-transparent px-1 text-xs"
+                          className="border-0 border-r bg-transparent pl-3 pr-1 text-xs outline-none focus-visible:relative focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+                          aria-label="Discount type"
                         >
                           <option value="AMOUNT">−</option>
                           <option value="PERCENT">%</option>
@@ -782,13 +786,13 @@ export function ProductForm({
                         <NumBox
                           value={r.discountValue}
                           onChange={(v) => updateRow(r.key, { discountValue: v })}
-                          className="w-16"
+                          className="px-2"
                         />
                       </div>
                     </td>
                     <td
                       className={cn(
-                        "py-2 pr-4 tabular-nums",
+                        "px-3 py-2 tabular-nums",
                         p.belowMin && "font-medium text-destructive",
                       )}
                       title={
@@ -799,23 +803,22 @@ export function ProductForm({
                     >
                       {p.price.toFixed(2)}
                     </td>
-                    <td className="py-2 pr-4">
+                    <td className="p-0">
                       <NumBox
                         value={r.wholesalePrice}
                         onChange={(v) => updateRow(r.key, { wholesalePrice: v })}
                       />
                     </td>
-                    <td className="py-2 pr-4">
+                    <td className="p-0">
                       <NumBox
                         value={r.wholesaleQty}
                         onChange={(v) => updateRow(r.key, { wholesaleQty: v })}
-                        className="w-16"
                       />
                     </td>
-                    <td className="py-2 pr-4">
+                    <td className="p-0">
                       {r.locked ? (
                         <div
-                          className="flex items-center gap-1 text-xs text-muted-foreground"
+                          className="flex h-10 items-center gap-1 px-3 text-xs text-muted-foreground"
                           title="Stock moves through purchases, sales and returns — not by editing it here."
                         >
                           <Lock className="size-3" />
@@ -829,7 +832,7 @@ export function ProductForm({
                       )}
                     </td>
                     {isVariable && (
-                      <td className="py-2 text-right">
+                      <td className="p-0 text-center">
                         {rows.length > 1 && (
                           <Button
                             type="button"
@@ -910,6 +913,14 @@ function Chip({
   );
 }
 
+/**
+ * A borderless field that fills its grid cell — the cell's own border is the
+ * boundary, so the Price & stock table reads as one clean spreadsheet rather
+ * than a scatter of separate boxes. Focus shows an inset ring inside the cell.
+ */
+const CELL_FIELD =
+  "h-10 w-full min-w-0 border-0 bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground/60 focus-visible:relative focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60";
+
 function NumBox({
   value,
   onChange,
@@ -922,7 +933,7 @@ function NumBox({
   invalid?: boolean;
 }) {
   return (
-    <Input
+    <input
       type="number"
       min="0"
       step="0.01"
@@ -930,8 +941,9 @@ function NumBox({
       onChange={(e) => onChange(e.target.value)}
       placeholder="0"
       className={cn(
-        "h-8 w-20",
-        invalid && "border-destructive focus-visible:ring-destructive/30",
+        CELL_FIELD,
+        "tabular-nums",
+        invalid && "relative z-10 bg-destructive/5 ring-2 ring-inset ring-destructive/60",
         className,
       )}
     />

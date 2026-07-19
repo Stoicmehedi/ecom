@@ -1520,6 +1520,16 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
     column's left edge (browser-measured header-left = box-left, delta 0 for all nine columns), and the
     per-cell right padding went `pr-2`→`pr-4` for clear space between boxes. Still no horizontal scroll
     with the sidebar open (table 886px in a 958px column).
+  - **Follow-up 3 (per user) — turned the Price & stock table into a real spreadsheet grid.** Instead of
+    loose bordered input boxes, it is now a `border-collapse` table wrapped in a `rounded-lg border`, with
+    a muted header band and single divider lines between every cell (`[&>th]/[&>td]:border-r`, row
+    `border-b`). Each field is **borderless and fills its cell** (shared `CELL_FIELD` class: no border,
+    `w-full`, `h-10`, inset focus ring), so the cell's own border is the box — the grid reads as one clean
+    sheet rather than a scatter of chips. `NumBox` was reworked to a raw borderless input; the invalid
+    (missing-price) state is now an inset destructive ring + faint tint. Headers are `whitespace-nowrap`
+    (no more "Sells / at" wrap). The table is `w-full`, so it fills the card and never scrolls on desktop
+    for either Simple or Variable products; `min-w-[46rem]` keeps phone scroll. Browser-verified both
+    layouts; typecheck, lint (no new findings), and build pass.
 
 ---
 
