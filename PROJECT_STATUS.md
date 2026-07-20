@@ -1659,9 +1659,9 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
 sweep → WS2 mobile list cards → WS3 Product form → WS4 Purchase form. Five commits (`c317381` base …
 current), each verified in the browser. Pushed to `origin/main`.
 
-- **POS cart panel recessed** — the checkout cart panel moved from `bg-card` (white) to `bg-muted/50`,
-  so it reads as a distinct, slightly darker surface with the white controls popping against it
-  (matching the app's other muted panels). Verified in both light and dark.
+- **POS cart panel recessed** — the checkout cart panel moved off the white `bg-card` to a darker
+  light-grey fill (`bg-black/[0.06]`, `dark:bg-white/[0.04]`), so it reads as a distinct recessed
+  surface with the white controls popping against it. Verified in both light and dark.
 
 ---
 

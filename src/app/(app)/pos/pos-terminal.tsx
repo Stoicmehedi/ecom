@@ -663,7 +663,7 @@ export function PosTerminal({
       />
 
       {/* The cart: second on a phone, the right-hand column on a desktop. */}
-      <div className="order-2 flex h-fit min-w-0 flex-col gap-3 rounded-lg border bg-muted/50 p-3 shadow-sm lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:row-span-2">
+      <div className="order-2 flex h-fit min-w-0 flex-col gap-3 rounded-lg border bg-black/[0.06] p-3 shadow-sm lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:row-span-2 dark:bg-white/[0.04]">
         <div className="flex items-center justify-between">
           <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Cart
