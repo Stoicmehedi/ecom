@@ -61,3 +61,6 @@ yarn-error.log*
 # Local disk, outside public/. Back this up BESIDE the database: a pg_dump alone is not
 # a complete backup, and a restore without these comes back with dead image links.
 /data/
+
+# Local design snapshots taken before a refactor — never committed
+/.design-backup/
