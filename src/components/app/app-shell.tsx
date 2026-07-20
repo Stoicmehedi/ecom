@@ -26,6 +26,7 @@ export function AppShell({
   userRole,
   permissions,
   defaultCollapsed = false,
+  logoUrl,
   children,
 }: {
   storeName: string;
@@ -33,6 +34,7 @@ export function AppShell({
   userRole?: string | null;
   permissions: string[];
   defaultCollapsed?: boolean;
+  logoUrl?: string | null;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -66,9 +68,9 @@ export function AppShell({
       >
         <div className={cn("sticky top-0 h-svh", collapsed ? "w-14" : "w-60")}>
           {collapsed ? (
-            <SidebarRail permissions={permissions} />
+            <SidebarRail permissions={permissions} logoUrl={logoUrl} />
           ) : (
-            <SidebarContent permissions={permissions} />
+            <SidebarContent permissions={permissions} logoUrl={logoUrl} />
           )}
         </div>
       </aside>
@@ -102,12 +104,16 @@ export function AppShell({
             </SheetTrigger>
             <SheetContent side="left" className="w-60 p-0">
               <SheetTitle className="sr-only">Navigation</SheetTitle>
-              <SidebarContent permissions={permissions} onNavigate={() => setOpen(false)} />
+              <SidebarContent
+                permissions={permissions}
+                logoUrl={logoUrl}
+                onNavigate={() => setOpen(false)}
+              />
             </SheetContent>
           </Sheet>
 
           <div className="md:hidden">
-            <MposLogo showWordmark={false} />
+            <MposLogo showWordmark={false} logoUrl={logoUrl} />
           </div>
 
           <Separator orientation="vertical" className="mx-1 hidden !h-5 md:block" />

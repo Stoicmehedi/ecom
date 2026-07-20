@@ -1581,6 +1581,39 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
   example from the demo data. A polished web version was also published as a private Artifact for
   sharing (menu paths link to `localhost:3000` there).
 
+- **Shop logo now brands the whole app, not just the receipt.** The logo upload, storage (§28,
+  `/api/files/<key>`), `ShopSetting.logoKey` and the invoice header were already built — but the app
+  chrome still drew the hard-coded "M" SVG everywhere. `MposLogo` now takes an optional `logoUrl` and
+  renders the shop's uploaded logo in its place (SVG mark as the fallback when no logo is set), across
+  **the expanded sidebar, the collapsed icon rail, the mobile header, and the login screen**. The
+  `(app)` layout reads `logoKey` by PK (not `getSettings()`, to avoid an upsert-per-navigation) and
+  threads a `fileUrl()` down through `AppShell`; the login page became a small server component that
+  loads the logo and renders the existing form (split out to `login/login-form.tsx`) — the logo is a
+  public shop asset (§28.2), so showing it signed-out leaks nothing. The wordmark ("MPoS / Point of
+  Sale") is deliberately left as-is — only the icon is replaced, per the request. **Browser-verified**
+  end to end: uploaded a distinctive test logo in Settings → it appeared in the sidebar, rail and login,
+  with the wordmark intact; `Remove` cleared it (file discarded from disk) and the "M" mark returned.
+  Typecheck + lint clean.
+
+- **Settings page redesigned — "clean yet professional" (per user request).** It was one long scroll of
+  five identically-weighted bordered cards, a right rail that only related to loyalty, raw HTML
+  checkboxes/`<select>` that didn't match the app's shadcn controls, and a Save button buried at the
+  bottom. Rebuilt as a **section-tab layout** (user picked this over a single-scroll index): a left rail
+  of icon'd sections (Your shop · Invoice numbering · Loyalty · Receipt & invoice · Stock) shows **one
+  group at a time** in a focused panel; on a phone the rail collapses to a horizontal chip scroll and
+  the panel stacks.
+  - New lightweight **`Switch`** primitive (`src/components/ui/switch.tsx`) — a real `role="switch"`
+    button, no Radix dependency — replaces the raw checkboxes; the print-default `<select>` became the
+    app's shadcn **Select**. Controls now match the rest of MPoS.
+  - A **sticky full-width action bar** with an **"Unsaved changes" / "All changes saved"** indicator
+    (dirty = deep-compare of state vs. the loaded settings), **Save** disabled when nothing changed, and
+    a **Discard** that reverts to the stored values.
+  - The loyalty **"What this means"** live preview moved *inside* the Loyalty section (contextual, beside
+    the controls it explains) instead of a global rail; the invoice-number preview stays in its section.
+  - No behaviour/permissions/wording-meaning changed — a visual/structure pass. **Browser-verified**
+    desktop + mobile: section switching, toggles, the dirty→Save→Discard flow, and the responsive rail.
+    Typecheck + lint clean.
+
 ---
 
 ## 5. Current state

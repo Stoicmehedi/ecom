@@ -25,7 +25,13 @@ import { cn } from "@/lib/utils";
  * hover tooltip; a group's icon opens its children in a flyout to the right,
  * because a group has nowhere to show its label inline at this width.
  */
-export function SidebarRail({ permissions }: { permissions: string[] }) {
+export function SidebarRail({
+  permissions,
+  logoUrl,
+}: {
+  permissions: string[];
+  logoUrl?: string | null;
+}) {
   const pathname = usePathname();
   const { pinned, groups } = visibleNav(permissions);
 
@@ -47,7 +53,7 @@ export function SidebarRail({ permissions }: { permissions: string[] }) {
       <div className="flex h-full w-14 flex-col items-center bg-sidebar text-sidebar-foreground">
         <div className="flex h-14 w-full items-center justify-center border-b border-sidebar-border">
           <Link href="/dashboard" aria-label="Dashboard">
-            <MposLogo showWordmark={false} />
+            <MposLogo showWordmark={false} logoUrl={logoUrl} />
           </Link>
         </div>
 

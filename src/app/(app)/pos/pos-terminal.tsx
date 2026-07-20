@@ -117,7 +117,12 @@ export function PosTerminal({
   const [customerId, setCustomerId] = useState<number | undefined>(walkIn?.id);
   const [lines, setLines] = useState<Line[]>([]);
   const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">("PERCENT");
-  const [discountValue, setDiscountValue] = useState(0);
+  // The manual-discount field is backed by a string, so an empty box shows a "0"
+  // placeholder instead of a literal 0 the cashier has to delete first (and typing
+  // never leaves a leading zero like "033"). The number the rest of the cart uses is
+  // derived from it — blank or unparseable means no discount.
+  const [discountText, setDiscountText] = useState("");
+  const discountValue = discountText.trim() === "" ? 0 : Math.max(0, Number(discountText) || 0);
   const [remark, setRemark] = useState("");
 
   const [query, setQuery] = useState("");
@@ -400,7 +405,7 @@ export function PosTerminal({
       }
       setPayOpen(false);
       setLines([]);
-      setDiscountValue(0);
+      setDiscountText("");
       setRemark("");
       setRedeem(0);
       setExchange(null);
@@ -858,9 +863,10 @@ export function PosTerminal({
                 type="number"
                 min="0"
                 step="0.01"
+                placeholder="0"
                 className="h-8 w-20 text-right"
-                value={discountValue}
-                onChange={(e) => setDiscountValue(Number(e.target.value))}
+                value={discountText}
+                onChange={(e) => setDiscountText(e.target.value)}
               />
               <span className="w-16 text-right text-sm tabular-nums sm:w-20">
                 −{discount.toFixed(2)}

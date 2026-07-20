@@ -14,9 +14,11 @@ import { cn } from "@/lib/utils";
 
 export function SidebarContent({
   permissions,
+  logoUrl,
   onNavigate,
 }: {
   permissions: string[];
+  logoUrl?: string | null;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -40,7 +42,7 @@ export function SidebarContent({
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-14 items-center border-b border-sidebar-border px-4">
         <Link href="/dashboard" onClick={onNavigate}>
-          <MposLogo />
+          <MposLogo logoUrl={logoUrl} />
         </Link>
       </div>
 
