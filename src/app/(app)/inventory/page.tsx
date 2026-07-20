@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { ListCard, ListCardEmpty, type CardField } from "@/components/app/list-card";
 
 // The fallback threshold is a shop-wide SETTING now (BLUEPRINT §17.2), not a
 // constant here. A product with its own `alertQty` still overrides it.
@@ -126,7 +127,7 @@ export default async function InventoryPage({
         <StatCard label="Stock value at selling price" value={money(totalSell)} />
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
+      <div className="hidden overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm sm:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -206,6 +207,55 @@ export default async function InventoryPage({
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Phone view — one card per variant; the stock chip carries the low/out colour. */}
+      <div className="space-y-2.5 sm:hidden">
+        {rows.length === 0 ? (
+          <ListCardEmpty>
+            {lowOnly ? "Nothing is running low." : "No stock yet."}
+          </ListCardEmpty>
+        ) : (
+          rows.map((r) => {
+            const fields: CardField[] = [];
+            if (canSeeCost) {
+              fields.push({ label: "Avg. cost", value: money(r.avg) });
+              fields.push({
+                label: "Last cost",
+                value: r.last == null ? "—" : money(r.last),
+              });
+            }
+            fields.push({ label: "Selling", value: money(r.sell) });
+            fields.push({ label: "In", value: qty(r.inQty) });
+            fields.push({ label: "Out", value: qty(r.outQty) });
+            if (canSeeCost) {
+              fields.push({ label: "Value @ cost", value: money(r.valueCost) });
+            }
+            fields.push({ label: "Value @ selling", value: money(r.valueSell) });
+
+            return (
+              <ListCard
+                key={r.id}
+                title={r.name}
+                subtitle={r.sku}
+                badge={
+                  r.stock <= 0 ? (
+                    <Badge className="bg-destructive/10 text-destructive hover:bg-destructive/10">
+                      {qty(r.stock)} in stock
+                    </Badge>
+                  ) : r.low ? (
+                    <Badge className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/10">
+                      {qty(r.stock)} left
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">{qty(r.stock)} in stock</Badge>
+                  )
+                }
+                fields={fields}
+              />
+            );
+          })
+        )}
       </div>
     </div>
   );

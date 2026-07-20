@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { money, num, qty } from "@/lib/format";
 import { categoryFilter, getCategoryTree } from "@/lib/categories";
+import { ListCard, ListCardEmpty } from "@/components/app/list-card";
 import { ProductRowActions } from "./product-row-actions";
 import { ProductFilters } from "./product-filters";
 import type { Prisma } from "@/generated/prisma/client";
@@ -148,7 +149,7 @@ export default async function ProductsPage({
           : `${products.length} of ${total} products`}
       </p>
 
-      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
+      <div className="hidden overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm sm:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -252,6 +253,84 @@ export default async function ProductsPage({
             })}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Phone view — one card per product. */}
+      <div className="space-y-2.5 sm:hidden">
+        {products.length === 0 ? (
+          <ListCardEmpty>
+            {q || categoryId || brandId || status !== ALL ? (
+              "Nothing matches those filters."
+            ) : (
+              <>
+                No products yet.{" "}
+                <Link href="/products/new" className="text-primary underline">
+                  Add your first product
+                </Link>
+                .
+              </>
+            )}
+          </ListCardEmpty>
+        ) : (
+          products.map((p) => {
+            const stock = p.variants.reduce((s, v) => s + num(v.stockQty), 0);
+            const prices = p.variants.map((v) => num(v.sellingPrice));
+            const lo = prices.length ? Math.min(...prices) : 0;
+            const hi = prices.length ? Math.max(...prices) : 0;
+            return (
+              <ListCard
+                key={p.id}
+                dimmed={!p.isActive}
+                title={p.name}
+                subtitle={
+                  [p.category?.name, p.brand?.name, p.code]
+                    .filter(Boolean)
+                    .join(" · ") || undefined
+                }
+                media={
+                  p.imageKey ? (
+                    <Image
+                      src={fileUrl(p.imageKey)!}
+                      alt=""
+                      width={40}
+                      height={40}
+                      unoptimized
+                      className="size-10 shrink-0 rounded border object-cover"
+                    />
+                  ) : (
+                    <span className="size-10 shrink-0 rounded border bg-muted/40" />
+                  )
+                }
+                badge={
+                  p.isActive ? (
+                    <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
+                      Active
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline">Inactive</Badge>
+                  )
+                }
+                fields={[
+                  {
+                    label: "Type",
+                    value: p.type === "VARIABLE" ? "Variable" : "Simple",
+                  },
+                  { label: "Variants", value: p._count.variants },
+                  { label: "Stock", value: qty(stock) },
+                  {
+                    label: "Price",
+                    value: lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`,
+                  },
+                ]}
+                actions={
+                  canManage ? (
+                    <ProductRowActions id={p.id} name={p.name} isActive={p.isActive} />
+                  ) : undefined
+                }
+              />
+            );
+          })
+        )}
       </div>
     </div>
   );

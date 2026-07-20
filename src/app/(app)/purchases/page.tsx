@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ListCard, ListCardEmpty } from "@/components/app/list-card";
 import { PurchaseRowActions } from "./purchase-row-actions";
 
 export default async function PurchasesPage() {
@@ -49,7 +50,7 @@ export default async function PurchasesPage() {
         )}
       </PageHeader>
 
-      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
+      <div className="hidden overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm sm:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -134,6 +135,55 @@ export default async function PurchasesPage() {
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Phone view — one card per purchase. */}
+      <div className="space-y-2.5 sm:hidden">
+        {purchases.length === 0 ? (
+          <ListCardEmpty>
+            No purchases yet.{" "}
+            <Link href="/purchases/new" className="text-primary underline">
+              Record your first one
+            </Link>
+            .
+          </ListCardEmpty>
+        ) : (
+          purchases.map((p) => (
+            <ListCard
+              key={p.id}
+              href={`/purchases/${p.id}`}
+              title={p.purchaseNo}
+              subtitle={`${shortDate(p.date)} · ${p.supplier?.name ?? "—"}${
+                p.supplierInvoiceNo ? ` · inv. ${p.supplierInvoiceNo}` : ""
+              }`}
+              badge={
+                <div className="flex items-center gap-1">
+                  <StatusBadge status={p.status} />
+                  {p._count.returns > 0 && <Badge variant="outline">Returned</Badge>}
+                </div>
+              }
+              fields={[
+                { label: "Items", value: p._count.items },
+                { label: "Total", value: money(p.total) },
+                { label: "Paid", value: money(p.paid) },
+                {
+                  label: "Due",
+                  value: money(p.due),
+                  className:
+                    num(p.due) > 0 ? "text-destructive" : "text-muted-foreground",
+                },
+              ]}
+              actions={
+                <PurchaseRowActions
+                  id={p.id}
+                  purchaseNo={p.purchaseNo}
+                  canManage={canManage}
+                  canReturn={canReturn}
+                />
+              }
+            />
+          ))
+        )}
       </div>
     </div>
   );

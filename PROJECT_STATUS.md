@@ -1629,6 +1629,16 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
   - Backup taken first: tag `backup/pre-ui-refresh-2026-07-20` (commit `c317381`) + a git-ignored
     physical snapshot in `.design-backup/2026-07-20/`.
 
+- **Mobile cards for list tables (UI refresh workstream 2 of 4).** The Sales (10 cols), Purchases (9),
+  Inventory (~9) and Products (9) lists overflowed a phone. New shared **`ListCard`**
+  (`src/components/app/list-card.tsx`): below `sm` each row renders as a card (title/link, subtitle,
+  a top-right status/stock badge, a 2-col field grid, and — where the table has them — the same
+  row-action control in a footer); at `sm+` the original `<table>` shows unchanged (`hidden sm:block`).
+  Same pattern the reports tables use, extended to interactive lists. Products cards carry the photo
+  thumbnail and dim when inactive; Inventory's stock chip carries the low/out colour; cost columns stay
+  admin-gated. **Browser-verified** all four at 390px and the desktop tables unchanged. Typecheck +
+  lint clean.
+
 ---
 
 ## 5. Current state

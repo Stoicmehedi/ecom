@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ListCard, ListCardEmpty } from "@/components/app/list-card";
 import { SaleRowActions } from "./sale-row-actions";
 
 export default async function SalesPage() {
@@ -62,7 +63,7 @@ export default async function SalesPage() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
+      <div className="hidden overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm sm:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -139,6 +140,49 @@ export default async function SalesPage() {
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Phone view — one card per sale, so no figure hides off-screen. */}
+      <div className="space-y-2.5 sm:hidden">
+        {sales.length === 0 ? (
+          <ListCardEmpty>
+            No sales yet.{" "}
+            <Link href="/pos" className="text-primary underline">
+              Open the POS
+            </Link>
+            .
+          </ListCardEmpty>
+        ) : (
+          sales.map((s) => (
+            <ListCard
+              key={s.id}
+              href={`/sales/${s.id}`}
+              title={s.invoiceNo}
+              subtitle={`${shortDate(s.date)} · ${s.customer?.name ?? "—"}`}
+              badge={<StatusBadge status={s.status} />}
+              fields={[
+                { label: "Items", value: s._count.items },
+                { label: "Total", value: money(s.total) },
+                { label: "Paid", value: money(s.paid) },
+                {
+                  label: "Due",
+                  value: money(s.due),
+                  className:
+                    num(s.due) > 0 ? "text-destructive" : "text-muted-foreground",
+                },
+                { label: "Sold by", value: s.soldBy?.name ?? "—" },
+              ]}
+              actions={
+                <SaleRowActions
+                  id={s.id}
+                  invoiceNo={s.invoiceNo}
+                  canReturn={canReturn}
+                  canDelete={canDelete}
+                />
+              }
+            />
+          ))
+        )}
       </div>
     </div>
   );
