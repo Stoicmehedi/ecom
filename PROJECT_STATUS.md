@@ -1639,6 +1639,15 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
   admin-gated. **Browser-verified** all four at 390px and the desktop tables unchanged. Typecheck +
   lint clean.
 
+- **Add/Edit Product redesign (UI refresh workstream 3 of 4).** Visual/structure pass on the biggest
+  form — no logic, validation, pricing or variant-generator behaviour changed. Section headers now
+  carry an icon and a clearer title (**Details · Options · Price & stock**) on `bg-card` cards; the raw
+  `Active` checkbox became a labelled **Switch** row; and the Save/Cancel buttons became a **floating
+  sticky action bar** (consistent with Settings) that shows the current error or "New/Editing" state.
+  The form content gets `pb` clearance so nothing hides behind the bar. The wide variant grid is
+  unchanged (still scrolls). **Browser-verified**: the new-product form renders, the grid clears the
+  floating bar at the bottom. Typecheck clean; only the pre-existing ref-in-render lint finding remains.
+
 ---
 
 ## 5. Current state

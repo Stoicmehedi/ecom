@@ -4,7 +4,7 @@ import { selectId } from "@/lib/select";
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Lock, Wand2, ArrowDownToLine } from "lucide-react";
+import { Plus, Trash2, Lock, Wand2, ArrowDownToLine, Tag, Palette, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { saveProduct, type ProductInput } from "./actions";
 import { CategoryCascade, type Cat } from "./category-cascade";
@@ -14,6 +14,7 @@ import { ImageUpload } from "@/components/image-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -364,10 +365,15 @@ export function ProductForm({
   const floor = minSalePrice === "" ? null : numOf(minSalePrice);
 
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
+    <form onSubmit={onSubmit}>
+      {/* pb clears the floating action bar, so nothing hides behind it. */}
+      <div className="space-y-6 pb-24">
       {/* ---------------------------------------------------------- basics */}
-      <section className="rounded-lg border p-5">
-        <h2 className="mb-4 font-medium">Product</h2>
+      <section className="rounded-lg border bg-card p-5 shadow-sm">
+        <h2 className="mb-4 flex items-center gap-2 font-semibold">
+          <Tag className="size-4 text-muted-foreground" />
+          Details
+        </h2>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <div className="space-y-2 sm:col-span-2 xl:col-span-2">
             <Label htmlFor="name">
@@ -516,23 +522,26 @@ export function ProductForm({
             />
           </div>
 
-          <label className="flex items-center gap-2 text-sm md:col-span-3">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              className="size-4 accent-primary"
-            />
-            Active — sells at the POS
-          </label>
+          <div className="flex items-center justify-between gap-4 rounded-md border p-3 sm:col-span-2 xl:col-span-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Active</p>
+              <p className="text-xs text-muted-foreground">
+                When on, the product sells at the POS. Turn off to retire it.
+              </p>
+            </div>
+            <Switch checked={isActive} onCheckedChange={setIsActive} aria-label="Active" />
+          </div>
         </div>
       </section>
 
       {/* ------------------------------------------------------- generator */}
       {isVariable && (
-        <section className="rounded-lg border p-5">
+        <section className="rounded-lg border bg-card p-5 shadow-sm">
           <div className="mb-1 flex items-center justify-between gap-3">
-            <h2 className="font-medium">What does it vary by?</h2>
+            <h2 className="flex items-center gap-2 font-semibold">
+              <Palette className="size-4 text-muted-foreground" />
+              Options
+            </h2>
             <Button type="button" variant="secondary" onClick={generate}>
               <Wand2 className="size-4" />
               Generate variants
@@ -630,9 +639,12 @@ export function ProductForm({
       )}
 
       {/* -------------------------------------------------------- variants */}
-      <section className="rounded-lg border p-5">
+      <section className="rounded-lg border bg-card p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-medium">{isVariable ? "Variants" : "Price & stock"}</h2>
+          <h2 className="flex items-center gap-2 font-semibold">
+            <Coins className="size-4 text-muted-foreground" />
+            {isVariable ? "Variants" : "Price & stock"}
+          </h2>
           {isVariable && (
             <Button type="button" variant="outline" size="sm" onClick={addRow}>
               <Plus className="size-4" />
@@ -870,19 +882,32 @@ export function ProductForm({
         )}
       </section>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      </div>
 
-      <div className="flex gap-2">
-        <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving…" : product ? "Save changes" : "Create product"}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => router.push("/products")}
-        >
-          Cancel
-        </Button>
+      {/* Floating action bar — always in reach on this tall form. Sits within the
+          centred container and lifts off the content with a shadow. */}
+      <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 rounded-lg border bg-card/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80">
+        <p className="min-w-0 truncate text-sm">
+          {error ? (
+            <span className="text-destructive">{error}</span>
+          ) : (
+            <span className="text-muted-foreground">
+              {product ? "Editing this product" : "New product"}
+            </span>
+          )}
+        </p>
+        <div className="flex shrink-0 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.push("/products")}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isPending}>
+            {isPending ? "Saving…" : product ? "Save changes" : "Create product"}
+          </Button>
+        </div>
       </div>
     </form>
   );
