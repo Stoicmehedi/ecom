@@ -32,7 +32,7 @@ export default async function ProfitLossPage({
       range={range}
       exportKey="profit-loss"
     >
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Net sales" value={money(pl.netSales)} />
         <Stat label="Gross profit" value={money(pl.grossProfit)} />
         <Stat label="Expenses" value={money(pl.totalExpenses)} />

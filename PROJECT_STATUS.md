@@ -4,7 +4,7 @@
 > account — can understand the full state without relying on private notes. **Update this file after
 > every task.**
 
-**Last updated:** 2026-07-19
+**Last updated:** 2026-07-20
 **Repo:** https://github.com/Stoicmehedi/ecom (private)
 **App name:** MPoS
 
@@ -1548,6 +1548,39 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
     falls back to a **native GET submit that puts the password in the URL** (`/login?username=…&password=…`).
     Harmless when JS runs; worth hardening later (server action / `method="post"`).
 
+### 2026-07-20
+
+- **Reports module — mobile UI pass (per user request).** The report screens were desktop-shaped: the
+  data tables carry **8–11 columns**, so on a phone the money columns (Total, Paid, Due, Status) sat
+  off the right edge behind a horizontal scroll, and the KPI grids stacked **one card per row**, making
+  the Overview an eight-screen scroll before the chart. All fixed in shared chrome, so it landed across
+  every tab at once.
+  - **Report tables now render two ways from one `ReportTable`** (`src/components/reports/report-table.tsx`):
+    the wide table on `sm`+ (`hidden sm:block`, unchanged), and **one stacked card per row** on phones
+    (`sm:hidden`). Each card leads with the linked identifier (invoice/purchase) and its date, then lists
+    every remaining column as a label→value pair in a 2-col grid — **nothing hides off-screen**. A
+    matching **Total** card foots the list. Same rows/totals object drives both, so the phone view can
+    never disagree with the desktop table or the CSV/Excel exports. Covers Sales, Dues and Product
+    profit (all three go through this renderer).
+  - **KPI grids go 2-up on phones** instead of 1-up: Overview's two stat rows (`grid-cols-2` base),
+    Profit & Loss's four figures, and Dues' three tiles. Halves the scroll to reach the chart/table.
+  - **Overview chart labels** hide below `sm` when the series is dense (>14 bars) — a month of daily
+    bars used to overlap ~20 unreadable 10px labels; the bars stay, the labels return from `sm` up.
+  - **Browser-verified at 390px** (Playwright, admin): Sales renders 4 invoice cards + a Total card with
+    every figure visible and no horizontal scroll; Overview KPIs sit 2-per-row; Dues shows document
+    cards + toggle. **Desktop (1280px) unchanged** — full wide table shows, cards hidden. Typecheck +
+    lint clean. (`npm run build` couldn't be exercised in this harness — it fails offline fetching Geist
+    from Google Fonts, an environment limit unrelated to these changes; the dev server compiled and
+    rendered every report page.)
+
+- **User manual added — [`USER_MANUAL.md`](./USER_MANUAL.md).** An easy, example-driven guide for shop
+  staff, committed so it travels with the project: first-time setup (5 ordered steps), **the daily loop
+  as a Mermaid flow** (buy → sell → get paid → record money → review → repeat), the three counter
+  situations (return / exchange / adjustment), a menu reference, the Admin-vs-Cashier split, and the
+  four trust rules. Every step names its screen route (e.g. `/purchases/new`) and carries a worked
+  example from the demo data. A polished web version was also published as a private Artifact for
+  sharing (menu paths link to `localhost:3000` there).
+
 ---
 
 ## 5. Current state
@@ -1579,6 +1612,8 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
   the dialogs; tables scroll inside their own card rather than dragging the page sideways; the **POS is
   phone-first** (search → cart → browse, full-width Charge) while the desktop till is unchanged. The
   root cause throughout was grid/flex children defaulting to `min-width: auto`, not the tables.
+  **Reports go further (2026-07-20):** their 8–11-column tables render as **one stacked card per row**
+  on phones (not a sideways scroll) from the same `ReportTable`, and the KPI grids sit 2-up.
 - ✅ **Camera barcode scanning done** (`BLUEPRINT.md` §13.7a) — a **Scan** button beside the POS search
   box reads the phone's camera: native `BarcodeDetector` on Android, a **lazily-loaded** ZXing fallback
   on iOS (proven by network to be absent on Android). It feeds the **same** search box a hardware

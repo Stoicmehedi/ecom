@@ -42,7 +42,7 @@ export default async function DuesPage({
       exportKey="dues"
       toolbar={<SideTabs side={side} />}
     >
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Stat
           label={side === "receivable" ? "Customers owe us" : "We owe suppliers"}
           value={money(total)}

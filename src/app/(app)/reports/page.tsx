@@ -9,6 +9,7 @@ import { dueTotals, parseBucket, profitLoss, salesSeries } from "@/lib/reports/q
 import { ReportShell, Stat, reportTabs } from "@/components/reports/report-shell";
 import { ChartGranularity } from "@/components/reports/chart-granularity";
 import { Forbidden } from "@/components/reports/forbidden";
+import { cn } from "@/lib/utils";
 
 export default async function ReportsOverviewPage({
   searchParams,
@@ -43,7 +44,7 @@ export default async function ReportsOverviewPage({
       tabs={reportTabs(canSeeProfit)}
       range={range}
     >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label="Net sales"
           value={money(pl.netSales)}
@@ -80,7 +81,7 @@ export default async function ReportsOverviewPage({
         />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Cash in" value={money(pl.cashIn)} hint="all money received" />
         <Stat label="Cash out" value={money(pl.cashOut)} hint="all money paid out" />
         <Stat
@@ -134,7 +135,14 @@ export default async function ReportsOverviewPage({
                   />
                 </div>
                 {series.length <= 31 && (
-                  <span className="mt-1 text-center text-[10px] text-muted-foreground">
+                  // Many bars' labels overlap on a phone — keep the bars, drop
+                  // the labels below sm; they stay from sm up where they fit.
+                  <span
+                    className={cn(
+                      "mt-1 text-center text-[10px] text-muted-foreground",
+                      series.length > 14 && "hidden sm:block",
+                    )}
+                  >
                     {s.label}
                   </span>
                 )}
