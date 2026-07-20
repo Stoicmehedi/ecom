@@ -1657,7 +1657,11 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
 
 **UI refresh summary (2026-07-20):** backup tag `backup/pre-ui-refresh-2026-07-20` → WS1 zero-input
 sweep → WS2 mobile list cards → WS3 Product form → WS4 Purchase form. Five commits (`c317381` base …
-current), each verified in the browser.
+current), each verified in the browser. Pushed to `origin/main`.
+
+- **POS cart panel recessed** — the checkout cart panel moved from `bg-card` (white) to `bg-muted/50`,
+  so it reads as a distinct, slightly darker surface with the white controls popping against it
+  (matching the app's other muted panels). Verified in both light and dark.
 
 ---
 
