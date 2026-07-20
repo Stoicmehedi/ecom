@@ -1659,10 +1659,11 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
 sweep → WS2 mobile list cards → WS3 Product form → WS4 Purchase form. Five commits (`c317381` base …
 current), each verified in the browser. Pushed to `origin/main`.
 
-- **POS cart panel — emerald outline** (per user preference, after trying darker fills). The panel
-  keeps its original white `bg-card` and instead carries the **same emerald border + glow as the
-  focused barcode search box** (`border-ring ring-[3px] ring-ring/50`), so the search box and the cart
-  read as a matched pair. Verified in light.
+- **POS cart panel — emerald outline when the cart has items** (per user preference, after trying
+  darker fills). The panel keeps its original white `bg-card`; the **emerald border + glow** (the same
+  `border-ring ring-[3px] ring-ring/50` the barcode search box shows on focus) appears **only while the
+  cart holds ≥1 item** and fades off when empty (`transition-[border-color,box-shadow]`). Verified:
+  empty = plain border, one product added = emerald outline.
 
 ---
 
