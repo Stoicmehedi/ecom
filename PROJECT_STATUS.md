@@ -1665,6 +1665,15 @@ current), each verified in the browser. Pushed to `origin/main`.
   cart holds ≥1 item** and fades off when empty (`transition-[border-color,box-shadow]`). Verified:
   empty = plain border, one product added = emerald outline.
 
+- **Grey app canvas — clearer card separation everywhere** (per user request). The page background
+  (`--background`) went from ~98.5% to a **light grey ~95%** (`oklch 0.955`, renders `lab 94.8%`), so
+  every white card / table / panel now separates clearly from the page across the whole app, not just
+  via borders. Cards (`--card`) stay pure white; the ~5-point gap + border + shadow reads clean, not
+  heavy. Light mode only (dark already separates: page `0.16` < card `0.205`). Arrived at after trying
+  a global 90% (too dark, reverted) and per-page wrappers (dropped in favour of the one global token).
+  Verified on Dashboard and POS. ⚠️ Turbopack dev caches `:root` CSS — a globals.css token edit needs
+  `rm -rf .next` + dev restart to take effect (a hot reload keeps serving the old value).
+
 ---
 
 ## 5. Current state

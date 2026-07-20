@@ -7,9 +7,10 @@
   /* Crisper corners read as "tool", not "toy" — dense admin surfaces (BLUEPRINT UI §). */
   --radius: 0.375rem;
 
-  /* Neutral base — surfaces are pure white; the app canvas behind them is a hair
-     cooler/darker so cards and the sidebar separate without heavy borders. */
-  --background: oklch(0.985 0.001 240);
+  /* Neutral base — surfaces are pure white; the app canvas behind them is a light
+     grey (~95% lightness) so cards, tables and panels separate clearly from the
+     page everywhere, not just via their borders. */
+  --background: oklch(0.955 0.002 240);
   --foreground: oklch(0.16 0.01 240);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.16 0.01 240);
