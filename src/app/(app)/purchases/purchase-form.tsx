@@ -78,6 +78,23 @@ function round2(n: number) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+/**
+ * The editable number fields (qty, price, discount, payment amount) are held as raw
+ * strings, so an empty box shows a "0" placeholder rather than a literal 0 the user
+ * must delete first — and typing never leaves a leading zero like "033". They are
+ * parsed to a number only where arithmetic or the saved payload needs it.
+ */
+function num(s: string) {
+  const n = Number(s);
+  return s.trim() === "" || !Number.isFinite(n) ? 0 : Math.max(0, n);
+}
+function numToStr(n: number) {
+  return n ? String(n) : "";
+}
+
+type LineState = Omit<Line, "qty" | "purchasePrice"> & { qty: string; purchasePrice: string };
+type PayState = Omit<PayLine, "amount"> & { amount: string };
+
 export function PurchaseForm({
   suppliers: initialSuppliers,
   accounts,
@@ -98,13 +115,22 @@ export function PurchaseForm({
   const [reference, setReference] = useState(initial.reference ?? "");
   const [note, setNote] = useState(initial.note ?? "");
 
-  const [lines, setLines] = useState<Line[]>(initial.items);
+  const [lines, setLines] = useState<LineState[]>(
+    initial.items.map((l) => ({
+      ...l,
+      qty: numToStr(l.qty),
+      purchasePrice: numToStr(l.purchasePrice),
+    })),
+  );
   const [discountType, setDiscountType] = useState(initial.discountType);
-  const [discountValue, setDiscountValue] = useState(initial.discountValue);
-  const [payments, setPayments] = useState<PayLine[]>(
+  const [discountText, setDiscountText] = useState(
+    initial.discountValue ? String(initial.discountValue) : "",
+  );
+  const discountValue = num(discountText);
+  const [payments, setPayments] = useState<PayState[]>(
     initial.payments.length
-      ? initial.payments
-      : [{ method: "CASH", accountId: accounts[0]?.id ?? null, amount: 0 }],
+      ? initial.payments.map((p) => ({ ...p, amount: numToStr(p.amount) }))
+      : [{ method: "CASH", accountId: accounts[0]?.id ?? null, amount: "" }],
   );
 
   // --- product search ---
@@ -148,7 +174,7 @@ export function PurchaseForm({
       const i = prev.findIndex((l) => l.variantId === hit.variantId);
       if (i >= 0) {
         const next = [...prev];
-        next[i] = { ...next[i], qty: round2(next[i].qty + 1) };
+        next[i] = { ...next[i], qty: String(round2(num(next[i].qty) + 1)) };
         return next;
       }
       return [
@@ -157,8 +183,8 @@ export function PurchaseForm({
           variantId: hit.variantId,
           label: hit.label,
           sku: hit.sku,
-          qty: 1,
-          purchasePrice: hit.purchasePrice,
+          qty: "1",
+          purchasePrice: numToStr(hit.purchasePrice),
           allowDecimal: hit.allowDecimal,
         },
       ];
@@ -168,17 +194,17 @@ export function PurchaseForm({
     setOpen(false);
   }
 
-  function updateLine(i: number, patch: Partial<Line>) {
+  function updateLine(i: number, patch: Partial<LineState>) {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   }
 
-  const subtotal = round2(lines.reduce((s, l) => s + l.qty * l.purchasePrice, 0));
+  const subtotal = round2(lines.reduce((s, l) => s + num(l.qty) * num(l.purchasePrice), 0));
   const discount =
     discountType === "PERCENT"
       ? round2(Math.min((subtotal * discountValue) / 100, subtotal))
       : round2(Math.min(discountValue, subtotal));
   const total = round2(subtotal - discount);
-  const paid = round2(payments.reduce((s, p) => s + (p.amount || 0), 0));
+  const paid = round2(payments.reduce((s, p) => s + num(p.amount), 0));
   const due = round2(total - paid);
 
   // --- quick-add supplier ---
@@ -207,7 +233,7 @@ export function PurchaseForm({
   function onSubmit() {
     if (!supplierId) return toast.error("Pick a supplier");
     if (lines.length === 0) return toast.error("Add at least one product");
-    if (lines.some((l) => l.qty <= 0)) return toast.error("Quantity must be greater than zero");
+    if (lines.some((l) => num(l.qty) <= 0)) return toast.error("Quantity must be greater than zero");
     if (paid > total + 0.005) return toast.error("Paid amount is more than the total");
 
     const input: PurchaseInput = {
@@ -222,12 +248,12 @@ export function PurchaseForm({
       discountValue,
       items: lines.map((l) => ({
         variantId: l.variantId,
-        qty: l.qty,
-        purchasePrice: l.purchasePrice,
+        qty: num(l.qty),
+        purchasePrice: num(l.purchasePrice),
       })),
       payments: payments
-        .filter((p) => p.amount > 0)
-        .map((p) => ({ method: p.method, accountId: p.accountId, amount: p.amount })),
+        .filter((p) => num(p.amount) > 0)
+        .map((p) => ({ method: p.method, accountId: p.accountId, amount: num(p.amount) })),
     };
 
     startTransition(async () => {
@@ -410,13 +436,15 @@ export function PurchaseForm({
                     step={qtyStep({ allowDecimal: l.allowDecimal })}
                     min="0"
                     className="text-right"
+                    placeholder="0"
                     value={l.qty}
                     onChange={(e) =>
                       updateLine(i, {
-                        // A shirt cannot be bought in halves either (§21).
+                        // A shirt cannot be bought in halves either (§21) — drop any
+                        // decimal part for a whole-unit item, keeping the raw string.
                         qty: l.allowDecimal
-                          ? Number(e.target.value)
-                          : Math.round(Number(e.target.value)),
+                          ? e.target.value
+                          : e.target.value.replace(/\..*$/, ""),
                       })
                     }
                   />
@@ -427,14 +455,15 @@ export function PurchaseForm({
                     step="0.01"
                     min="0"
                     className="text-right"
+                    placeholder="0"
                     value={l.purchasePrice}
                     onChange={(e) =>
-                      updateLine(i, { purchasePrice: Number(e.target.value) })
+                      updateLine(i, { purchasePrice: e.target.value })
                     }
                   />
                 </TableCell>
                 <TableCell className="text-right tabular-nums font-medium">
-                  {round2(l.qty * l.purchasePrice).toFixed(2)}
+                  {round2(num(l.qty) * num(l.purchasePrice)).toFixed(2)}
                 </TableCell>
                 <TableCell>
                   <Button
@@ -512,11 +541,12 @@ export function PurchaseForm({
                   step="0.01"
                   min="0"
                   className="text-right"
+                  placeholder="0"
                   value={p.amount}
                   onChange={(e) =>
                     setPayments((prev) =>
                       prev.map((x, idx) =>
-                        idx === i ? { ...x, amount: Number(e.target.value) } : x,
+                        idx === i ? { ...x, amount: e.target.value } : x,
                       ),
                     )
                   }
@@ -542,7 +572,7 @@ export function PurchaseForm({
               onClick={() =>
                 setPayments((prev) => [
                   ...prev,
-                  { method: "CASH", accountId: accounts[0]?.id ?? null, amount: 0 },
+                  { method: "CASH", accountId: accounts[0]?.id ?? null, amount: "" },
                 ])
               }
             >
@@ -556,7 +586,14 @@ export function PurchaseForm({
               onClick={() =>
                 setPayments((prev) =>
                   prev.map((x, idx) =>
-                    idx === 0 ? { ...x, amount: Math.max(total - (paid - (prev[0].amount || 0)), 0) } : x,
+                    idx === 0
+                      ? {
+                          ...x,
+                          amount: numToStr(
+                            round2(Math.max(total - (paid - num(prev[0].amount)), 0)),
+                          ),
+                        }
+                      : x,
                   ),
                 )
               }
@@ -592,9 +629,10 @@ export function PurchaseForm({
                 type="number"
                 step="0.01"
                 min="0"
+                placeholder="0"
                 className="w-20 text-right sm:w-24"
-                value={discountValue}
-                onChange={(e) => setDiscountValue(Number(e.target.value))}
+                value={discountText}
+                onChange={(e) => setDiscountText(e.target.value)}
               />
               <span className="w-16 text-right text-sm tabular-nums sm:w-20">
                 −{discount.toFixed(2)}

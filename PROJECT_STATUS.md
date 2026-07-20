@@ -1614,6 +1614,21 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
     desktop + mobile: section switching, toggles, the dirty→Save→Discard flow, and the responsive rail.
     Typecheck + lint clean.
 
+- **Zero-input sweep (UI refresh workstream 1 of 4).** Numeric fields that defaulted to a literal `0`
+  the cashier had to delete (and that left leading zeros like "033") are fixed to show a **"0"
+  placeholder** on an empty box. Backed by string state, parsed to a number only for arithmetic/payload.
+  - **POS** manual discount (done earlier this day).
+  - **New Purchase**: line qty & price, order discount, and split-payment amounts — the `Line`/`PayLine`
+    prop contract stays numeric; only the editable client state became strings (`num()`/`numToStr()`
+    helpers), so costing, split payments and the saved payload are untouched. Whole-unit items still
+    reject decimals at the input (§21).
+  - The **Product** variant grid was already string-backed (`NumberField`/`BulkBox`) — no change needed.
+  - **Browser-verified**: purchase line shows real qty/price, empty amount/discount show the placeholder,
+    "Pay full" sets Paid→Due 0.00, totals reconcile. Typecheck clean; only the pre-existing search-effect
+    lint finding remains.
+  - Backup taken first: tag `backup/pre-ui-refresh-2026-07-20` (commit `c317381`) + a git-ignored
+    physical snapshot in `.design-backup/2026-07-20/`.
+
 ---
 
 ## 5. Current state
