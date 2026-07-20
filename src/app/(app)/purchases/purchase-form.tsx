@@ -4,7 +4,7 @@ import { selectId } from "@/lib/select";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Search, Loader2 } from "lucide-react";
+import { Plus, Trash2, Search, Loader2, Truck, PackageSearch, Wallet, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { savePurchase, type PurchaseInput } from "./actions";
 import { searchVariants, type VariantHit } from "./search";
@@ -271,7 +271,11 @@ export function PurchaseForm({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="rounded-lg border p-4">
+      <div className="rounded-lg border bg-card p-5 shadow-sm">
+        <h2 className="mb-4 flex items-center gap-2 font-semibold">
+          <Truck className="size-4 text-muted-foreground" />
+          Supplier &amp; invoice
+        </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-2">
             <Label>Supplier *</Label>
@@ -355,8 +359,12 @@ export function PurchaseForm({
       </div>
 
       {/* Items */}
-      <div className="rounded-lg border">
-        <div className="border-b p-4" ref={boxRef}>
+      <div className="rounded-lg border bg-card shadow-sm">
+        <div className="border-b p-5" ref={boxRef}>
+          <h2 className="mb-3 flex items-center gap-2 font-semibold">
+            <PackageSearch className="size-4 text-muted-foreground" />
+            Items
+          </h2>
           <Label htmlFor="search" className="mb-2 block">
             Add products
           </Label>
@@ -484,8 +492,11 @@ export function PurchaseForm({
 
       {/* Totals + payment */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="min-w-0 space-y-3 rounded-lg border p-4">
-          <h3 className="font-medium">Payment</h3>
+        <div className="min-w-0 space-y-3 rounded-lg border bg-card p-5 shadow-sm">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <Wallet className="size-4 text-muted-foreground" />
+            Payment
+          </h2>
           {payments.map((p, i) => (
             <div key={i} className="flex flex-wrap items-end gap-2">
               <div className="min-w-0 flex-1 space-y-1">
@@ -603,8 +614,11 @@ export function PurchaseForm({
           </div>
         </div>
 
-        <div className="min-w-0 space-y-2 rounded-lg border p-4">
-          <h3 className="font-medium">Summary</h3>
+        <div className="min-w-0 space-y-2 rounded-lg border bg-card p-5 shadow-sm">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <ClipboardList className="size-4 text-muted-foreground" />
+            Summary
+          </h2>
           <Row label="Subtotal" value={subtotal.toFixed(2)} />
 
           {/* The label plus these three fixed-width controls need ~372px on one
@@ -651,13 +665,23 @@ export function PurchaseForm({
             />
           </div>
 
-          <Button className="mt-2 w-full" onClick={onSubmit} disabled={pending}>
-            {pending
-              ? "Saving…"
-              : initial.id
-                ? "Update purchase"
-                : "Save purchase & add stock"}
-          </Button>
+          <div className="mt-2 flex flex-col gap-2">
+            <Button className="w-full" onClick={onSubmit} disabled={pending}>
+              {pending
+                ? "Saving…"
+                : initial.id
+                  ? "Update purchase"
+                  : "Save purchase & add stock"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => router.push("/purchases")}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       </div>
 

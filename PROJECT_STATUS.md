@@ -1648,6 +1648,17 @@ silence a warning about build tooling.** None is reachable at runtime, and none 
   unchanged (still scrolls). **Browser-verified**: the new-product form renders, the grid clears the
   floating bar at the bottom. Typecheck clean; only the pre-existing ref-in-render lint finding remains.
 
+- **New Purchase redesign (UI refresh workstream 4 of 4 — the refresh is complete).** Visual pass; no
+  costing, split-payment or save logic changed. The three cards gained icon headers on `bg-card`
+  surfaces — **Supplier & invoice · Items · Payment | Summary** — matching the Product form and Settings.
+  The existing Payment | Summary two-column layout was kept (Save sits beside the total, the natural
+  commit spot) and a **Cancel** was added under it. Combined with the WS1 placeholders, the screen now
+  reads cleanly. **Browser-verified**; typecheck clean; only the pre-existing search-effect lint remains.
+
+**UI refresh summary (2026-07-20):** backup tag `backup/pre-ui-refresh-2026-07-20` → WS1 zero-input
+sweep → WS2 mobile list cards → WS3 Product form → WS4 Purchase form. Five commits (`c317381` base …
+current), each verified in the browser.
+
 ---
 
 ## 5. Current state
